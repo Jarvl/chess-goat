@@ -66,6 +66,7 @@ const activeGame = {
   finishedAt: null,
   engineLevel: null,
   premoves: [],
+  premoveTree: '',
 };
 
 describe('GameDtoSchema', () => {
@@ -273,5 +274,14 @@ describe('GameDtoSchema premoves', () => {
       'e5e4',
     ]);
     expect(() => GameDtoSchema.parse({ ...activeGame, premoves: ['e9e5'] })).toThrow();
+  });
+});
+
+describe('GameDtoSchema premoveTree', () => {
+  it('defaults the tree to empty text and keeps a sent one', () => {
+    const { premoveTree: _omitted, ...withoutTree } = activeGame;
+    expect(GameDtoSchema.parse(withoutTree).premoveTree).toBe('');
+    expect(GameDtoSchema.parse({ ...activeGame, premoveTree: 'AQwH' }).premoveTree).toBe('AQwH');
+    expect(GameDtoSchema.safeParse({ ...activeGame, premoveTree: 'AQ+H' }).success).toBe(false);
   });
 });

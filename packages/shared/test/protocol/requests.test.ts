@@ -5,6 +5,7 @@ import {
   LaunchRequestSchema,
   MoveRequestSchema,
   PrefsUpdateRequestSchema,
+  PremoveTreeRequestSchema,
   PremovesRequestSchema,
   TelemetryRequestSchema,
   TipRequestSchema,
@@ -16,7 +17,13 @@ describe('MoveRequestSchema', () => {
   const valid = { uci: 'e7e8q', expectedPly: 0, clientMoveId: 'abcdefgh' };
 
   it('accepts a promotion move with a client move id', () => {
-    expect(MoveRequestSchema.parse(valid)).toEqual(valid);
+    expect(MoveRequestSchema.parse(valid)).toEqual({ ...valid, premoveTree: '' });
+  });
+
+  it('defaults the premove tree to empty and keeps a sent one', () => {
+    expect(MoveRequestSchema.parse(valid).premoveTree).toBe('');
+    expect(MoveRequestSchema.parse({ ...valid, premoveTree: 'AQwH' }).premoveTree).toBe('AQwH');
+    expect(MoveRequestSchema.safeParse({ ...valid, premoveTree: 'AQ+H' }).success).toBe(false);
   });
 
   it.each([
@@ -130,5 +137,25 @@ describe('PremovesRequestSchema', () => {
       PremovesRequestSchema.parse({ base: [], premoves: ['e7'], expectedPly: 0 }),
     ).toThrow();
     expect(() => PremovesRequestSchema.parse({ premoves: [], expectedPly: 0 })).toThrow();
+  });
+});
+
+describe('PremoveTreeRequestSchema', () => {
+  const valid = { baseHash: 'A'.repeat(43), tree: 'AQwH', expectedPly: 3 };
+
+  it('accepts a 43-char base hash, including with an empty tree', () => {
+    expect(PremoveTreeRequestSchema.parse(valid)).toEqual(valid);
+    expect(PremoveTreeRequestSchema.parse({ ...valid, tree: '' }).tree).toBe('');
+  });
+
+  it.each([
+    ['a 42-char base hash', { ...valid, baseHash: 'A'.repeat(42) }],
+    ['a 44-char base hash', { ...valid, baseHash: 'A'.repeat(44) }],
+    ['a plus sign in the tree', { ...valid, tree: 'AQ+H' }],
+    ['padding in the tree', { ...valid, tree: 'AQwH==' }],
+    ['a missing ply', { baseHash: valid.baseHash, tree: valid.tree }],
+    ['a negative ply', { ...valid, expectedPly: -1 }],
+  ])('rejects %s', (_label, body) => {
+    expect(PremoveTreeRequestSchema.safeParse(body).success).toBe(false);
   });
 });

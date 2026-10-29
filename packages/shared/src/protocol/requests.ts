@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { MAX_WORN_FLAIR } from '../flair/catalog';
-import { GroupSettingsSchema, PrefsSchema, UciSchema } from './dto';
+import { GroupSettingsSchema, PrefsSchema, PremoveTreeTextSchema, UciSchema } from './dto';
 import { ColourChoiceSchema, EngineLevelSchema, TimePerMoveSchema } from './enums';
 import { UserIdSchema } from './ids';
 
@@ -15,6 +15,8 @@ export const MoveRequestSchema = z.object({
   expectedPly: z.number().int().min(0),
   /** Client-generated id reused on retries so a move is applied at most once (spec §7.4). */
   clientMoveId: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/),
+  /** The mover's premove tree for the position after this move, saved with the move; `''` when none. */
+  premoveTree: PremoveTreeTextSchema.default(''),
 });
 
 export type MoveRequest = z.infer<typeof MoveRequestSchema>;
@@ -27,6 +29,15 @@ export const PremovesRequestSchema = z.object({
 });
 
 export type PremovesRequest = z.infer<typeof PremovesRequestSchema>;
+
+/** Compare-and-set of the viewer's premove tree: `baseHash` fingerprints the tree the device showed. */
+export const PremoveTreeRequestSchema = z.object({
+  baseHash: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+  tree: PremoveTreeTextSchema,
+  expectedPly: z.number().int().min(0),
+});
+
+export type PremoveTreeRequest = z.infer<typeof PremoveTreeRequestSchema>;
 
 export const ChallengeRequestSchema = z.object({
   /** null for an open challenge. */
