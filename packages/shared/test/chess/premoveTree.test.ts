@@ -36,8 +36,17 @@ describe('encodePremoveBytes', () => {
     );
   });
 
-  it('encodes an empty tree as a single zero count', () => {
-    expect(encodePremoveBytes([])).toEqual(Uint8Array.of(0));
+  it('encodes an empty tree as no bytes at all, and no text', () => {
+    expect(encodePremoveBytes([])).toEqual(new Uint8Array());
+    expect(encodePremoveTree([])).toBe('');
+    // A tree of unanswered nodes only is empty too.
+    expect(encodePremoveBytes([{ move: 'e7e5', reply: null, children: [] }])).toEqual(
+      new Uint8Array(),
+    );
+  });
+
+  it('keeps the zero count of an empty child list', () => {
+    expect(encodePremoveBytes([{ move: 'e2e4', reply: 'e7e5', children: [] }]).at(-1)).toBe(0);
   });
 
   it('skips unanswered nodes and everything under them', () => {
@@ -101,8 +110,17 @@ describe('malformed input', () => {
   const rejects = (bytes: Uint8Array) =>
     expect(() => decodePremoveBytes(bytes)).toThrow(PremoveTreeFormatError);
 
+  it('decodes no bytes, and no text, as the empty tree', () => {
+    expect(decodePremoveBytes(new Uint8Array())).toEqual([]);
+    expect(decodePremoveTree('')).toEqual([]);
+  });
+
+  it('rejects a lone zero count: the empty tree is no bytes', () => {
+    rejects(Uint8Array.of(0));
+    expect(() => decodePremoveTree('AA')).toThrow(PremoveTreeFormatError);
+  });
+
   it('rejects truncated bytes', () => {
-    rejects(new Uint8Array());
     rejects(Uint8Array.of(1, 12, 7, 52, 9));
     rejects(Uint8Array.of(1, 12, 7));
   });

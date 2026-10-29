@@ -59,22 +59,16 @@ describe('premove storage and visibility', () => {
     expect((await requireGameById(db, game.id)).premoveTree).toHaveLength(0);
   });
 
-  it('takes no bytes and a zero count alike for the empty tree', async () => {
-    const { game, bob } = await setup({ premoveTree: Buffer.of(0) });
-    const save = async (baseHash: Uint8Array, tree: string) =>
-      setPremoveTree(deps, {
-        gameId: game.publicId,
-        userId: bob.id,
-        baseHash: await premoveTreeHash(baseHash),
-        tree,
-        expectedPly: 0,
-      });
-    expect((await save(new Uint8Array(), '')).premoveTree).toBe('');
-    expect((await save(Uint8Array.of(0), encodePremoveTree(e4e5))).premoveTree).toBe(
-      encodePremoveTree(e4e5),
-    );
-    expect((await save(encodePremoveBytes(e4e5), 'AA')).premoveTree).toBe('');
-    expect((await requireGameById(db, game.id)).premoveTree).toHaveLength(0);
+  it('refuses a lone zero count: the empty tree is no bytes', async () => {
+    const { game, bob } = await setup();
+    const saved = setPremoveTree(deps, {
+      gameId: game.publicId,
+      userId: bob.id,
+      baseHash: await premoveTreeHash(new Uint8Array()),
+      tree: 'AA',
+      expectedPly: 0,
+    });
+    await expect(saved).rejects.toMatchObject({ code: 'validation' });
   });
 
   it('reports why it refused', async () => {

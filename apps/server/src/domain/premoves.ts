@@ -47,65 +47,46 @@ export async function checkTreeYielding(
 const sameBytes = (a: Uint8Array, b: Uint8Array) =>
   a.length === b.length && a.every((value, index) => value === b[index]);
 
-/** The codec's empty tree: a single zero count. */
-const EMPTY_TREE = Uint8Array.of(0);
-const isEmptyTree = (bytes: Uint8Array) => bytes.length === 0 || sameBytes(bytes, EMPTY_TREE);
-const EMPTY_TREE_HASHES = Promise.all([new Uint8Array(), EMPTY_TREE].map(premoveTreeHash));
-
-/**
- * The tree in `games.premove_tree`. No bytes at all (the column default, and what is stored for an
- * empty tree) is the empty tree, which the codec writes as a single zero count.
- */
-export const storedPremoveTree = (bytes: Uint8Array): PremoveNode[] =>
-  bytes.length === 0 ? [] : decodePremoveBytes(bytes);
-
-/**
- * Whether `baseHash` fingerprints the stored tree. The empty tree is the one tree with two byte
- * forms, none and the codec's single zero count, and a device may have hashed either.
- */
-async function fingerprintMatches(stored: Uint8Array, baseHash: string): Promise<boolean> {
-  if (isEmptyTree(stored)) return (await EMPTY_TREE_HASHES).includes(baseHash);
-  return baseHash === (await premoveTreeHash(stored));
+/** Checks the pairs of `tree` that the `stored` bytes lack, from `fen`. */
+async function checkNewPairs(fen: string, tree: readonly PremoveNode[], stored: Uint8Array) {
+  const check = await checkTreeYielding(fen, tree, decodePremoveBytes(stored));
+  if (!check.ok) throw new DomainError('illegal_move', 'illegal premove', { path: check.path });
 }
 
-/** Checks the pairs of `tree` that `stored` lacks, from `fen`. */
-async function checkNewPairs(fen: string, tree: readonly PremoveNode[], stored: Uint8Array) {
-  const check = await checkTreeYielding(fen, tree, storedPremoveTree(stored));
-  if (!check.ok) throw new DomainError('illegal_move', 'illegal premove', { path: check.path });
+/** The tree text as bytes and nodes; null when it does not decode. */
+function parseTree(text: string): { bytes: Uint8Array; tree: PremoveNode[] } | null {
+  try {
+    const bytes = fromBase64Url(text);
+    return { bytes, tree: decodePremoveBytes(bytes) };
+  } catch (error) {
+    if (error instanceof PremoveTreeFormatError) return null;
+    throw error;
+  }
 }
 
 /**
  * Compare-and-set of the caller's premove tree (conditional premoves spec, API). The new pairs
  * are checked before the lock, against the stored tree read without it; the locked row is then
- * re-checked in the spec's order. Never bumps the version; an edit is pushed to the owner's
- * streams only, so nothing reaches the opponent.
+ * re-checked in the spec's order, and a tree that does not decode is refused only after those
+ * checks. Never bumps the version; an edit is pushed to the owner's streams only, so nothing
+ * reaches the opponent.
  */
 export async function setPremoveTree(deps: Deps, input: SetPremoveTreeInput): Promise<GameDto> {
-  let tree: PremoveNode[];
-  let bytes: Uint8Array;
-  try {
-    bytes = fromBase64Url(input.tree);
-    tree = storedPremoveTree(bytes);
-  } catch (error) {
-    if (error instanceof PremoveTreeFormatError)
-      throw new DomainError('validation', 'malformed premove tree');
-    throw error;
-  }
-  // An empty tree is stored as no bytes, like the column default.
-  if (tree.length === 0) bytes = new Uint8Array();
+  const parsed = parseTree(input.tree);
 
   // Anything the locked checks below refuse is left to them, so their error is the one reported.
   const seen = await requireGameByPublicId(deps.db, input.gameId);
   const seenColour = colourOf(seen, input.userId);
   let checkedAtPly: number | null = null;
   if (
+    parsed &&
     seen.status === 'active' &&
     seenColour !== null &&
     sideToMove(seen.fen) !== seenColour &&
     seen.plyCount === input.expectedPly &&
-    (await fingerprintMatches(seen.premoveTree, input.baseHash))
+    (await premoveTreeHash(seen.premoveTree)) === input.baseHash
   ) {
-    await checkNewPairs(seen.fen, tree, seen.premoveTree);
+    await checkNewPairs(seen.fen, parsed.tree, seen.premoveTree);
     checkedAtPly = seen.plyCount;
   }
 
@@ -120,20 +101,21 @@ export async function setPremoveTree(deps: Deps, input: SetPremoveTreeInput): Pr
     if (input.expectedPly !== game.plyCount) {
       throw new DomainError('stale_state', 'the position has changed', { plyCount: game.plyCount });
     }
-    if (!(await fingerprintMatches(game.premoveTree, input.baseHash))) {
+    if ((await premoveTreeHash(game.premoveTree)) !== input.baseHash) {
       throw new DomainError('stale_state', 'the premoves have changed', {
         reason: 'premoves_changed',
       });
     }
-    const unchanged =
-      sameBytes(game.premoveTree, bytes) || (bytes.length === 0 && isEmptyTree(game.premoveTree));
-    if (unchanged) return loadGameDto(tx, game, input.userId);
+    if (!parsed) throw new DomainError('validation', 'malformed premove tree');
+    if (sameBytes(game.premoveTree, parsed.bytes)) return loadGameDto(tx, game, input.userId);
     // The same ply and fingerprint mean the same position and stored tree as the check above. Only
     // a race (the row changed between the two reads into the state the request expected) skips it.
-    if (checkedAtPly !== game.plyCount) await checkNewPairs(game.fen, tree, game.premoveTree);
+    if (checkedAtPly !== game.plyCount) {
+      await checkNewPairs(game.fen, parsed.tree, game.premoveTree);
+    }
     const [updated] = await tx
       .update(games)
-      .set({ premoveTree: Buffer.from(bytes) })
+      .set({ premoveTree: Buffer.from(parsed.bytes) })
       .where(eq(games.id, game.id))
       .returning();
     if (!updated) throw new DomainError('not_found', 'game not found');

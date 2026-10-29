@@ -52,6 +52,7 @@ function decodeMove(value: number): string {
 
 /**
  * The tree as bytes: a list is a count then its nodes; a node is move, reply, children list.
+ * The empty tree is no bytes at all (not a lone zero count), so it has one form: `''` on the wire.
  * Walks with its own stack, not recursion, so a line thousands of plies deep encodes fine.
  */
 export function encodePremoveBytes(tree: readonly DraftNode[]): Uint8Array {
@@ -78,7 +79,8 @@ export function encodePremoveBytes(tree: readonly DraftNode[]): Uint8Array {
     }
     frames.push(open(entry.children));
   }
-  return Uint8Array.from(out);
+  // Only the root's zero count: the empty tree.
+  return out.length === 1 ? new Uint8Array() : Uint8Array.from(out);
 }
 
 /**
@@ -86,6 +88,7 @@ export function encodePremoveBytes(tree: readonly DraftNode[]): Uint8Array {
  * stack instead of recursing: a tree thousands of plies deep must not overflow the call stack.
  */
 export function decodePremoveBytes(bytes: Uint8Array): PremoveNode[] {
+  if (bytes.length === 0) return [];
   let cursor = 0;
   const readByte = (): number => {
     const value = bytes[cursor];
@@ -103,8 +106,11 @@ export function decodePremoveBytes(bytes: Uint8Array): PremoveNode[] {
     return decodeMove(low | (readByte() << 8));
   };
 
+  const rootCount = readCount();
+  if (rootCount === 0)
+    throw new PremoveTreeFormatError('The empty tree is no bytes, not a zero count');
   const root: PremoveNode[] = [];
-  const frames = [{ list: root, remaining: readCount() }];
+  const frames = [{ list: root, remaining: rootCount }];
   for (let frame = frames[0]; frame; frame = frames[frames.length - 1]) {
     if (frame.remaining === 0) {
       frames.pop();

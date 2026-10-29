@@ -180,6 +180,25 @@ describe('PUT /api/games/:id/premoves', () => {
     expect(decodePremoveBytes((await stored(game.id)).premoveTree)).toEqual(e4e5);
   });
 
+  it('refuses a malformed tree only after the game, turn, ply and fingerprint checks', async () => {
+    const { game, tokens } = await world();
+    const malformed = async (token: string, base: PremoveNode[], expectedPly = 0) =>
+      errorCode(
+        await put(token, game.publicId, { ...(await body(base, [], expectedPly)), tree: 'AA' }),
+      );
+    expect(await malformed(tokens.carol, [])).toBe('forbidden');
+    expect(await malformed(tokens.alice, [])).toBe('not_your_turn');
+    expect(await malformed(tokens.bob, [], 3)).toBe('stale_state');
+    expect(await malformed(tokens.bob, e4e5)).toBe('stale_state');
+    expect(await malformed(tokens.bob, [])).toBe('validation');
+    await api.request('POST', `/api/games/${game.publicId}/resign`, { token: tokens.alice });
+    expect(await malformed(tokens.bob, [])).toBe('stale_state');
+  });
+
+  it('fingerprints the empty tree as no bytes', async () => {
+    expect(await hash([])).toBe(await premoveTreeHash(new Uint8Array()));
+  });
+
   it('checks only nodes not already stored', async () => {
     const { game, tokens } = await world();
     // A stored pair that is not legal. Stored pairs were checked when they were saved; this one

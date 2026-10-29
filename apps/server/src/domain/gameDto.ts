@@ -131,8 +131,7 @@ export function buildGameDto(input: GameDtoInput): GameDto {
     finishedAt: game.finishedAt ? game.finishedAt.toISOString() : null,
     engineLevel: game.engineLevel,
     premoves: owner ? [...game.premoves] : [],
-    // One byte is the codec's empty tree (a zero count); empty is `''` on the wire.
-    premoveTree: owner && game.premoveTree.length > 1 ? toBase64Url(game.premoveTree) : '',
+    premoveTree: owner ? toBase64Url(game.premoveTree) : '',
   };
   if (game.status === 'finished') {
     if (game.lichessUrl) dto.lichessUrl = game.lichessUrl;
