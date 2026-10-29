@@ -121,8 +121,12 @@ game: an opponent move, then the player's reply.
 - **Confirm move** sends the move and the tree in **one request**, so the tree is in place before
   the opponent (or the bot, about 200 ms later) can reply. **Confirm premoves** saves the tree.
 - **Cancel** discards the draft: the waiting move and every premove change since the last save.
-- The tab bar is hidden while a draft has changes, and leaving the screen discards the draft, as for
+- The tab bar is hidden while a draft has changes. Leaving the game screen discards the draft, as for
   a waiting move today.
+- **Minimising keeps the draft.** Collapsing the app (Telegram's `deactivated` event) no longer
+  cancels anything: the waiting move and the premove draft are both still there when the player
+  comes back. This replaces the minimise rule of the move confirmations spec, so `GameView`'s
+  `onDeactivated` cancel goes.
 - If the opponent moves, or the game ends, while a draft is open, the draft is discarded and the
   toast "{opponent} moved. Your unconfirmed premoves were discarded." shows when it held premove
   changes.
