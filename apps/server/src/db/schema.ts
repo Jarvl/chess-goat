@@ -195,11 +195,18 @@ export const games = pgTable(
     startedAt: tz().notNull().defaultNow(),
     finishedAt: tz(),
     lastMoveAt: tz(),
-    /** The premove chain of the side not to move, oldest first, as UCI (premoves spec, Data). */
+    /** Unused since conditional premoves; dropped in a later release. */
     premoves: text()
       .array()
       .notNull()
       .default(sql`'{}'::text[]`),
+    /**
+     * The premove tree of the side not to move, in the premove tree codec's bytes; empty for none
+     * (conditional premoves spec, Data).
+     */
+    premoveTree: bytea()
+      .notNull()
+      .default(sql`''::bytea`),
   },
   (t) => [
     index('games_deadline_active')

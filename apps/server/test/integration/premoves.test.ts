@@ -1,9 +1,18 @@
+import {
+  INITIAL_FEN,
+  encodePremoveBytes,
+  encodePremoveTree,
+  premoveTreeHash,
+  type PremoveNode,
+} from '@group-chess/shared';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { dmMessages, games, jobs, moves } from '../../src/db/schema';
 import { createEngineGame, getEngineUser } from '../../src/domain/engineGames';
 import { getGameDto, playMove, requireGameById, resign } from '../../src/domain/games';
+import { DomainError } from '../../src/domain/errors';
 import { touchMember } from '../../src/domain/members';
+import { checkTreeYielding, setPremoveTree } from '../../src/domain/premoves';
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
 import { insertGame, insertGroup, insertUser, type GameOverrides } from '../helpers/fixtures';
 
@@ -30,27 +39,89 @@ async function setup(overrides: GameOverrides = {}) {
 }
 
 describe('premove storage and visibility', () => {
-  it('shows the queue to its owner only, and only while it is not their turn', async () => {
-    // White (Alice) to move; Black (Bob) owns the queue.
-    const { game, alice, bob, carol } = await setup({ premoves: ['e7e5'] });
-    expect(
-      (await getGameDto(deps, { gameId: game.publicId, viewerUserId: bob.id })).premoves,
-    ).toEqual(['e7e5']);
-    expect(
-      (await getGameDto(deps, { gameId: game.publicId, viewerUserId: alice.id })).premoves,
-    ).toEqual([]);
-    expect(
-      (await getGameDto(deps, { gameId: game.publicId, viewerUserId: carol.id })).premoves,
-    ).toEqual([]);
-    expect(
-      (await getGameDto(deps, { gameId: game.publicId, viewerUserId: null })).premoves,
-    ).toEqual([]);
+  // White (Alice) to move; Black (Bob) owns the tree.
+  const e4e5: PremoveNode[] = [{ move: 'e2e4', reply: 'e7e5', children: [] }];
+  const bytesOf = (tree: PremoveNode[]) => Buffer.from(encodePremoveBytes(tree));
+
+  it('shows the tree to its owner only, and only while it is not their turn', async () => {
+    const { game, alice, bob, carol } = await setup({ premoveTree: bytesOf(e4e5) });
+    const treeFor = async (viewerUserId: number | null) =>
+      (await getGameDto(deps, { gameId: game.publicId, viewerUserId })).premoveTree;
+    expect(await treeFor(bob.id)).toBe(encodePremoveTree(e4e5));
+    expect(await treeFor(alice.id)).toBe('');
+    expect(await treeFor(carol.id)).toBe('');
+    expect(await treeFor(null)).toBe('');
   });
 
-  it('empties the queue when the game ends', async () => {
-    const { game, alice } = await setup({ premoves: ['e7e5', 'g8f6'] });
+  it('empties the tree when the game ends', async () => {
+    const { game, alice } = await setup({ premoveTree: bytesOf(e4e5) });
     await resign(deps, { gameId: game.publicId, userId: alice.id });
-    expect((await requireGameById(db, game.id)).premoves).toEqual([]);
+    expect((await requireGameById(db, game.id)).premoveTree).toHaveLength(0);
+  });
+
+  it('takes no bytes and a zero count alike for the empty tree', async () => {
+    const { game, bob } = await setup({ premoveTree: Buffer.of(0) });
+    const save = async (baseHash: Uint8Array, tree: string) =>
+      setPremoveTree(deps, {
+        gameId: game.publicId,
+        userId: bob.id,
+        baseHash: await premoveTreeHash(baseHash),
+        tree,
+        expectedPly: 0,
+      });
+    expect((await save(new Uint8Array(), '')).premoveTree).toBe('');
+    expect((await save(Uint8Array.of(0), encodePremoveTree(e4e5))).premoveTree).toBe(
+      encodePremoveTree(e4e5),
+    );
+    expect((await save(encodePremoveBytes(e4e5), 'AA')).premoveTree).toBe('');
+    expect((await requireGameById(db, game.id)).premoveTree).toHaveLength(0);
+  });
+
+  it('reports why it refused', async () => {
+    const { game, bob } = await setup();
+    const refusal = async (input: {
+      baseHash?: string;
+      tree: PremoveNode[];
+      expectedPly?: number;
+    }) =>
+      setPremoveTree(deps, {
+        gameId: game.publicId,
+        userId: bob.id,
+        baseHash: input.baseHash ?? (await premoveTreeHash(new Uint8Array())),
+        tree: encodePremoveTree(input.tree),
+        expectedPly: input.expectedPly ?? 0,
+      }).then(
+        () => null,
+        (error: unknown) => (error instanceof DomainError ? error : null),
+      );
+    expect(await refusal({ tree: e4e5, expectedPly: 2 })).toMatchObject({
+      code: 'stale_state',
+      details: { plyCount: 0 },
+    });
+    expect(
+      await refusal({ tree: e4e5, baseHash: await premoveTreeHash(encodePremoveBytes(e4e5)) }),
+    ).toMatchObject({ code: 'stale_state', details: { reason: 'premoves_changed' } });
+    expect(await refusal({ tree: [{ move: 'e2e4', reply: 'e7e4', children: [] }] })).toMatchObject({
+      code: 'illegal_move',
+      details: { path: ['e2e4', 'e7e4'] },
+    });
+  });
+});
+
+describe('checkTreeYielding', () => {
+  it('gives the event loop a turn between slices and returns the check', async () => {
+    const lines: PremoveNode[] = [
+      { move: 'e2e4', reply: 'e7e5', children: [{ move: 'g1f3', reply: 'b8c6', children: [] }] },
+      { move: 'd2d4', reply: 'd7d5', children: [] },
+    ];
+    // Without a yield the whole check settles in microtasks, before any immediate callback.
+    let otherWork = false;
+    setImmediate(() => (otherWork = true));
+    expect(await checkTreeYielding(INITIAL_FEN, lines, [], 1)).toEqual({ ok: true });
+    expect(otherWork).toBe(true);
+    expect(
+      await checkTreeYielding(INITIAL_FEN, [{ move: 'e2e4', reply: 'e7e4', children: [] }], []),
+    ).toEqual({ ok: false, path: ['e2e4', 'e7e4'] });
   });
 });
 

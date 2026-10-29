@@ -5,6 +5,7 @@ import {
   isProvisional,
   positionKey,
   sideToMove,
+  toBase64Url,
   type Colour,
   type GameDto,
   type GamePlayer,
@@ -72,6 +73,9 @@ export function buildGameDto(input: GameDtoInput): GameDto {
   // A void reverts the rated effect (spec §7.1), so the delta disappears from the DTO with it.
   const finishedRated = game.status === 'finished' && game.rated && game.voidedAt === null;
   const active = game.status === 'active';
+  const viewer = colourOf(game, input.viewerUserId);
+  // Premoves always belong to the side not to move, and only their owner may see them.
+  const owner = active && viewer !== null && sideToMove(game.fen) !== viewer;
   const dto: GameDto = {
     id: game.publicId,
     group: { id: group.publicId, title: group.title },
@@ -119,18 +123,16 @@ export function buildGameDto(input: GameDtoInput): GameDto {
     claims: active
       ? computeClaims(game.fen, positionKeys(moves))
       : { threefold: false, fiftyMove: false },
-    viewerRole: colourOf(game, input.viewerUserId) ?? 'spectator',
+    viewerRole: viewer ?? 'spectator',
     result: game.result,
     endReason: game.endReason,
     voided: game.voidedAt !== null,
     startedAt: game.startedAt.toISOString(),
     finishedAt: game.finishedAt ? game.finishedAt.toISOString() : null,
     engineLevel: game.engineLevel,
-    premoves: (() => {
-      const viewer = colourOf(game, input.viewerUserId);
-      // The queue always belongs to the side not to move, and only its owner may see it.
-      return active && viewer !== null && sideToMove(game.fen) !== viewer ? [...game.premoves] : [];
-    })(),
+    premoves: owner ? [...game.premoves] : [],
+    // One byte is the codec's empty tree (a zero count); empty is `''` on the wire.
+    premoveTree: owner && game.premoveTree.length > 1 ? toBase64Url(game.premoveTree) : '',
   };
   if (game.status === 'finished') {
     if (game.lichessUrl) dto.lichessUrl = game.lichessUrl;
