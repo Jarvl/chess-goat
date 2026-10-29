@@ -50,24 +50,34 @@ function decodeMove(value: number): string {
   return `${squareName(value & 63)}${squareName((value >> 6) & 63)}${PROMOTION_CODES[promotion] ?? ''}`;
 }
 
-/** The tree as bytes: a list is a count then its nodes; a node is move, reply, children list. */
+/**
+ * The tree as bytes: a list is a count then its nodes; a node is move, reply, children list.
+ * Walks with its own stack, not recursion, so a line thousands of plies deep encodes fine.
+ */
 export function encodePremoveBytes(tree: readonly DraftNode[]): Uint8Array {
   const out: number[] = [];
-  const writeList = (list: readonly DraftNode[]): void => {
+  const open = (list: readonly DraftNode[]) => {
     const answered = list.filter((entry) => entry.reply !== null);
     if (answered.length > MAX_SIBLINGS) {
       throw new PremoveTreeFormatError(`More than ${MAX_SIBLINGS} siblings`);
     }
     out.push(answered.length);
-    for (const entry of answered) {
-      for (const uci of [entry.move, entry.reply as string]) {
-        const value = encodeMove(uci);
-        out.push(value & 0xff, value >> 8);
-      }
-      writeList(entry.children);
-    }
+    return { list: answered, next: 0 };
   };
-  writeList(tree);
+  const frames = [open(tree)];
+  for (let frame = frames[0]; frame; frame = frames[frames.length - 1]) {
+    const entry = frame.list[frame.next];
+    if (!entry) {
+      frames.pop();
+      continue;
+    }
+    frame.next += 1;
+    for (const uci of [entry.move, entry.reply as string]) {
+      const value = encodeMove(uci);
+      out.push(value & 0xff, value >> 8);
+    }
+    frames.push(open(entry.children));
+  }
   return Uint8Array.from(out);
 }
 
@@ -164,8 +174,13 @@ export function branchFor(tree: readonly PremoveNode[], uci: string): PremoveNod
 /** Nodes with a reply, at every depth. */
 export function countPremovePairs(tree: readonly DraftNode[]): number {
   let count = 0;
-  for (const entry of tree) {
-    if (entry.reply !== null) count += 1 + countPremovePairs(entry.children);
+  const pending = [tree];
+  for (let list = pending.pop(); list; list = pending.pop()) {
+    for (const entry of list) {
+      if (entry.reply === null) continue;
+      count += 1;
+      pending.push(entry.children);
+    }
   }
   return count;
 }
@@ -182,61 +197,91 @@ function playLegal(chess: Chess, uci: string): boolean {
   }
 }
 
+type CheckFrame = {
+  list: readonly PremoveNode[];
+  known: readonly PremoveNode[];
+  /** Position the opponent moves from; null until something below needs it. */
+  fen: string | null;
+  seen: Set<string>;
+  next: number;
+  /** Length of the shared path when this frame was opened. */
+  pathLength: number;
+};
+
 /**
  * Checks that every pair is legal in its own line and that no list repeats an opponent move.
  * Yields once per newly checked pair so callers can slice the work. A pair found in `known`
  * (same path, move and reply) is not checked again; its children are compared against `known`'s.
+ * Walks with its own stack, not recursion: the tree is decoded input and may be thousands deep.
  */
 export function* premoveTreeCheck(
   fen: string,
   tree: readonly PremoveNode[],
   known: readonly PremoveNode[] = [],
 ): Generator<void, TreeCheck> {
-  function* walk(
-    position: () => string,
+  const open = (
     list: readonly PremoveNode[],
     knownList: readonly PremoveNode[],
-    path: readonly string[],
-  ): Generator<void, TreeCheck> {
-    const seen = new Set<string>();
-    for (const entry of list) {
-      const here = [...path, entry.move];
-      if (seen.has(entry.move)) return { ok: false, path: here };
-      seen.add(entry.move);
-
-      const knownEntry = knownList.find(
-        (candidate) => candidate.move === entry.move && candidate.reply === entry.reply,
-      );
-      // A known pair was checked before, so its position is only built if something below is new.
-      let after: string | undefined;
-      const positionAfter = (): string => {
-        if (after === undefined) {
-          const chess = new Chess(position());
-          playLegal(chess, entry.move);
-          playLegal(chess, entry.reply);
-          after = chess.fen();
-        }
-        return after;
-      };
-
-      if (!knownEntry) {
-        const chess = new Chess(position());
-        if (!playLegal(chess, entry.move)) return { ok: false, path: here };
-        if (!playLegal(chess, entry.reply)) return { ok: false, path: [...here, entry.reply] };
-        after = chess.fen();
-        yield;
-      }
-
-      const result = yield* walk(positionAfter, entry.children, knownEntry?.children ?? [], [
-        ...here,
-        entry.reply,
-      ]);
-      if (!result.ok) return result;
+    position: string | null,
+    pathLength: number,
+  ): CheckFrame => ({
+    list,
+    known: knownList,
+    fen: position,
+    seen: new Set(),
+    next: 0,
+    pathLength,
+  });
+  /** The position of frame `index`, replaying the pairs above it if it was left unbuilt. */
+  const positionOf = (index: number): string => {
+    let start = index;
+    while (frames[start]?.fen === null) start -= 1;
+    let position = frames[start]?.fen as string;
+    for (let level = start; level < index; level += 1) {
+      const parent = frames[level] as CheckFrame;
+      const entry = parent.list[parent.next - 1] as PremoveNode;
+      const chess = new Chess(position);
+      playLegal(chess, entry.move);
+      playLegal(chess, entry.reply);
+      position = chess.fen();
+      (frames[level + 1] as CheckFrame).fen = position;
     }
-    return { ok: true };
-  }
+    return position;
+  };
 
-  return yield* walk(() => fen, tree, known, []);
+  const path: string[] = [];
+  const frames = [open(tree, known, fen, 0)];
+  for (let depth = 0; depth >= 0; depth = frames.length - 1) {
+    const frame = frames[depth] as CheckFrame;
+    const entry = frame.list[frame.next];
+    if (!entry) {
+      frames.pop();
+      continue;
+    }
+    frame.next += 1;
+    path.length = frame.pathLength;
+    path.push(entry.move);
+    if (frame.seen.has(entry.move)) return { ok: false, path };
+    frame.seen.add(entry.move);
+
+    const knownEntry = frame.known.find(
+      (candidate) => candidate.move === entry.move && candidate.reply === entry.reply,
+    );
+    let after: string | null = null;
+    if (!knownEntry) {
+      const chess = new Chess(positionOf(depth));
+      if (!playLegal(chess, entry.move)) return { ok: false, path };
+      if (!playLegal(chess, entry.reply)) {
+        path.push(entry.reply);
+        return { ok: false, path };
+      }
+      after = chess.fen();
+      yield;
+    }
+    path.push(entry.reply);
+    frames.push(open(entry.children, knownEntry?.children ?? [], after, path.length));
+  }
+  return { ok: true };
 }
 
 /** Runs `premoveTreeCheck` to the end. */

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { INITIAL_FEN } from '../../src/chess/arbiter';
 import {
+  PREMOVE_TREE_MAX_CHARS,
   PremoveTreeFormatError,
   branchFor,
   checkPremoveTree,
@@ -158,6 +159,52 @@ describe('malformed input', () => {
       cursor = cursor[0]!.children;
     }
     expect(levels).toBe(depth);
+  });
+});
+
+/** A knight shuffle from the initial position: legal at any depth, 8_900 pairs fit in 60k chars. */
+function knightShuffle(pairs: number): PremoveNode[] {
+  const cycle = [
+    ['g1f3', 'g8f6'],
+    ['f3g1', 'f6g8'],
+  ] as const;
+  const root: PremoveNode[] = [];
+  let list = root;
+  for (let ply = 0; ply < pairs; ply += 1) {
+    const [move, reply] = cycle[ply % 2] as readonly [string, string];
+    const entry = node(move, reply);
+    list.push(entry);
+    list = entry.children;
+  }
+  return root;
+}
+
+describe('deep lines', () => {
+  const pairs = 8_900;
+
+  it('encodes and checks a line as deep as the size limit allows', () => {
+    const tree = knightShuffle(pairs);
+    const text = encodePremoveTree(tree);
+    expect(text.length).toBeLessThanOrEqual(PREMOVE_TREE_MAX_CHARS);
+    expect(countPremovePairs(tree)).toBe(pairs);
+    const decoded = decodePremoveTree(text);
+    expect(checkPremoveTree(INITIAL_FEN, decoded)).toEqual({ ok: true });
+    expect(encodePremoveTree(decoded)).toBe(text);
+  });
+
+  it('compares a deep line against a known copy and finds a bad deep move', () => {
+    const depth = 3_000;
+    const tree = knightShuffle(depth);
+    expect(checkPremoveTree(INITIAL_FEN, tree, knightShuffle(depth - 1))).toEqual({ ok: true });
+    let last = tree[0] as PremoveNode;
+    while (last.children[0]) last = last.children[0];
+    last.reply = 'a1a8';
+    const result = checkPremoveTree(INITIAL_FEN, tree, knightShuffle(depth - 1));
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.path).toHaveLength(depth * 2);
+      expect(result.path.at(-1)).toBe('a1a8');
+    }
   });
 });
 
