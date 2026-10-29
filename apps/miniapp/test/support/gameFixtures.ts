@@ -72,6 +72,7 @@ export function gameDto(overrides: Partial<GameDto> = {}): GameDto {
     finishedAt: null,
     engineLevel: null,
     premoves: [],
+    premoveTree: '',
     ...overrides,
   };
 }
