@@ -122,7 +122,19 @@ game: an opponent move, then the player's reply.
   the opponent (or the bot, about 200 ms later) can reply. **Confirm premoves** saves the tree.
 - **Cancel** discards the draft: the waiting move and every premove change since the last save.
 - The tab bar is hidden while a draft has changes. Leaving the game screen discards the draft, as for
-  a waiting move today.
+  a waiting move today, but **asks first** while the draft has unconfirmed changes (the waiting move
+  alone counts):
+  - Telegram's BackButton and the Settings menu item go through the router, which asks with
+    `confirmDialog`: "Leave this game?" with "Your premoves haven't been confirmed and will be lost."
+    (or "Your move and premoves haven't been sent and will be lost." when a move is waiting; "Your
+    move hasn't been sent and will be lost." when only a move is). Buttons **Stay** and a destructive
+    **Leave**. Stay changes nothing.
+  - Any other in-app navigation away from the game goes through the same check.
+  - Closing the Mini App itself is Telegram's: while the draft has changes, `setClosingConfirmation`
+    is on, so Telegram shows its own "changes may not be saved" prompt (its wording, not ours). It is
+    off otherwise.
+  - With confirmations off there is never a draft to lose, so none of this applies.
+  - This replaces the move confirmations spec's "There is no close anyway? prompt" rule.
 - **Minimising keeps the draft.** Collapsing the app (Telegram's `deactivated` event) no longer
   cancels anything: the waiting move and the premove draft are both still there when the player
   comes back. This replaces the minimise rule of the move confirmations spec, so `GameView`'s
