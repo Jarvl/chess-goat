@@ -68,7 +68,11 @@ The player chose 1.
   real.
 - **One reply per opponent move.** Two branches at the same point never share an opponent move.
 - **No size limit.** The only bound is the API's 64 KB request limit (`apps/server/src/api/app.ts`),
-  a transport limit rather than a product rule: about 12,000 pairs in the encoding below.
+  a transport limit rather than a product rule: about 9,800 pairs in one tree, once base64-encoded.
+  Requests carry the tree once (edits send a fingerprint of the old tree, not the tree itself), so
+  the whole range can be edited. If a change would ever take a tree past it, the app keeps the
+  change on screen and shows "This premove tree is too big to save. Remove some lines first."
+  instead of sending it.
 - The tree belongs to the player, not a device. Only its owner ever sees it.
 
 ### Building it
@@ -223,9 +227,13 @@ cluttered than the Lines panel, so it is out.
 Migration `0011_conditional_premoves`:
 
 ```sql
-ALTER TABLE games DROP COLUMN premoves;
 ALTER TABLE games ADD COLUMN premove_tree bytea NOT NULL DEFAULT ''::bytea;
+UPDATE games SET premoves = '{}' WHERE premoves <> '{}';
 ```
+
+Migrations run at boot and deploys may overlap old and new containers for a few seconds, so the old
+`premoves` column is emptied but **not dropped** here: an old container still selecting it keeps
+working until it stops. `schema.ts` stops using it. A migration in a later release drops it.
 
 The owner is still the side **not** to move: a tree can only be stored while it is not its owner's
 turn, and a tree that reaches its owner's turn is played or cleared in that transaction. An empty
@@ -254,27 +262,30 @@ One pure module, `packages/shared/src/chess/premoveTree.ts`, used by the server 
 
 ### `PUT /api/games/:id/premoves`
 
-Body `PremoveTreeRequestSchema = { base: string, tree: string, expectedPly: number }`: `base` is the
-tree the device last saw from the server, `tree` the one it wants. Players only. Returns the
-caller's `GameDto`.
+Body `PremoveTreeRequestSchema = { baseHash: string, tree: string, expectedPly: number }`. `tree` is
+the tree the device wants. `baseHash` is the fingerprint of the tree the device last saw from the
+server: SHA-256 of its bytes, base64url without padding (the empty tree hashes its empty bytes).
+Sending a fingerprint instead of the old tree keeps every request to one tree, so a tree near the
+request limit can still be edited. Players only. Returns the caller's `GameDto`.
 
 | Check, in order | Error |
 |---|---|
 | The game is over | `stale_state` (from `lockActiveGame`) |
 | It is the caller's turn | `not_your_turn` |
 | `expectedPly !== plyCount` | `stale_state`, `{ plyCount }` |
-| The stored tree is not exactly `base` | `stale_state`, `{ reason: 'premoves_changed' }` |
+| The stored tree's fingerprint is not `baseHash` | `stale_state`, `{ reason: 'premoves_changed' }` |
 | `tree` does not decode | `validation` |
-| A node not in `base` is illegal, or two siblings share an opponent move | `illegal_move`, `{ path }` (the UCI moves leading to it) |
+| A node not in the stored tree is illegal, or two siblings share an opponent move | `illegal_move`, `{ path }` (the UCI moves leading to it) |
 
-- **Only new nodes are checked.** A node whose path, opponent move and reply all exist in `base` is
-  already stored and checked. A normal edit therefore costs a few milliseconds whatever the tree's
+- **Only new nodes are checked.** A node whose path, opponent move and reply all exist in the
+  stored tree is already stored and checked. A normal edit therefore costs a few milliseconds whatever the tree's
   size (chess.js 1.4.0 takes about 0.17 ms per pair).
-- **Check before the lock.** The route reads the game without locking it and checks `tree` against
-  `base` from that position. It then takes the lock (`lockActiveGame`) and re-checks the ply and
-  `base` before writing. A large new tree is therefore never checked while the row is locked.
+- **Check before the lock.** The route reads the game without locking it, compares the stored tree's
+  fingerprint with `baseHash`, and checks `tree`'s new nodes against that stored tree from that
+  position. It then takes the lock (`lockActiveGame`) and re-checks the ply and the fingerprint
+  before writing. A large new tree is therefore never checked while the row is locked.
 - **Never block the event loop for long.** A whole new tree of thousands of pairs takes seconds to
-  check (about 2 s for 12,000). The check runs off the main thread or in slices that yield, so a big
+  check (about 1.7 s for 9,800). The check runs off the main thread or in slices that yield, so a big
   tree cannot stall the server.
 - A `tree` equal to the stored one changes nothing and publishes nothing. Otherwise the tree is
   replaced, `version` is left alone, and the owner's streams get the new DTO.
@@ -342,10 +353,12 @@ premove paths of `GameView` are rewritten. What has to hold:
   move in the shown position, and `dests` are its full legal moves (chess.js). The shown move is
   highlighted with the existing `setHighlights`. Earlier positions are not movable.
 - **Saving with confirmations on.** Confirm move: `POST /moves` with the move and the encoded draft
-  tree. Confirm premoves: `PUT /premoves` with `base` = the server tree when the draft started.
-  Failures follow the premoves spec (reload; `premoves_changed` toast; offline toast).
+  tree. Confirm premoves: `PUT /premoves` with `baseHash` = the fingerprint of the server tree when
+  the draft started. Failures follow the premoves spec (reload; `premoves_changed` toast; offline
+  toast), except a request that would be over the size limit, which is never sent (see The tree), and
+  a 413, which is handled the same way rather than reloading.
 - **Saving with confirmations off.** Each completed change: `PUT /premoves`, one at a time, with
-  `base` = the last tree the server confirmed, as `editPremoves` does today.
+  `baseHash` = the fingerprint of the last tree the server confirmed, as `editPremoves` does today.
 - **Notices.** `diffNotices` keeps `premove_played` and `premoves_cancelled`. Walk the moves after the
   previous ply against the previous tree: count a fired reply for each opponent move that matched a
   branch and was followed by its reply. `premoves_cancelled` when the walk stops on an opponent move
@@ -362,7 +375,8 @@ premove paths of `GameView` are rewritten. What has to hold:
 
 - `packages/shared/src/chess/premove.ts` (the pattern rule, the imagined position,
   `checkPremoveChain`) and its tests; the Mini App's `premoveLabel` and premove-step logic.
-- `PremovesRequestSchema`'s list shape, `games.premoves`.
+- `PremovesRequestSchema`'s list shape. `games.premoves` goes from `schema.ts` now and from the
+  database in a later release (see Data).
 
 ## Testing
 
@@ -378,11 +392,11 @@ with their `path`; `branchFor`; the encoder skipping unanswered nodes.
 - Both trees: alternating replies play in one transaction, in order, with the right
   `clientMoveId`s and one turn DM at the end.
 - Privacy: other viewers get `''`; no version bump; owner-only pushes; reconnect snapshot.
-- A 5,000-pair tree is accepted and checked without holding the lock; a concurrent opponent move
-  during the check yields `stale_state`.
+- A 9,000-pair tree is saved, then edited again; it is checked without holding the lock; a concurrent
+  opponent move during the check yields `stale_state`.
 - Game end of every kind clears the tree. The engine flow with a fired reply (extend
   `engine-move-flow.test.ts`).
-- The migration drops queued chains.
+- The migration empties queued chains and leaves the old column in place.
 
 **Mini App unit:** the draft (add, branch, replace with preview and Cancel, remove, unanswered
 opponent moves); the Lines layout (runs on, indents only at splits, caps at three levels, numbers stay
