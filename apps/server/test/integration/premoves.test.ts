@@ -1,5 +1,6 @@
 import {
   INITIAL_FEN,
+  decodePremoveBytes,
   encodePremoveBytes,
   encodePremoveTree,
   premoveTreeHash,
@@ -23,8 +24,21 @@ beforeEach(() => truncateAll(db));
 afterAll(() => close());
 
 let counter = 0;
-const move = (gameId: string, userId: number, uci: string, expectedPly: number) =>
-  playMove(deps, { gameId, userId, uci, expectedPly, clientMoveId: `c-${(counter += 1)}` });
+const move = (
+  gameId: string,
+  userId: number,
+  uci: string,
+  expectedPly: number,
+  tree?: PremoveNode[],
+) =>
+  playMove(deps, {
+    gameId,
+    userId,
+    uci,
+    expectedPly,
+    clientMoveId: `c-${(counter += 1)}`,
+    premoveTree: encodePremoveTree(tree ?? []),
+  });
 const jobList = async () =>
   (await db.select().from(jobs).orderBy(jobs.id)).map((job) => [job.kind, job.dedupKey]);
 
@@ -119,29 +133,46 @@ describe('checkTreeYielding', () => {
   });
 });
 
-const queue = (id: number, premoves: string[]) =>
-  db.update(games).set({ premoves }).where(eq(games.id, id));
+const storeTree = (id: number, tree: PremoveNode[]) =>
+  db
+    .update(games)
+    .set({ premoveTree: Buffer.from(encodePremoveBytes(tree)) })
+    .where(eq(games.id, id));
+const storedTree = async (id: number) =>
+  decodePremoveBytes((await requireGameById(db, id)).premoveTree);
 const moveRows = (gameId: number) =>
   db.select().from(moves).where(eq(moves.gameId, gameId)).orderBy(moves.ply);
+const dmJobs = async () =>
+  (await db.select().from(jobs).orderBy(jobs.id)).filter((job) => job.kind === 'send_dm');
+const refusal = (attempt: Promise<unknown>) =>
+  attempt.then(
+    () => null,
+    (error: unknown) => (error instanceof DomainError ? error : null),
+  );
 
 describe('firing premoves', () => {
-  it('plays the first premove as soon as the opponent moves, with no turn DM for its owner', async () => {
+  // White (Alice) to move; Black (Bob) owns the stored tree.
+  const bobsLine: PremoveNode[] = [
+    { move: 'e2e4', reply: 'e7e5', children: [{ move: 'g1f3', reply: 'b8c6', children: [] }] },
+  ];
+
+  it('plays the matching reply and keeps its subtree', async () => {
     const { game, alice } = await setup();
-    await queue(game.id, ['e7e5']);
+    await storeTree(game.id, bobsLine);
     const dto = await move(game.publicId, alice.id, 'e2e4', 0);
     expect(dto).toMatchObject({ plyCount: 2, version: 2 });
     expect(dto.moves.map((m) => m.san)).toEqual(['e4', 'e5']);
     expect((await moveRows(game.id)).map((m) => m.clientMoveId)[1]).toBe(
       `premove:${game.publicId}:2`,
     );
+    expect(await storedTree(game.id)).toEqual(bobsLine[0]!.children);
     expect(await jobList()).toEqual([
       ['edit_card', `card:g:${game.publicId}`],
       ['send_dm', `dm:${alice.id}:g:${game.publicId}`],
     ]);
-    expect((await requireGameById(db, game.id)).premoves).toEqual([]);
   });
 
-  it("marks the premove owner's DM as waiting and sends them no turn DM", async () => {
+  it("marks the tree owner's DM as waiting and sends them no turn DM", async () => {
     const { game, alice, bob } = await setup();
     await db.insert(dmMessages).values({
       userId: bob.id,
@@ -152,68 +183,23 @@ describe('firing premoves', () => {
       stub: 'Game vs Alice ended',
       sentAt: new Date(),
     });
-    await queue(game.id, ['e7e5']);
+    await storeTree(game.id, bobsLine);
     await move(game.publicId, alice.id, 'e2e4', 0);
     expect(await db.select().from(dmMessages)).toMatchObject([
       { userId: bob.id, kind: 'waiting', stub: '✓ You played 1... e5 · waiting for Alice' },
     ]);
-    const dms = (await db.select().from(jobs)).filter((job) => job.kind === 'send_dm');
-    expect(dms.map((job) => job.payload.userId)).toEqual([alice.id]);
+    expect((await dmJobs()).map((job) => job.payload.userId)).toEqual([alice.id]);
   });
 
-  it('plays one premove per opponent move and keeps the rest for the owner', async () => {
+  it("clears a missed tree and flags the owner's turn DM", async () => {
     const { game, alice, bob } = await setup();
-    await queue(game.id, ['e7e5', 'g8f6']);
-    await move(game.publicId, alice.id, 'e2e4', 0);
-    expect(
-      (await getGameDto(deps, { gameId: game.publicId, viewerUserId: bob.id })).premoves,
-    ).toEqual(['g8f6']);
-    const dto = await move(game.publicId, alice.id, 'g1f3', 2);
-    expect(dto.moves.map((m) => m.san)).toEqual(['e4', 'e5', 'Nf3', 'Nf6']);
-  });
-
-  it('keeps a leftover premove that no longer fits, and cancels it on the owner’s next turn', async () => {
-    // White Rb1 takes the queued knight on b8: Rxb8+, check along the empty rank 8. Black's
-    // Kd7 fires (escaping the check). The queued Nb8c6 that followed has no knight on b8 to move
-    // any more, but it stays queued: cancelling it now, on White's turn, would leave Black's next
-    // turn DM without "Your premoves were cancelled." (premoves spec, Firing and Notifications).
-    const { game, alice, bob } = await setup({
-      fen: '1n2k3/8/8/8/8/8/P7/1R2K3 w - - 0 1',
-      plyCount: 10,
-    });
-    await queue(game.id, ['e8d7', 'b8c6']);
-    const dto = await move(game.publicId, alice.id, 'b1b8', 10);
-    expect(dto.plyCount).toBe(12);
-    expect((await requireGameById(db, game.id)).premoves).toEqual(['b8c6']);
-    expect(
-      (await getGameDto(deps, { gameId: game.publicId, viewerUserId: bob.id })).premoves,
-    ).toEqual(['b8c6']);
-
-    // White's next move reaches the leftover: b8c6 is illegal, so the chain is cancelled and
-    // Black's turn DM says so.
-    await db.delete(jobs);
-    const after = await move(game.publicId, alice.id, 'a2a3', 12);
-    expect(after.plyCount).toBe(13);
-    expect((await requireGameById(db, game.id)).premoves).toEqual([]);
-    const dm = (await db.select().from(jobs)).find((job) => job.kind === 'send_dm');
-    expect(dm?.dedupKey).toBe(`dm:${bob.id}:g:${game.publicId}`);
-    expect(dm?.payload).toEqual({
-      userId: bob.id,
-      template: 'turn',
-      gameId: game.id,
-      premovesCancelledAtPly: 13,
-    });
-  });
-
-  it('cancels the whole chain when the first premove is illegal, and flags the turn DM', async () => {
-    const { game, alice, bob } = await setup();
-    await queue(game.id, ['d8h4', 'h4h2']); // the e7 pawn still blocks the queen
-    const dto = await move(game.publicId, alice.id, 'e2e4', 0);
+    await storeTree(game.id, bobsLine);
+    const dto = await move(game.publicId, alice.id, 'd2d4', 0);
     expect(dto.plyCount).toBe(1);
-    expect((await requireGameById(db, game.id)).premoves).toEqual([]);
-    const dm = (await db.select().from(jobs)).find((job) => job.kind === 'send_dm');
-    expect(dm?.dedupKey).toBe(`dm:${bob.id}:g:${game.publicId}`);
-    expect(dm?.payload).toEqual({
+    expect((await requireGameById(db, game.id)).premoveTree).toHaveLength(0);
+    const dms = await dmJobs();
+    expect(dms.map((job) => job.dedupKey)).toEqual([`dm:${bob.id}:g:${game.publicId}`]);
+    expect(dms[0]?.payload).toEqual({
       userId: bob.id,
       template: 'turn',
       gameId: game.id,
@@ -221,73 +207,159 @@ describe('firing premoves', () => {
     });
   });
 
-  it('cancels when the opponent captured the piece the premove would move', async () => {
-    // 1.e4 d5, White to move; Black premoved d5d4, and White takes on d5.
-    const { game, alice, bob } = await setup({
-      fen: 'rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2',
-      plyCount: 2,
-    });
-    await queue(game.id, ['d5d4']);
-    const dto = await move(game.publicId, alice.id, 'e4d5', 2);
-    expect(dto.plyCount).toBe(3);
-    expect((await requireGameById(db, game.id)).premoves).toEqual([]);
-    const dm = (await db.select().from(jobs)).find((job) => job.kind === 'send_dm');
-    expect(dm?.dedupKey).toBe(`dm:${bob.id}:g:${game.publicId}`);
-    expect(dm?.payload).toEqual({
+  it('sends no flag when the line runs out', async () => {
+    const { game, alice } = await setup();
+    await storeTree(game.id, [{ move: 'e2e4', reply: 'e7e5', children: [] }]);
+    const dto = await move(game.publicId, alice.id, 'e2e4', 0);
+    expect(dto.plyCount).toBe(2);
+    expect((await requireGameById(db, game.id)).premoveTree).toHaveLength(0);
+    expect((await dmJobs()).map((job) => job.payload)).toEqual([
+      { userId: alice.id, template: 'turn', gameId: game.id },
+    ]);
+  });
+
+  it('stores the mover’s tree with their move', async () => {
+    const { game, alice, bob } = await setup();
+    const alicesTree: PremoveNode[] = [{ move: 'e7e5', reply: 'g1f3', children: [] }];
+    const dto = await move(game.publicId, alice.id, 'e2e4', 0, alicesTree);
+    expect(dto).toMatchObject({ plyCount: 1, premoveTree: encodePremoveTree(alicesTree) });
+    expect(await storedTree(game.id)).toEqual(alicesTree);
+    expect((await dmJobs()).map((job) => job.payload)).toEqual([
+      { userId: bob.id, template: 'turn', gameId: game.id },
+    ]);
+  });
+
+  it('plays alternating trees until one misses', async () => {
+    const { game, alice, bob } = await setup();
+    await storeTree(game.id, bobsLine);
+    const alicesTree: PremoveNode[] = [
+      {
+        move: 'e7e5',
+        reply: 'g1f3',
+        children: [
+          {
+            move: 'b8c6',
+            reply: 'f1b5',
+            children: [{ move: 'a7a6', reply: 'b5a4', children: [] }],
+          },
+        ],
+      },
+    ];
+    const dto = await move(game.publicId, alice.id, 'e2e4', 0, alicesTree);
+    expect(dto.moves.map((m) => m.san)).toEqual(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5']);
+    expect(dto).toMatchObject({ plyCount: 5, version: 5 });
+    expect((await moveRows(game.id)).map((m) => m.clientMoveId).slice(1)).toEqual(
+      [2, 3, 4, 5].map((ply) => `premove:${game.publicId}:${ply}`),
+    );
+    // Black is to move, so the stored tree is White's: what is left of Alice's line.
+    expect(await storedTree(game.id)).toEqual([{ move: 'a7a6', reply: 'b5a4', children: [] }]);
+    expect(await jobList()).toEqual([
+      ['edit_card', `card:g:${game.publicId}`],
+      ['send_dm', `dm:${bob.id}:g:${game.publicId}`],
+    ]);
+    expect((await dmJobs())[0]?.payload).toEqual({
       userId: bob.id,
       template: 'turn',
       gameId: game.id,
-      premovesCancelledAtPly: 3,
     });
   });
 
-  it('cancels when the opponent’s check makes the premove leave its own king in check', async () => {
-    // 1.e4 d6, White to move; Black premoved Nf6, and White plays Bb5+.
-    const { game, alice } = await setup({
-      fen: 'rnbqkbnr/ppp1pppp/3p4/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2',
-      plyCount: 2,
+  it('finishes the game when a fired reply mates', async () => {
+    // 1.e4 e5 2.Bc4 Nc6 3.Qh5, Black to move; Alice answers Nf6 with Qxf7#.
+    const { game, bob } = await setup({
+      fen: 'r1bqkbnr/pppp1ppp/2n5/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR b KQkq - 3 3',
+      plyCount: 5,
+      premoveTree: Buffer.from(encodePremoveBytes([{ move: 'g8f6', reply: 'h5f7', children: [] }])),
     });
-    await queue(game.id, ['g8f6']);
-    const dto = await move(game.publicId, alice.id, 'f1b5', 2);
-    expect(dto.plyCount).toBe(3);
-    expect((await requireGameById(db, game.id)).premoves).toEqual([]);
+    const dto = await move(game.publicId, bob.id, 'g8f6', 5, [
+      { move: 'd2d3', reply: 'd7d6', children: [] },
+    ]);
+    expect(dto).toMatchObject({ status: 'finished', result: '1-0', endReason: 'checkmate' });
+    expect(dto.moves.map((m) => m.san)).toEqual(['Nf6', 'Qxf7#']);
+    expect((await requireGameById(db, game.id)).premoveTree).toHaveLength(0);
   });
 
-  it('plays a premove that is only legal as en passant', async () => {
-    // Black pawn on d4; White plays c2c4 and Black's d4c3 premove takes en passant.
-    const { game, alice } = await setup({
-      fen: 'rnbqkbnr/ppp1pppp/8/8/3p4/8/PPPPPPPP/RNBQKBNR w KQkq - 0 3',
-      plyCount: 4,
+  it('fires a promoting reply', async () => {
+    const { game, bob } = await setup({
+      fen: '4k3/1P6/8/8/8/8/8/4K3 b - - 0 40',
+      plyCount: 79,
+      premoveTree: Buffer.from(
+        encodePremoveBytes([{ move: 'e8d7', reply: 'b7b8q', children: [] }]),
+      ),
     });
-    await queue(game.id, ['d4c3']);
-    const dto = await move(game.publicId, alice.id, 'c2c4', 4);
-    expect(dto.moves.at(-1)?.san).toBe('dxc3');
-    expect(dto.fen.split(' ')[0]).toBe('rnbqkbnr/ppp1pppp/8/8/8/2p5/PP1PPPPP/RNBQKBNR');
+    const dto = await move(game.publicId, bob.id, 'e8d7', 79);
+    expect(dto.moves.map((m) => m.san)).toEqual(['Kd7', 'b8=Q']);
+    expect(dto.plyCount).toBe(81);
   });
 
-  it('plays a castling premove', async () => {
-    const { game, alice } = await setup({
-      fen: 'rnbqk2r/pppp1ppp/5n2/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4',
-      plyCount: 6,
-    });
-    await queue(game.id, ['e8g8']);
-    const dto = await move(game.publicId, alice.id, 'e1g1', 6);
-    expect(dto.moves.map((m) => m.san)).toEqual(['O-O', 'O-O']);
+  it('refuses a move whose tree is illegal, and plays nothing', async () => {
+    const { game, alice } = await setup();
+    const error = await refusal(
+      move(game.publicId, alice.id, 'e2e4', 0, [{ move: 'e7e5', reply: 'e1e3', children: [] }]),
+    );
+    expect(error).toMatchObject({ code: 'illegal_move', details: { path: ['e7e5', 'e1e3'] } });
+    expect((await requireGameById(db, game.id)).plyCount).toBe(0);
+    expect(await moveRows(game.id)).toEqual([]);
   });
 
-  it('finishes the game when a premove mates', async () => {
-    // 1.f3 e5, White to move; Black premoved Qh4, and 2.g4 walks into it.
-    const { game, alice } = await setup({
-      fen: 'rnbqkbnr/pppp1ppp/8/4p3/8/5P2/PPPPP1PP/RNBQKBNR w KQkq e6 0 2',
-      plyCount: 2,
-    });
-    await queue(game.id, ['d8h4']);
-    const dto = await move(game.publicId, alice.id, 'g2g4', 2);
-    expect(dto).toMatchObject({ status: 'finished', result: '0-1', endReason: 'checkmate' });
-    expect((await requireGameById(db, game.id)).premoves).toEqual([]);
+  it('reports a malformed tree only after the game, ply and turn checks', async () => {
+    const { game, alice, bob, carol } = await setup();
+    const send = (userId: number, expectedPly: number, premoveTree: string) =>
+      refusal(
+        playMove(deps, {
+          gameId: game.publicId,
+          userId,
+          uci: 'e2e4',
+          expectedPly,
+          clientMoveId: `c-${(counter += 1)}`,
+          premoveTree,
+        }),
+      );
+    expect(await send(carol.id, 0, 'AA')).toMatchObject({ code: 'forbidden' });
+    expect(await send(alice.id, 3, 'AA')).toMatchObject({ code: 'stale_state' });
+    expect(await send(bob.id, 0, 'AA')).toMatchObject({ code: 'not_your_turn' });
+    expect(await send(alice.id, 0, 'AA')).toMatchObject({ code: 'validation' });
+    expect(await send(alice.id, 0, '!')).toMatchObject({ code: 'validation' });
+    expect((await requireGameById(db, game.id)).plyCount).toBe(0);
   });
 
-  it('cancels a bot game premove with no send_dm job, since bot games announce nothing', async () => {
+  it('returns the current state for a retried move with a tree', async () => {
+    const { game, alice } = await setup();
+    const alicesTree: PremoveNode[] = [{ move: 'e7e5', reply: 'g1f3', children: [] }];
+    const input = {
+      gameId: game.publicId,
+      userId: alice.id,
+      uci: 'e2e4',
+      expectedPly: 0,
+      clientMoveId: 'retry-me',
+    };
+    await playMove(deps, { ...input, premoveTree: encodePremoveTree(alicesTree) });
+    const retried = await playMove(deps, {
+      ...input,
+      premoveTree: encodePremoveTree([{ move: 'd7d5', reply: 'e4d5', children: [] }]),
+    });
+    expect(retried).toMatchObject({ plyCount: 1, premoveTree: encodePremoveTree(alicesTree) });
+    expect(await storedTree(game.id)).toEqual(alicesTree);
+    // Neither checked nor stored: a retry is answered before the tree is looked at.
+    expect((await playMove(deps, { ...input, premoveTree: 'AA' })).plyCount).toBe(1);
+    expect(await storedTree(game.id)).toEqual(alicesTree);
+  });
+
+  it('returns the current state for a retried move after its premove reply was played', async () => {
+    const { game, alice } = await setup();
+    await storeTree(game.id, bobsLine);
+    const input = {
+      gameId: game.publicId,
+      userId: alice.id,
+      uci: 'e2e4',
+      expectedPly: 0,
+      clientMoveId: 'retry-me',
+    };
+    await playMove(deps, input);
+    expect((await playMove(deps, input)).plyCount).toBe(2);
+  });
+
+  it('cancels a bot game tree with no send_dm job, since bot games announce nothing', async () => {
     const group = await insertGroup(db);
     const alice = await insertUser(db, { firstName: 'Alice' });
     await touchMember(db, group.id, alice.id);
@@ -298,25 +370,10 @@ describe('firing premoves', () => {
       level: 'club',
       colour: 'white',
     });
-    await move(game.publicId, alice.id, 'e2e4', 0);
-    // Alice premoves e4e5 for her next turn; the engine's e7e5 reply blocks that pawn push.
-    await queue(game.id, ['e4e5']);
+    // Alice expects 1...d5 and has 2.exd5 ready; the engine plays 1...e5 instead.
+    await move(game.publicId, alice.id, 'e2e4', 0, [{ move: 'd7d5', reply: 'e4d5', children: [] }]);
     await move(game.publicId, engine.id, 'e7e5', 1);
-    expect((await requireGameById(db, game.id)).premoves).toEqual([]);
-    expect((await db.select().from(jobs)).filter((job) => job.kind === 'send_dm')).toEqual([]);
-  });
-
-  it('returns the current state for a retried move after its premove reply was played', async () => {
-    const { game, alice } = await setup();
-    await queue(game.id, ['e7e5']);
-    const input = {
-      gameId: game.publicId,
-      userId: alice.id,
-      uci: 'e2e4',
-      expectedPly: 0,
-      clientMoveId: 'retry-me',
-    };
-    await playMove(deps, input);
-    expect((await playMove(deps, input)).plyCount).toBe(2);
+    expect((await requireGameById(db, game.id)).premoveTree).toHaveLength(0);
+    expect(await dmJobs()).toEqual([]);
   });
 });

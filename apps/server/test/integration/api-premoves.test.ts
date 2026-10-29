@@ -330,3 +330,35 @@ describe('PUT /api/games/:id/premoves', () => {
     }
   }, 3_000);
 });
+
+describe('POST /api/games/:id/moves with a premove tree', () => {
+  const post = (token: string, gameId: string, body: unknown) =>
+    api.request('POST', `/api/games/${gameId}/moves`, { token, body });
+  const moveBody = (premoveTree: string) => ({
+    uci: 'e2e4',
+    expectedPly: 0,
+    clientMoveId: 'with-a-tree',
+    premoveTree,
+  });
+  // Alice (White) sends her tree with her move: its branches are Black moves.
+  const e5f3: PremoveNode[] = [{ move: 'e7e5', reply: 'g1f3', children: [] }];
+
+  it('stores the tree with the move', async () => {
+    const { game, tokens } = await world();
+    const res = await post(tokens.alice, game.publicId, moveBody(enc(e5f3)));
+    expect(res.status).toBe(200);
+    expect(GameDtoSchema.parse(await res.json())).toMatchObject({
+      plyCount: 1,
+      premoveTree: enc(e5f3),
+    });
+    expect(decodePremoveBytes((await stored(game.id)).premoveTree)).toEqual(e5f3);
+  });
+
+  it('refuses the whole request when the tree is illegal', async () => {
+    const { game, tokens } = await world();
+    const illegal: PremoveNode[] = [{ move: 'e7e5', reply: 'e1e3', children: [] }];
+    const res = await post(tokens.alice, game.publicId, moveBody(enc(illegal)));
+    expect(await errorCode(res)).toBe('illegal_move');
+    expect((await stored(game.id)).plyCount).toBe(0);
+  });
+});

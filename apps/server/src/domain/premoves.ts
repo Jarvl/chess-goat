@@ -1,13 +1,9 @@
 import {
-  PremoveTreeFormatError,
   decodePremoveBytes,
-  fromBase64Url,
-  premoveTreeCheck,
   premoveTreeHash,
   sideToMove,
   type GameDto,
   type PremoveNode,
-  type TreeCheck,
 } from '@group-chess/shared';
 import { eq } from 'drizzle-orm';
 import { games } from '../db/schema';
@@ -15,6 +11,9 @@ import type { Deps } from './deps';
 import { DomainError } from './errors';
 import { colourOf } from './gameDto';
 import { loadGameDto, lockActiveGame, requireGameByPublicId } from './games';
+import { parseTree, requireLegalTree } from './premoveCheck';
+
+export { checkTreeYielding } from './premoveCheck';
 
 export type SetPremoveTreeInput = {
   gameId: string;
@@ -26,43 +25,12 @@ export type SetPremoveTreeInput = {
   expectedPly: number;
 };
 
-/**
- * Runs `premoveTreeCheck` to the end, giving the event loop a turn every `slice` checked pairs:
- * a whole new tree of thousands of pairs takes seconds (conditional premoves spec, API).
- */
-export async function checkTreeYielding(
-  fen: string,
-  tree: readonly PremoveNode[],
-  known: readonly PremoveNode[],
-  slice = 256,
-): Promise<TreeCheck> {
-  const generator = premoveTreeCheck(fen, tree, known);
-  for (let checked = 1; ; checked += 1) {
-    const step = generator.next();
-    if (step.done) return step.value;
-    if (checked % slice === 0) await new Promise((resolve) => setImmediate(resolve));
-  }
-}
-
 const sameBytes = (a: Uint8Array, b: Uint8Array) =>
   a.length === b.length && a.every((value, index) => value === b[index]);
 
 /** Checks the pairs of `tree` that the `stored` bytes lack, from `fen`. */
-async function checkNewPairs(fen: string, tree: readonly PremoveNode[], stored: Uint8Array) {
-  const check = await checkTreeYielding(fen, tree, decodePremoveBytes(stored));
-  if (!check.ok) throw new DomainError('illegal_move', 'illegal premove', { path: check.path });
-}
-
-/** The tree text as bytes and nodes; null when it does not decode. */
-function parseTree(text: string): { bytes: Uint8Array; tree: PremoveNode[] } | null {
-  try {
-    const bytes = fromBase64Url(text);
-    return { bytes, tree: decodePremoveBytes(bytes) };
-  } catch (error) {
-    if (error instanceof PremoveTreeFormatError) return null;
-    throw error;
-  }
-}
+const checkNewPairs = (fen: string, tree: readonly PremoveNode[], stored: Uint8Array) =>
+  requireLegalTree(fen, tree, decodePremoveBytes(stored));
 
 /**
  * Compare-and-set of the caller's premove tree (conditional premoves spec, API). The new pairs
