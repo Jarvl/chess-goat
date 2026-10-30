@@ -961,6 +961,7 @@ button {
 
 .switcher {
   display: flex;
+  flex: none;
   gap: 10px;
   margin: 8px 12px 0;
   padding: 8px 10px;
@@ -975,7 +976,7 @@ button {
   display: none;
 }
 
-.switch {
+.switcher-game {
   display: flex;
   flex: none;
   flex-direction: column;
@@ -988,25 +989,25 @@ button {
   font: inherit;
 }
 
-.switch .thumb {
+.switcher-game .thumb {
   position: relative;
   display: block;
 }
 
-.switch .mini-board {
+.switcher-game .mini-board {
   width: 56px;
   height: 56px;
   border-radius: 6px;
   overflow: hidden;
 }
 
-.switch.current .mini-board {
+.switcher-game.current .mini-board {
   box-shadow:
     0 0 0 2px var(--card),
     0 0 0 4px var(--acc);
 }
 
-.switch .dot {
+.switcher-game .dot {
   position: absolute;
   top: -4px;
   right: -4px;
@@ -1018,7 +1019,7 @@ button {
   background: var(--move);
 }
 
-.switch .name {
+.switcher-game .name {
   max-width: 56px;
   overflow: hidden;
   font-size: 11px;
@@ -1026,17 +1027,17 @@ button {
   white-space: nowrap;
 }
 
-.switch.current .name {
+.switcher-game.current .name {
   color: var(--acc-text);
   font-weight: 700;
 }
 
-.switch.dim .mini-board {
+.switcher-game.dim .mini-board {
   opacity: 0.45;
   filter: grayscale(0.7);
 }
 
-.switch.dim .name {
+.switcher-game.dim .name {
   color: var(--hint);
 }
 

@@ -7,7 +7,7 @@ import { MiniBoard } from '../MiniBoard';
 import { roleOf } from '../pill';
 
 /**
- * The strip of the viewer's games at the top of a game (game switcher spec): one tap opens another
+ * The strip of the viewer's games at the bottom of a game (game switcher spec): one tap opens another
  * game in place of this one, so Back still leads to wherever the viewer came from. The game on
  * screen is drawn from the board itself, so its thumbnail follows a move the list has not seen yet.
  */
@@ -20,7 +20,7 @@ export function GameSwitcher(props: { games: StripGame[]; current: GameDto }) {
   // Opens scrolled so the game on screen is in view, centred where the strip allows.
   useEffect(() => {
     const strip = stripRef.current;
-    const ringed = strip?.querySelector<HTMLElement>('.switch.current');
+    const ringed = strip?.querySelector<HTMLElement>('.switcher-game.current');
     if (!strip || !ringed) return;
     strip.scrollLeft = ringed.offsetLeft - (strip.clientWidth - ringed.offsetWidth) / 2;
   }, []);
@@ -36,7 +36,9 @@ export function GameSwitcher(props: { games: StripGame[]; current: GameDto }) {
         const yours = isCurrent
           ? current.status === 'active' && sideToMove(current.fen) === role
           : game.status === 'active' && game.yourTurn;
-        const classes = ['switch', isCurrent ? 'current' : yours ? '' : 'dim'].filter(Boolean);
+        const classes = ['switcher-game', isCurrent ? 'current' : yours ? '' : 'dim'].filter(
+          Boolean,
+        );
         return (
           <button
             key={game.id}

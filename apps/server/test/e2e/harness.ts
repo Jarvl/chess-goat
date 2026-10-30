@@ -76,7 +76,7 @@ function scriptedEngine(): Engine & {
   };
 }
 
-type Scenario = 'none' | 'fresh' | 'opening' | 'promotion' | 'finished' | 'ranked';
+type Scenario = 'none' | 'fresh' | 'opening' | 'promotion' | 'finished' | 'ranked' | 'several';
 type SeedRequest = {
   scenario: Scenario;
   prefs?: Record<string, Record<string, unknown>>;
@@ -171,6 +171,19 @@ async function main(): Promise<void> {
       const row = await insertGame(db, group.id, alice, bob, { fen: AFTER_E4_E5, plyCount: 2 });
       await insertMove(db, row.id, 1, 'e2e4', 'e4', AFTER_E4);
       await insertMove(db, row.id, 2, 'e7e5', 'e5', AFTER_E4_E5);
+      game = row;
+    }
+    if (request.scenario === 'several') {
+      // Two of Alice's games (game switcher spec): 1.e4 e5 against Bob, hers to move, then 1.e4
+      // against Carol, Carol's to move.
+      const row = await insertGame(db, group.id, alice, bob, { fen: AFTER_E4_E5, plyCount: 2 });
+      await insertMove(db, row.id, 1, 'e2e4', 'e4', AFTER_E4);
+      await insertMove(db, row.id, 2, 'e7e5', 'e5', AFTER_E4_E5);
+      const carol = await insertGame(db, group.id, alice, rows.carol!.id, {
+        fen: AFTER_E4,
+        plyCount: 1,
+      });
+      await insertMove(db, carol.id, 1, 'e2e4', 'e4', AFTER_E4);
       game = row;
     }
     if (request.scenario === 'promotion')
