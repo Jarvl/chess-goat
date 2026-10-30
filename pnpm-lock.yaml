@@ -51,8 +51,8 @@ importers:
         specifier: ^10.29.8
         version: 10.29.8
       zod:
-        specifier: ^4.6.5
-        version: 4.6.5
+        specifier: ^4.6.7
+        version: 4.6.7
     devDependencies:
       '@playwright/test':
         specifier: ^1.63.0
@@ -80,7 +80,7 @@ importers:
         version: 2.1.1(hono@4.13.9)
       '@hono/zod-validator':
         specifier: ^0.9.1
-        version: 0.9.1(hono@4.13.9)(zod@4.6.5)
+        version: 0.9.1(hono@4.13.9)(zod@4.6.7)
       '@resvg/resvg-js':
         specifier: ^2.6.2
         version: 2.6.2
@@ -112,8 +112,8 @@ importers:
         specifier: ^4.23.0
         version: 4.23.15
       zod:
-        specifier: ^4.6.5
-        version: 4.6.5
+        specifier: ^4.6.7
+        version: 4.6.7
     devDependencies:
       drizzle-kit:
         specifier: ^0.31.11
@@ -125,8 +125,8 @@ importers:
         specifier: 1.4.0
         version: 1.4.0
       zod:
-        specifier: ^4.6.5
-        version: 4.6.5
+        specifier: ^4.6.7
+        version: 4.6.7
 
 packages:
 
@@ -1867,8 +1867,8 @@ packages:
   yoga-layout@3.2.1:
     resolution: {integrity: sha512-0LPOt3AxKqMdFBZA3HBAt/t/8vIKq7VaQYbuA8WxCgung+p9TVyKRYdpvCb80HcdTN2NkbIKbhNwKUfm3tQywQ==}
 
-  zod@4.6.5:
-    resolution: {integrity: sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==}
+  zod@4.6.7:
+    resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
 
 snapshots:
 
@@ -2163,10 +2163,10 @@ snapshots:
     dependencies:
       hono: 4.13.9
 
-  '@hono/zod-validator@0.9.1(hono@4.13.9)(zod@4.6.5)':
+  '@hono/zod-validator@0.9.1(hono@4.13.9)(zod@4.6.7)':
     dependencies:
       hono: 4.13.9
-      zod: 4.6.5
+      zod: 4.6.7
 
   '@humanfs/core@0.19.2':
     dependencies:
@@ -3177,4 +3177,4 @@ snapshots:
 
   yoga-layout@3.2.1: {}
 
-  zod@4.6.5: {}
+  zod@4.6.7: {}
