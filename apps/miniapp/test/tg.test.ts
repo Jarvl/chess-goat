@@ -35,6 +35,13 @@ describe('createTg', () => {
     }
   });
 
+  it('leaves the Telegram back button alone below 6.1, where clients have none', () => {
+    tgFor({ version: '6.0' }).setBackButton(true, () => undefined);
+    expect(window.__tg!.calls.filter((call) => call.startsWith('BackButton'))).toEqual([]);
+    tgFor({ version: '6.1' }).setBackButton(true, () => undefined);
+    expect(window.__tg!.calls).toContain('BackButton.show');
+  });
+
   it('disables vertical swipes only from 7.7', () => {
     expect(tgFor({ version: '7.6' }).disableVerticalSwipes()).toBe(false);
     expect(window.__tg!.calls).not.toContain('disableVerticalSwipes');
