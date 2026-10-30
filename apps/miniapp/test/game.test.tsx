@@ -6,7 +6,7 @@ import { createTg } from '../src/tg/webapp';
 import { Game } from '../src/ui/screens/Game';
 import { FakeEventSource } from './support/fakeEventSource';
 import type { FakeResponse, FakeRoute } from './support/fakeFetch';
-import { afterPlies, gameDto } from './support/gameFixtures';
+import { afterPlies, gameDto, pair, treeText } from './support/gameFixtures';
 import { renderApp } from './support/render';
 import { stubAdapter, type StubAdapter } from './support/stubAdapter';
 
@@ -1097,15 +1097,16 @@ describe('Game premoves', () => {
     expect(r.root.querySelectorAll('.move-list [data-ply]')).toHaveLength(2);
   });
 
-  it('toasts and buzzes when the chain was cancelled, and buzzes lightly when a premove played', async () => {
-    const r = mount(waiting(['g2g4']));
+  it('toasts and buzzes when the tree was cancelled, and buzzes lightly when a premove played', async () => {
+    const withTree = (premoveTree: string) => afterPlies(1, { viewerRole: 'white', premoveTree });
+    const r = mount(withTree(treeText(pair('e7e5', 'g2g4'))));
     await r.flush();
     FakeEventSource.instances[0]!.send('state', afterPlies(3, { viewerRole: 'white' }), '3');
     await r.flush();
     expect(window.__tg!.haptics).toContain('impact:light');
     expect(document.querySelector('.toast')).toBeNull();
 
-    const again = mount(waiting(['e2e4']));
+    const again = mount(withTree(treeText(pair('d7d5', 'e2e4'))));
     await again.flush();
     FakeEventSource.instances.at(-1)!.send('state', afterPlies(2, { viewerRole: 'white' }), '2');
     await again.flush();
