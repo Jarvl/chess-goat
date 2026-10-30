@@ -27,6 +27,32 @@ export async function checkTreeYielding(
   }
 }
 
+/**
+ * Whether checking `tree` against `known` would have anything to do: a pair `known` lacks, or two
+ * siblings sharing an opponent move. A plain walk, no chess, so it is cheap at any size; a tree it
+ * says no to is a part of `known`, which was checked when it was stored.
+ */
+export function hasUncheckedPairs(
+  tree: readonly PremoveNode[],
+  known: readonly PremoveNode[],
+): boolean {
+  const pending: [readonly PremoveNode[], readonly PremoveNode[]][] = [[tree, known]];
+  for (let next = pending.pop(); next; next = pending.pop()) {
+    const [list, knownList] = next;
+    const seen = new Set<string>();
+    for (const entry of list) {
+      if (seen.has(entry.move)) return true;
+      seen.add(entry.move);
+      const knownEntry = knownList.find(
+        (candidate) => candidate.move === entry.move && candidate.reply === entry.reply,
+      );
+      if (!knownEntry) return true;
+      pending.push([entry.children, knownEntry.children]);
+    }
+  }
+  return false;
+}
+
 /** Checks the pairs of `tree` that `known` lacks, from `fen`; `illegal_move` with its `path` if one fails. */
 export async function requireLegalTree(
   fen: string,

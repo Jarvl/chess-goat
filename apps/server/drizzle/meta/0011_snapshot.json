@@ -803,6 +803,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "''::bytea"
+        },
+        "premove_tree_ply": {
+          "name": "premove_tree_ply",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         }
       },
       "indexes": {

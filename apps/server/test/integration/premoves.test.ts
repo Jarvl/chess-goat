@@ -14,6 +14,7 @@ import { createEngineGame, getEngineUser } from '../../src/domain/engineGames';
 import { getGameDto, playMove, requireGameById, resign } from '../../src/domain/games';
 import { DomainError } from '../../src/domain/errors';
 import { touchMember } from '../../src/domain/members';
+import { hasUncheckedPairs } from '../../src/domain/premoveCheck';
 import { checkTreeYielding, setPremoveTree } from '../../src/domain/premoves';
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
 import { insertGame, insertGroup, insertUser, type GameOverrides } from '../helpers/fixtures';
@@ -322,6 +323,7 @@ describe('firing premoves', () => {
       fen: 'r1bqkbnr/pppp1ppp/2n5/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR b KQkq - 3 3',
       plyCount: 5,
       premoveTree: Buffer.from(encodePremoveBytes([{ move: 'g8f6', reply: 'h5f7', children: [] }])),
+      premoveTreePly: 5,
     });
     const dto = await move(game.publicId, bob.id, 'g8f6', 5, [
       { move: 'd2d3', reply: 'd7d6', children: [] },
@@ -338,6 +340,7 @@ describe('firing premoves', () => {
       premoveTree: Buffer.from(
         encodePremoveBytes([{ move: 'e8d7', reply: 'b7b8q', children: [] }]),
       ),
+      premoveTreePly: 79,
     });
     const dto = await move(game.publicId, bob.id, 'e8d7', 79);
     expect(dto.moves.map((m) => m.san)).toEqual(['Kd7', 'b8=Q']);
@@ -427,5 +430,156 @@ describe('firing premoves', () => {
     await move(game.publicId, engine.id, 'e7e5', 1);
     expect((await requireGameById(db, game.id)).premoveTree).toHaveLength(0);
     expect(await dmJobs()).toEqual([]);
+  });
+});
+
+describe('a tree stored at another ply', () => {
+  // 1.e4 e5, White (Alice) to move. Bob's tree was stored at ply 0 by a container that then moved
+  // without firing or clearing it (an overlapping deploy, a rollback): it must stay inert.
+  const AFTER_E4_E5 = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2';
+  const stale: PremoveNode[] = [{ move: 'g1f3', reply: 'b8c6', children: [] }];
+  const staleRow = () =>
+    setup({
+      fen: AFTER_E4_E5,
+      plyCount: 2,
+      premoveTree: Buffer.from(encodePremoveBytes(stale)),
+      premoveTreePly: 0,
+    });
+
+  it('is not shown to its owner', async () => {
+    const { game, bob } = await staleRow();
+    expect(
+      (await getGameDto(deps, { gameId: game.publicId, viewerUserId: bob.id })).premoveTree,
+    ).toBe('');
+  });
+
+  it('does not fire, and is not reported as cancelled', async () => {
+    const { game, alice, bob } = await staleRow();
+    const dto = await move(game.publicId, alice.id, 'g1f3', 2);
+    expect(dto.plyCount).toBe(3);
+    expect(dto.moves.map((m) => m.san)).toEqual(['Nf3']);
+    expect((await dmJobs()).map((job) => job.payload)).toEqual([
+      { userId: bob.id, template: 'turn', gameId: game.id },
+    ]);
+    expect((await requireGameById(db, game.id)).premoveTree).toHaveLength(0);
+  });
+
+  it('is not the base of a save, which stores its tree at the current ply', async () => {
+    const { game, bob } = await staleRow();
+    const save = (baseHash: string) =>
+      setPremoveTree(deps, {
+        gameId: game.publicId,
+        userId: bob.id,
+        baseHash,
+        tree: encodePremoveTree(next),
+        expectedPly: 2,
+      });
+    const next: PremoveNode[] = [{ move: 'd2d4', reply: 'e5d4', children: [] }];
+    expect(await refusal(save(await premoveTreeHash(encodePremoveBytes(stale))))).toMatchObject({
+      code: 'stale_state',
+      details: { reason: 'premoves_changed' },
+    });
+    expect((await save(await premoveTreeHash(new Uint8Array()))).premoveTree).toBe(
+      encodePremoveTree(next),
+    );
+    expect(await requireGameById(db, game.id)).toMatchObject({ premoveTreePly: 2 });
+  });
+
+  it('is stored at the ply it is valid at by a move and by the firing loop', async () => {
+    const { game, alice } = await setup();
+    await storeTree(game.id, [
+      { move: 'e2e4', reply: 'e7e5', children: [{ move: 'g1f3', reply: 'b8c6', children: [] }] },
+    ]);
+    await move(game.publicId, alice.id, 'e2e4', 0);
+    expect(await requireGameById(db, game.id)).toMatchObject({ plyCount: 2, premoveTreePly: 2 });
+    await move(game.publicId, alice.id, 'd2d4', 2, [{ move: 'e5d4', reply: 'd1d4', children: [] }]);
+    expect(await requireGameById(db, game.id)).toMatchObject({ plyCount: 3, premoveTreePly: 3 });
+  });
+});
+
+describe('a row that changes between the unlocked read and the lock', () => {
+  /** Deps whose transactions start only once `between` has run: a change that lands after the read. */
+  const racing = (between: () => Promise<unknown>) => {
+    let pending = true;
+    const racingDb = new Proxy(db, {
+      get(target, key) {
+        if (key === 'transaction') {
+          return async (...args: Parameters<typeof db.transaction>) => {
+            if (pending) {
+              pending = false;
+              await between();
+            }
+            return target.transaction(...args);
+          };
+        }
+        const value = Reflect.get(target, key) as unknown;
+        return typeof value === 'function' ? (value as () => unknown).bind(target) : value;
+      },
+    });
+    return { ...deps, db: racingDb };
+  };
+  const e4e5: PremoveNode[] = [{ move: 'e2e4', reply: 'e7e5', children: [] }];
+  const d4d5: PremoveNode[] = [{ move: 'd2d4', reply: 'd7d5', children: [] }];
+
+  it('refuses a save with new pairs as premoves_changed instead of checking under the lock', async () => {
+    const { game, bob } = await setup();
+    // This device already shows e4 e5, which another device is saving: the unlocked read still
+    // sees the empty tree, so the new pair is not checked before the lock.
+    const raced = racing(() => storeTree(game.id, e4e5));
+    const saved = setPremoveTree(raced, {
+      gameId: game.publicId,
+      userId: bob.id,
+      baseHash: await premoveTreeHash(encodePremoveBytes(e4e5)),
+      tree: encodePremoveTree([...e4e5, ...d4d5]),
+      expectedPly: 0,
+    });
+    expect(await refusal(saved)).toMatchObject({
+      code: 'stale_state',
+      details: { reason: 'premoves_changed' },
+    });
+    expect(await storedTree(game.id)).toEqual(e4e5);
+  });
+
+  it('tells a tree with nothing to check from one with a new pair or a repeated move', () => {
+    const both = [...e4e5, ...d4d5];
+    expect(hasUncheckedPairs([], both)).toBe(false);
+    expect(hasUncheckedPairs(e4e5, both)).toBe(false);
+    expect(hasUncheckedPairs(both, e4e5)).toBe(true);
+    expect(hasUncheckedPairs([{ move: 'e2e4', reply: 'd7d5', children: [] }], e4e5)).toBe(true);
+    expect(hasUncheckedPairs([...e4e5, ...e4e5], e4e5)).toBe(true);
+  });
+
+  it('still saves a race whose tree has nothing to check, such as a removal', async () => {
+    const { game, bob } = await setup();
+    const both = [...e4e5, ...d4d5];
+    const raced = racing(() => storeTree(game.id, both));
+    const dto = await setPremoveTree(raced, {
+      gameId: game.publicId,
+      userId: bob.id,
+      baseHash: await premoveTreeHash(encodePremoveBytes(both)),
+      tree: encodePremoveTree(e4e5),
+      expectedPly: 0,
+    });
+    expect(dto.premoveTree).toBe(encodePremoveTree(e4e5));
+    expect(await storedTree(game.id)).toEqual(e4e5);
+  });
+
+  it('refuses a move with a tree as stale instead of checking the tree under the lock', async () => {
+    const { game, alice, bob } = await setup();
+    // Bob answers 1.e4, which lands only after his request's unlocked read saw ply 0.
+    const raced = racing(() => move(game.publicId, alice.id, 'e2e4', 0));
+    const sent = playMove(raced, {
+      gameId: game.publicId,
+      userId: bob.id,
+      uci: 'e7e5',
+      expectedPly: 1,
+      clientMoveId: 'raced',
+      premoveTree: encodePremoveTree([{ move: 'g1f3', reply: 'b8c6', children: [] }]),
+    });
+    expect(await refusal(sent)).toMatchObject({ code: 'stale_state', details: { plyCount: 1 } });
+    const row = await requireGameById(db, game.id);
+    expect(row).toMatchObject({ plyCount: 1 });
+    expect(row.premoveTree).toHaveLength(0);
+    expect(await moveRows(game.id)).toHaveLength(1);
   });
 });

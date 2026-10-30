@@ -9,9 +9,9 @@ import { eq } from 'drizzle-orm';
 import { games } from '../db/schema';
 import type { Deps } from './deps';
 import { DomainError } from './errors';
-import { colourOf } from './gameDto';
+import { colourOf, storedPremoveTree } from './gameDto';
 import { loadGameDto, lockActiveGame, requireGameByPublicId } from './games';
-import { parseTree, requireLegalTree } from './premoveCheck';
+import { hasUncheckedPairs, parseTree, requireLegalTree } from './premoveCheck';
 
 export { checkTreeYielding } from './premoveCheck';
 
@@ -36,8 +36,8 @@ const checkNewPairs = (fen: string, tree: readonly PremoveNode[], stored: Uint8A
  * Compare-and-set of the caller's premove tree (conditional premoves spec, API). The new pairs
  * are checked before the lock, against the stored tree read without it; the locked row is then
  * re-checked in the spec's order, and a tree that does not decode is refused only after those
- * checks. Never bumps the version; an edit is pushed to the owner's streams only, so nothing
- * reaches the opponent.
+ * checks. The tree is never checked under the lock. Never bumps the version; an edit is pushed to
+ * the owner's streams only, so nothing reaches the opponent.
  */
 export async function setPremoveTree(deps: Deps, input: SetPremoveTreeInput): Promise<GameDto> {
   const parsed = parseTree(input.tree);
@@ -45,6 +45,8 @@ export async function setPremoveTree(deps: Deps, input: SetPremoveTreeInput): Pr
   // Anything the locked checks below refuse is left to them, so their error is the one reported.
   const seen = await requireGameByPublicId(deps.db, input.gameId);
   const seenColour = colourOf(seen, input.userId);
+  const seenTree = storedPremoveTree(seen);
+  // The ply the new pairs were checked at, against the stored tree whose fingerprint is `baseHash`.
   let checkedAtPly: number | null = null;
   if (
     parsed &&
@@ -52,9 +54,9 @@ export async function setPremoveTree(deps: Deps, input: SetPremoveTreeInput): Pr
     seenColour !== null &&
     sideToMove(seen.fen) !== seenColour &&
     seen.plyCount === input.expectedPly &&
-    (await premoveTreeHash(seen.premoveTree)) === input.baseHash
+    (await premoveTreeHash(seenTree)) === input.baseHash
   ) {
-    await checkNewPairs(seen.fen, parsed.tree, seen.premoveTree);
+    await checkNewPairs(seen.fen, parsed.tree, seenTree);
     checkedAtPly = seen.plyCount;
   }
 
@@ -69,21 +71,29 @@ export async function setPremoveTree(deps: Deps, input: SetPremoveTreeInput): Pr
     if (input.expectedPly !== game.plyCount) {
       throw new DomainError('stale_state', 'the position has changed', { plyCount: game.plyCount });
     }
-    if ((await premoveTreeHash(game.premoveTree)) !== input.baseHash) {
+    const storedTree = storedPremoveTree(game);
+    if ((await premoveTreeHash(storedTree)) !== input.baseHash) {
       throw new DomainError('stale_state', 'the premoves have changed', {
         reason: 'premoves_changed',
       });
     }
     if (!parsed) throw new DomainError('validation', 'malformed premove tree');
-    if (sameBytes(game.premoveTree, parsed.bytes)) return loadGameDto(tx, game, input.userId);
+    if (sameBytes(storedTree, parsed.bytes)) return loadGameDto(tx, game, input.userId);
     // The same ply and fingerprint mean the same position and stored tree as the check above. Only
-    // a race (the row changed between the two reads into the state the request expected) skips it.
-    if (checkedAtPly !== game.plyCount) {
-      await checkNewPairs(game.fen, parsed.tree, game.premoveTree);
+    // a race (the row changed between the two reads into the state the request expected) leaves
+    // this state unchecked. Checking here would hold the row lock and a connection for as long as
+    // the tree takes, so a tree with anything to check is refused and the device reloads.
+    if (
+      checkedAtPly !== game.plyCount &&
+      hasUncheckedPairs(parsed.tree, decodePremoveBytes(storedTree))
+    ) {
+      throw new DomainError('stale_state', 'the premoves have changed', {
+        reason: 'premoves_changed',
+      });
     }
     const [updated] = await tx
       .update(games)
-      .set({ premoveTree: Buffer.from(parsed.bytes) })
+      .set({ premoveTree: Buffer.from(parsed.bytes), premoveTreePly: game.plyCount })
       .where(eq(games.id, game.id))
       .returning();
     if (!updated) throw new DomainError('not_found', 'game not found');

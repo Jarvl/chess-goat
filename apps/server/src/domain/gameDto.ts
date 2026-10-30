@@ -24,6 +24,18 @@ export function colourOf(
   return null;
 }
 
+const NO_TREE = new Uint8Array();
+
+/**
+ * The stored premove tree's bytes, or none when it was stored at another ply (conditional
+ * premoves spec, Data): a container that ignores trees can move past one without clearing it.
+ */
+export function storedPremoveTree(
+  game: Pick<GameRow, 'premoveTree' | 'premoveTreePly' | 'plyCount'>,
+): Uint8Array {
+  return game.premoveTreePly === game.plyCount ? game.premoveTree : NO_TREE;
+}
+
 /** Position keys of every position so far, the initial one first (arbiter contract). */
 export function positionKeys(moves: readonly MoveRow[]): string[] {
   return [positionKey(INITIAL_FEN), ...moves.map((move) => positionKey(move.fenAfter))];
@@ -130,7 +142,7 @@ export function buildGameDto(input: GameDtoInput): GameDto {
     startedAt: game.startedAt.toISOString(),
     finishedAt: game.finishedAt ? game.finishedAt.toISOString() : null,
     engineLevel: game.engineLevel,
-    premoveTree: owner ? toBase64Url(game.premoveTree) : '',
+    premoveTree: owner ? toBase64Url(storedPremoveTree(game)) : '',
   };
   if (game.status === 'finished') {
     if (game.lichessUrl) dto.lichessUrl = game.lichessUrl;

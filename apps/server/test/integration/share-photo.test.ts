@@ -203,6 +203,7 @@ describe('send_share_photo', () => {
         premoveTree: Buffer.from(
           encodePremoveBytes([{ move: 'e2e4', reply: 'd7d5', children: [] }]),
         ),
+        premoveTreePly: 2,
       })
       .where(eq(games.id, game.id));
     await share(game.id, alice.id, 2);

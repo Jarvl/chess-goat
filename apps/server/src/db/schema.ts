@@ -207,6 +207,12 @@ export const games = pgTable(
     premoveTree: bytea()
       .notNull()
       .default(sql`''::bytea`),
+    /**
+     * The ply the stored tree was written at. The tree counts only while this equals `plyCount`:
+     * a container that moves without knowing about trees (an overlapping deploy, a rollback) leaves
+     * it behind, and it must never show or fire in a position its owner did not see.
+     */
+    premoveTreePly: integer().notNull().default(0),
   },
   (t) => [
     index('games_deadline_active')

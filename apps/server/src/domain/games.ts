@@ -30,7 +30,7 @@ import { enqueue } from '../jobs/queue';
 import type { Deps } from './deps';
 import { enqueueEngineMove, isEngineGame } from './engineGames';
 import { DomainError } from './errors';
-import { buildGameDto, colourOf, positionKeys } from './gameDto';
+import { buildGameDto, colourOf, positionKeys, storedPremoveTree } from './gameDto';
 import { deadlineExpression, reminderExpression } from './limits';
 import { gameEndedStub, moveLabel, waitingText } from './dmText';
 import { resultRecipients } from './dmRules';
@@ -138,6 +138,7 @@ export async function finishGame(
       drawOfferBy: null,
       drawOfferPly: null,
       premoveTree: Buffer.alloc(0),
+      premoveTreePly: 0,
       lichessImportStatus: importable ? 'pending' : null,
       version: sql`${games.version} + 1`,
     })
@@ -386,7 +387,7 @@ async function commitMove(tx: DbOrTx, input: CommitInput): Promise<GameRow> {
   let mover = input.colour;
   let last = first.uci;
   let waiting = input.premoveTree;
-  let toMove: readonly PremoveNode[] = decodePremoveBytes(input.game.premoveTree);
+  let toMove: readonly PremoveNode[] = decodePremoveBytes(storedPremoveTree(input.game));
   let missed: boolean;
   for (;;) {
     const branch = branchFor(toMove, last);
@@ -417,14 +418,14 @@ async function commitMove(tx: DbOrTx, input: CommitInput): Promise<GameRow> {
     last = reply.uci;
   }
 
-  // The stored tree belongs to `mover`, the side not to move. The per-move updates above leave it
-  // alone, so the row still holds the stored tree read at the start.
+  // The stored tree belongs to `mover`, the side not to move, and is valid at this ply. The
+  // per-move updates above leave it alone, so the row still holds the stored tree read at the start.
   let moved = committed.game;
   const bytes = encodePremoveBytes(waiting);
   if (bytes.length > 0 || moved.premoveTree.length > 0) {
     const [stored] = await tx
       .update(games)
-      .set({ premoveTree: Buffer.from(bytes) })
+      .set({ premoveTree: Buffer.from(bytes), premoveTreePly: moved.plyCount })
       .where(eq(games.id, moved.id))
       .returning();
     if (!stored) throw new DomainError('not_found', 'game not found');
@@ -499,11 +500,14 @@ export async function playMove(deps: Deps, input: PlayMoveInput): Promise<GameDt
     if (sideToMove(game.fen) !== colour) throw new DomainError('not_your_turn', 'not your turn');
     if (!parsed) throw new DomainError('validation', 'malformed premove tree');
     // The same ply means the same position as the check above. Only a race (the row reached the
-    // expected state between the two reads) or an illegal move left it unchecked; check it here.
+    // expected state between the two reads) or an illegal move left it unchecked. The tree is never
+    // checked under the lock, which it would hold for as long as the tree takes: an illegal move is
+    // refused as such, and a race is refused as stale, so the device reloads and sends again.
     if (parsed.tree.length > 0 && checkedAtPly !== game.plyCount) {
-      const trial = applyMove(game.fen, [], input.uci);
-      if (!trial.legal) throw new DomainError('illegal_move', 'illegal move');
-      await requireLegalTree(trial.fenAfter, parsed.tree, []);
+      if (!applyMove(game.fen, [], input.uci).legal) {
+        throw new DomainError('illegal_move', 'illegal move');
+      }
+      throw new DomainError('stale_state', 'the position has changed', { plyCount: game.plyCount });
     }
     const final = await commitMove(tx, {
       game,

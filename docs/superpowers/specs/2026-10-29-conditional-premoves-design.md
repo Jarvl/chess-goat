@@ -244,6 +244,7 @@ Migration `0011_conditional_premoves`:
 
 ```sql
 ALTER TABLE games ADD COLUMN premove_tree bytea NOT NULL DEFAULT ''::bytea;
+ALTER TABLE games ADD COLUMN premove_tree_ply integer NOT NULL DEFAULT 0;
 UPDATE games SET premoves = '{}' WHERE premoves <> '{}';
 ```
 
@@ -254,6 +255,15 @@ working until it stops. `schema.ts` stops using it. A migration in a later relea
 The owner is still the side **not** to move: a tree can only be stored while it is not its owner's
 turn, and a tree that reaches its owner's turn is played or cleared in that transaction. An empty
 `bytea` is "no tree". `schema.ts` replaces `premoves` with `premoveTree`.
+
+Every write of a tree (`PUT /premoves`, the firing loop's final store, `POST /moves` with a tree)
+also sets `premove_tree_ply` to the game's `plyCount`: the ply at which the tree is valid, with its
+owner the side not to move. The stored tree counts **only while `premove_tree_ply = plyCount`**;
+otherwise it is read as empty, for the owner's `GameDto`, as the base of a `PUT` (its fingerprint and
+the pairs already stored) and as the tree firing reads. An old container that moves during an
+overlapping deploy or after a rollback ignores trees, so it can move past one without firing or
+clearing it; the ply rule keeps such a tree from ever being shown to the opponent or fired in a
+position its owner never saw. A finished game clears both columns.
 
 ### Encoding
 
@@ -299,7 +309,10 @@ request limit can still be edited. Players only. Returns the caller's `GameDto`.
 - **Check before the lock.** The route reads the game without locking it, compares the stored tree's
   fingerprint with `baseHash`, and checks `tree`'s new nodes against that stored tree from that
   position. It then takes the lock (`lockActiveGame`) and re-checks the ply and the fingerprint
-  before writing. A large new tree is therefore never checked while the row is locked.
+  before writing. A large new tree is therefore never checked while the row is locked. If the row
+  changed between the two reads into the state the request expects, so that the check did not run
+  for it, a tree with pairs to check is refused with `stale_state` (`{ reason: 'premoves_changed' }`
+  for `PUT`, `{ plyCount }` for `POST /moves`) instead of being checked under the lock.
 - **Never block the event loop for long.** A whole new tree of thousands of pairs takes seconds to
   check (about 1.5 s for 9,000). The check runs off the main thread or in slices that yield, so a big
   tree cannot stall the server.

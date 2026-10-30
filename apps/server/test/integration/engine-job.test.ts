@@ -310,6 +310,7 @@ describe('engine_move job handler', () => {
         premoveTree: Buffer.from(
           encodePremoveBytes([{ move: 'e7e5', reply: 'g1f3', children: [] }]),
         ),
+        premoveTreePly: 1,
       })
       .where(eq(games.id, game.id));
     const outcome = await runEngineJob(engine, game.id);
