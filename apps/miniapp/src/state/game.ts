@@ -44,8 +44,16 @@ export type BuildView = {
 /** The player's own move, played but waiting for Confirm move. */
 export type WaitingMove = { uci: string; san: string };
 
+/**
+ * The server tree a draft was started on, and the ply it belongs to: every save of the draft names
+ * it as its base, so a tree another device saved meanwhile is refused, never overwritten. `draft`
+ * tells drafts apart: a new one starts whenever the draft starts over.
+ */
+export type DraftBase = { draft: number; tree: string; ply: number };
+
 /** The draft as a replace popup found it, so Cancel can put it back exactly. */
 export type DraftSnapshot = {
+  base: DraftBase | null;
   waiting: WaitingMove | null;
   draftTree: DraftNode[] | null;
   selected: string[];
@@ -244,6 +252,9 @@ export class GameStore {
    * Confirm premoves, is on its way to the server.
    */
   readonly locked: Signal<boolean> = signal(false);
+  /** What the open draft builds on; null while there is no draft. */
+  readonly draftBase: Signal<DraftBase | null> = signal(null);
+  private drafts = 0;
   /** The selected premove's squares, for chessground's custom highlights. */
   readonly highlights: ReadonlySignal<string[]>;
 
@@ -481,6 +492,7 @@ export class GameStore {
   resetDraft(): void {
     batch(() => {
       this.draftTree.value = null;
+      this.draftBase.value = null;
       this.waiting.value = null;
       this.selected.value = [];
       this.trail.value = [];
@@ -495,14 +507,33 @@ export class GameStore {
     batch(() => {
       this.waiting.value = move;
       this.draftTree.value = null;
+      this.draftBase.value = null;
       this.selected.value = [];
       this.trail.value = [];
       this.viewingPly.value = null;
     });
   }
 
+  /**
+   * Puts an edited tree in the draft and shows `path`. The first edit starts the draft on the
+   * tree the server last sent.
+   */
+  editDraft(tree: DraftNode[], path: string[]): void {
+    batch(() => {
+      if (this.draftTree.value === null || this.draftBase.value === null) {
+        this.drafts += 1;
+        const dto = this.dto.value;
+        this.draftBase.value = { draft: this.drafts, tree: dto.premoveTree, ply: dto.plyCount };
+      }
+      this.draftTree.value = tree;
+      this.selected.value = path;
+      this.viewingPly.value = null;
+    });
+  }
+
   snapshotDraft(): DraftSnapshot {
     return {
+      base: this.draftBase.value,
       waiting: this.waiting.value,
       draftTree: this.draftTree.value,
       selected: this.selected.value,
@@ -513,6 +544,7 @@ export class GameStore {
 
   restoreDraft(snapshot: DraftSnapshot): void {
     batch(() => {
+      this.draftBase.value = snapshot.base;
       this.waiting.value = snapshot.waiting;
       this.draftTree.value = snapshot.draftTree;
       this.selected.value = snapshot.selected;
@@ -525,6 +557,7 @@ export class GameStore {
   dropDraftTree(): void {
     batch(() => {
       this.draftTree.value = null;
+      this.draftBase.value = null;
       this.clampSelection();
     });
   }

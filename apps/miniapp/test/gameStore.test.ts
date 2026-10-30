@@ -501,4 +501,19 @@ describe('GameStore premove drafts', () => {
     store.dropDraftTree();
     expect(store.selected.value).toEqual(['e7e5', 'g2g4']);
   });
+
+  it('starts a draft on the server tree it was made on, once, and forgets it when the draft goes', () => {
+    const store = opponentsTurn(treeText(pair('e7e5', 'g2g4')));
+    store.editDraft([pair('e7e5', 'g2g4'), { move: 'd7d5', reply: null, children: [] }], ['d7d5']);
+    const base = store.draftBase.value;
+    expect(base).toMatchObject({ tree: treeText(pair('e7e5', 'g2g4')), ply: 1 });
+    store.editDraft([pair('e7e5', 'g2g4'), pair('d7d5', 'g2g3')], ['d7d5', 'g2g3']);
+    expect(store.draftBase.value).toBe(base);
+    store.resetDraft();
+    expect(store.draftBase.value).toBeNull();
+    store.editDraft([pair('d7d5', 'g2g3')], ['d7d5', 'g2g3']);
+    expect(store.draftBase.value?.draft).not.toBe(base?.draft);
+    store.dropDraftTree();
+    expect(store.draftBase.value).toBeNull();
+  });
 });

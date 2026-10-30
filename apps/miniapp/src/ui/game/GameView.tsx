@@ -102,8 +102,6 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
   // A save with confirmations off is running (premoves spec, Queuing).
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
-  /** The server tree the open draft was started on: Confirm premoves compares against it. */
-  const draftBaseRef = useRef<string | null>(null);
   const now = useClock(store);
   const dto = store.dto.value;
   const gameId = dto.id;
@@ -218,47 +216,56 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
   };
 
   // Confirmations off (conditional premoves spec, Sending it): every completed change saves at
-  // once, one save at a time, each against the fingerprint of the tree the previous one
-  // confirmed. A change made while a save runs is saved as soon as that one settles.
-  const wantedTreeRef = useRef<readonly DraftNode[] | null>(null);
+  // once, one save at a time. Each save names the tree its draft builds on (the last tree the
+  // server confirmed for it), so another device's tree is refused, never overwritten. A change
+  // made while a save runs is saved as soon as that one settles; one made on a draft that started
+  // over meanwhile (the opponent moved) is sent against its own base, at its own ply.
+  const wantedTreeRef = useRef<{ tree: readonly DraftNode[]; draft: number } | null>(null);
   const saveTree = async (tree: readonly DraftNode[]): Promise<void> => {
-    wantedTreeRef.current = tree;
+    const started = store.draftBase.value;
+    if (!started) return;
+    wantedTreeRef.current = { tree, draft: started.draft };
     if (savingRef.current) return;
-    let confirmed = store.dto.value.premoveTree;
-    const expectedPly = store.dto.value.plyCount;
     savingRef.current = true;
     setSaving(true);
     try {
       for (let wanted = wantedTreeRef.current; wanted; wanted = wantedTreeRef.current) {
-        const text = sendable(wanted);
-        if (text === confirmed) break;
+        const base = store.draftBase.value;
+        // The draft this change was made in is gone (a new ply, a refusal): nothing to save.
+        if (!base || base.draft !== wanted.draft) break;
+        const text = sendable(wanted.tree);
+        if (text === base.tree) break;
         if (text === null) {
           // Kept on screen, never sent (spec, The tree).
           toast(t('app.game.premove_too_big'));
           break;
         }
         const body: PremoveTreeRequest = {
-          baseHash: await fingerprint(confirmed),
+          baseHash: await fingerprint(base.tree),
           tree: text,
-          expectedPly,
+          expectedPly: base.ply,
         };
-        const saved = await client.put(premovePath, body, GameDtoSchema);
-        confirmed = saved.premoveTree;
+        let saved: GameDto;
+        try {
+          saved = await client.put(premovePath, body, GameDtoSchema);
+        } catch (error) {
+          // The draft started over while this save ran: a newer change goes on its own base.
+          if (store.draftBase.value?.draft !== base.draft) continue;
+          if (error instanceof ApiError && error.status === 413) {
+            toast(t('app.game.premove_too_big'));
+            break;
+          }
+          store.dropDraftTree();
+          restore();
+          if (error instanceof ApiError && error.isNetwork) toast(t('app.common.offline'));
+          else await reloadAfterRefusal(error, base.ply);
+          break;
+        }
+        if (store.draftBase.value?.draft === base.draft)
+          store.draftBase.value = { ...base, tree: saved.premoveTree };
         applyState(saved);
         tg.haptic('light');
       }
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 413) {
-        toast(t('app.game.premove_too_big'));
-        return;
-      }
-      store.dropDraftTree();
-      restore();
-      if (error instanceof ApiError && error.isNetwork) {
-        toast(t('app.common.offline'));
-        return;
-      }
-      await reloadAfterRefusal(error, expectedPly);
     } finally {
       wantedTreeRef.current = null;
       savingRef.current = false;
@@ -269,15 +276,7 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
   const completed = (): void => {
     if (!confirmsNow()) void saveTree(store.tree.value);
   };
-  /** Puts an edited tree in the draft and shows `path`. */
-  const edit = (tree: DraftNode[], path: string[]): void => {
-    batch(() => {
-      if (store.draftTree.value === null) draftBaseRef.current = store.dto.value.premoveTree;
-      store.draftTree.value = tree;
-      store.selected.value = path;
-      store.viewingPly.value = null;
-    });
-  };
+  const edit = (tree: DraftNode[], path: string[]): void => store.editDraft(tree, path);
 
   // The effect runner closes over this render's props and callbacks; `dispatch` stays stable and
   // always calls the latest one.
@@ -372,7 +371,7 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
       toast(t('app.game.premove_too_big'));
       return;
     }
-    const base = draftBaseRef.current ?? store.dto.value.premoveTree;
+    const base = store.draftBase.value?.tree ?? store.dto.value.premoveTree;
     const expectedPly = store.dto.value.plyCount;
     confirmingPremovesRef.current = true;
     setConfirmingPremoves(true);
@@ -529,6 +528,12 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
     });
     // The game moved on, or the draft went, while the popup was open: nothing left to answer.
     if (store.dto.value.plyCount !== ply || store.draftTree.value !== result.tree) return;
+    if (store.locked.value) {
+      // The draft was sent as it stood before this change; it cannot take the change any more.
+      store.restoreDraft(snapshot);
+      restore();
+      return;
+    }
     if (!yes) {
       store.restoreDraft(snapshot);
       restore();
@@ -617,6 +622,7 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
   };
 
   const onDrop = (orig: string, dest: string, meta: { captured: boolean }): void => {
+    pickedRef.current = null;
     const kind = moveRef.current.kind;
     const view = store.buildView.value;
     if (kind === 'sending' || kind === 'retry' || !view.canMove) {
@@ -643,9 +649,15 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
     }
     play(`${pending.orig}${pending.dest}${piece}`);
   };
+  // The player's own piece last tapped. Chessground reports every tapped square, the target of a
+  // click-click move included, before the move itself: a tap on an opponent piece that the picked
+  // piece can take is a capture, not a premove.
+  const pickedRef = useRef<string | null>(null);
   /** A tap on the board: back from an earlier position, or a nudge to move first. */
   const onSelect = (square: string): void => {
     const current = store.dto.value;
+    const picked = pickedRef.current;
+    pickedRef.current = null;
     if (store.viewingPly.value !== null && !store.buildView.value.canMove) {
       store.viewPly(null);
       tg.hapticSelection();
@@ -655,7 +667,13 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
     if (viewer !== 'white' && viewer !== 'black') return;
     if (store.building.value || !store.canMove.value || moveRef.current.kind !== 'idle') return;
     const owner = colourAt(current.fen, square);
-    if (owner !== null && owner !== viewer)
+    if (owner === viewer) {
+      // A second tap on the same piece puts it down again.
+      pickedRef.current = picked === square ? null : square;
+      return;
+    }
+    const capture = picked !== null && (store.dests.value.get(picked) ?? []).includes(square);
+    if (owner !== null && !capture)
       toast(t('app.game.premove_own_first', { name: opponentName() }));
   };
   /** Shows a move of the tree, or its root. */
@@ -670,7 +688,8 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
   /** ✕ on the selected premove (spec, Building it): asks, then removes it and what follows. */
   const removeSelected = async (): Promise<void> => {
     const path = store.selected.value;
-    if (path.length === 0 || store.viewingPly.value !== null) return;
+    // A draft on its way to the server is what it sends; removing from it now would change nothing.
+    if (path.length === 0 || store.viewingPly.value !== null || store.locked.value) return;
     const tree = store.tree.value;
     const ply = store.dto.value.plyCount;
     let label: string;
@@ -690,6 +709,7 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
     // about may then be gone or mean something else, so the answer no longer applies.
     if (
       store.dto.value.plyCount !== ply ||
+      store.locked.value ||
       !sameTree(store.tree.value, tree) ||
       !samePath(store.selected.value, path)
     )
@@ -805,6 +825,8 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
   const draftShown = confirmOn
     ? store.draftDirty.value || hasOpenMove(store.draftTree.value ?? [])
     : store.premoveDraftChanged.value && !saving;
+  // The ✕ is gone while the draft is on its way to the server: it is sent as it stands.
+  const removable = !store.locked.value;
   const askOpen = moveState.kind === 'pendingConfirm' || (premoveDraftOpen && !confirmingPremoves);
   const moveButtons = askOpen && (inPage.confirm || inPage.cancel);
   const waiting = store.waiting.value;
@@ -872,7 +894,7 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
         ) : null}
       </Board>
       <PlayerBar dto={dto} colour={orientation} fen={shownFen} now={now} />
-      <MoveList store={store} onRemove={() => void removeSelected()} />
+      <MoveList store={store} onRemove={removable ? () => void removeSelected() : undefined} />
       {/* One slider in every game: the real moves, the waiting move, then the premove line viewed. */}
       <div class="replay-controls">
         <button
@@ -911,7 +933,7 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
           root={linesRoot}
           selected={store.selected.value}
           onSelect={selectPath}
-          onRemove={() => void removeSelected()}
+          onRemove={removable ? () => void removeSelected() : undefined}
         />
       ) : null}
       {offerFromOpponent && dto.status === 'active' ? (

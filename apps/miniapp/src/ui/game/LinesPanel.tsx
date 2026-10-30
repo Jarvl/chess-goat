@@ -14,7 +14,8 @@ export function LinesPanel(props: {
   root: { label: string; caption: string };
   selected: readonly string[];
   onSelect: (path: string[]) => void;
-  onRemove: () => void;
+  /** Without one, the selected move has no ✕ (the draft is on its way to the server). */
+  onRemove?: () => void;
 }) {
   const { tree, rootFen, owner, selected } = props;
   const blocks = useMemo(() => linesModel(tree, rootFen, owner), [tree, rootFen, owner]);
@@ -62,7 +63,7 @@ export function LinesPanel(props: {
                   >
                     {token.san}
                   </button>
-                  {current ? (
+                  {current && props.onRemove ? (
                     <button
                       class="lines-remove"
                       data-action="premove-remove"

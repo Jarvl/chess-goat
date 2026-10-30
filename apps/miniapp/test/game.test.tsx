@@ -1391,6 +1391,59 @@ describe('Game premoves with move confirmations on', () => {
   });
 });
 
+describe('Game premoves while the draft is on its way', () => {
+  beforeEach(() => {
+    wantPrefs.moveConfirmations = 'people';
+  });
+
+  it('offers no ✕ and removes nothing while a confirmed move retries', async () => {
+    vi.useFakeTimers();
+    const initial = played([]);
+    const r = mount(
+      initial,
+      okRoute(initial, () => {
+        throw new TypeError('Failed to fetch');
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(100);
+    adapter.drop('e2', 'e4');
+    await vi.advanceTimersByTimeAsync(100);
+    adapter.drop('e7', 'e5');
+    await vi.advanceTimersByTimeAsync(100);
+    adapter.drop('g1', 'f3');
+    await vi.advanceTimersByTimeAsync(100);
+    expect(r.root.querySelector('.lines-panel [data-action="premove-remove"]')).not.toBeNull();
+    window.__tg!.clickMain();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(window.__tg!.mainButton.text).toBe('Retry');
+    expect(r.root.querySelector('.lines-panel [data-action="premove-remove"]')).toBeNull();
+    expect(r.root.querySelector('.move-list [data-action="premove-remove"]')).toBeNull();
+    expect(tokens(r)).toEqual(['e5', 'Nf3']);
+    expect(window.__tg!.popups).toHaveLength(0);
+  });
+
+  it('offers no ✕ while Confirm premoves is on its way', async () => {
+    const initial = played(['e2e4']);
+    let answer: (response: FakeResponse) => void = () => undefined;
+    const r = mount(
+      initial,
+      savesTree(initial, () => new Promise<FakeResponse>((resolve) => (answer = resolve))),
+    );
+    await r.flush();
+    adapter.drop('e7', 'e5');
+    await r.flush();
+    adapter.drop('g1', 'f3');
+    await r.flush();
+    window.__tg!.clickMain();
+    await r.flush();
+    expect(r.root.querySelector('.lines-panel [data-action="premove-remove"]')).toBeNull();
+    expect(r.root.querySelector('.move-list [data-action="premove-remove"]')).toBeNull();
+    answer({ status: 200, body: { ...initial, premoveTree: treeText(pair('e7e5', 'g1f3')) } });
+    await r.flush();
+    expect(r.root.querySelector('.lines-panel [data-action="premove-remove"]')).not.toBeNull();
+  });
+});
+
 describe('Game premoves with move confirmations on, too big for the server', () => {
   beforeEach(() => {
     wantPrefs.moveConfirmations = 'people';
@@ -1474,6 +1527,86 @@ describe('Game premoves with move confirmations off', () => {
     expect(pill(r)).toBe('2 premoves saved');
     expect(window.__tg!.mainButton.visible).toBe(false);
     expect(window.__tg!.calls).not.toContain('MainButton.show');
+  });
+
+  it('sends an edit made after the opponent moved against the new position', async () => {
+    const answers: ((response: FakeResponse) => void)[] = [];
+    const after = played(['e2e4', 'c7c5', 'g1f3']);
+    const r = mount(played(['e2e4']), (call) => {
+      if (call.method === 'PUT' && call.path === premovePath)
+        return new Promise<FakeResponse>((resolve) => answers.push(resolve));
+      if (call.method === 'POST' && call.path === `/api/games/${GAME}/moves`)
+        return { status: 200, body: after };
+      return okRoute(played(['e2e4']))(call);
+    });
+    await r.flush();
+    adapter.drop('e7', 'e5');
+    await r.flush();
+    adapter.drop('g1', 'f3');
+    await r.flush();
+    expect(putsOf(r)).toHaveLength(1);
+    // Dana answers 1…c5 while that save runs, and the player replies 2.Nf3 …
+    FakeEventSource.instances[0]!.send('state', played(['e2e4', 'c7c5']), '2');
+    await r.flush();
+    adapter.drop('g1', 'f3');
+    await r.flush();
+    // … then builds a premove on the new position.
+    adapter.drop('d7', 'd6');
+    await r.flush();
+    adapter.drop('d2', 'd4');
+    await r.flush();
+    expect(putsOf(r)).toHaveLength(1);
+    answers[0]!({
+      status: 409,
+      body: { error: { code: 'stale_state', message: 'the position has changed' } },
+    });
+    await r.flush();
+    expect(putsOf(r).map((c) => c.body)).toEqual([
+      {
+        baseHash: await hashOf([]),
+        tree: encodePremoveTree([pair('e7e5', 'g1f3')]),
+        expectedPly: 1,
+      },
+      {
+        baseHash: await hashOf([]),
+        tree: encodePremoveTree([pair('d7d6', 'd2d4')]),
+        expectedPly: 3,
+      },
+    ]);
+    expect(tokens(r)).toEqual(['d6', 'd4']);
+    expect(toastText()).toBeUndefined();
+    expect(r.calls.filter((c) => c.method === 'GET')).toHaveLength(0);
+  });
+
+  it('never saves an unsaved change over a tree another device saved meanwhile', async () => {
+    limits.maxChars = 4;
+    const initial = played(['e2e4']);
+    const theirs = played(['e2e4'], { premoveTree: treeText(pair('d7d5', 'e4d5')) });
+    const r = mount(initial, (call) => {
+      if (call.method === 'PUT')
+        return { status: 409, body: { error: { code: 'stale_state', message: 'changed' } } };
+      if (call.method === 'GET') return { status: 200, body: theirs };
+      return okRoute(initial)(call);
+    });
+    await r.flush();
+    adapter.drop('e7', 'e5');
+    await r.flush();
+    adapter.drop('g1', 'f3');
+    await r.flush();
+    expect(putsOf(r)).toHaveLength(0); // too big: kept on screen, unsaved
+    FakeEventSource.instances[0]!.send('state', theirs, '1');
+    await r.flush();
+    expect(tokens(r)).toEqual(['e5', 'Nf3']);
+    limits.maxChars = 60_000;
+    await r.click('.lines-panel [data-path=""]');
+    adapter.drop('c7', 'c5');
+    await r.flush();
+    adapter.drop('g1', 'f3');
+    await r.flush();
+    // The change was made on the empty tree, so that is what the save names as its base.
+    expect(putsOf(r)[0]?.body).toMatchObject({ baseHash: await hashOf([]), expectedPly: 1 });
+    expect(toastText()).toBe('Premoves changed on another device');
+    expect(tokens(r)).toEqual(['d5', 'exd5']);
   });
 
   it('keeps an unanswered opponent move on the device through a save', async () => {
@@ -1699,6 +1832,29 @@ describe('Game premove board and status line', () => {
     await r.flush();
     expect(toastText()).toBeUndefined();
     adapter.select('e7');
+    await r.flush();
+    expect(toastText()).toBe(
+      'Play your own move first. Then you can play the moves Dana might make.',
+    );
+  });
+
+  it('says nothing when a tap captures an opponent piece with the selected piece', async () => {
+    const r = mount(played(['e2e4', 'd7d5']));
+    await r.flush();
+    // Chessground reports both taps of a click-click move before the move itself.
+    adapter.select('e4');
+    adapter.select('d5');
+    adapter.drop('e4', 'd5', true);
+    await r.flush();
+    expect(toastText()).toBeUndefined();
+    expect(movePostsOf(r)[0]?.body).toMatchObject({ uci: 'e4d5' });
+  });
+
+  it('still nudges when the selected piece cannot take the tapped one', async () => {
+    const r = mount(played(['e2e4', 'd7d5']));
+    await r.flush();
+    adapter.select('g1');
+    adapter.select('d5');
     await r.flush();
     expect(toastText()).toBe(
       'Play your own move first. Then you can play the moves Dana might make.',
