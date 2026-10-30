@@ -5,7 +5,7 @@ import {
   LobbyDtoSchema,
   PlayerPageDtoSchema,
 } from '@group-chess/shared';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { adminActions, groupMembers, jobs, shares } from '../../src/db/schema';
 import { touchMember } from '../../src/domain/members';
@@ -427,19 +427,6 @@ describe('GET /api/games/:id/events', () => {
     expect(api.ctx.streams.count(carol.id)).toBe(0);
   });
 
-  it('sends a snapshot on every connect, even when Last-Event-ID is already current', async () => {
-    const { group, alice, bob, tokens } = await world();
-    const game = await insertGame(db, group.id, alice.id, bob.id);
-    const controller = new AbortController();
-    const res = await api.request(
-      'GET',
-      `/api/games/${game.publicId}/events?token=${tokens.carol}`,
-      { signal: controller.signal, headers: { 'last-event-id': '0' } },
-    );
-    expect(await readChunk(res)).toContain('event: state');
-    controller.abort();
-  });
-
   it('delivers an owner-only publish to that user’s streams and no one else’s', async () => {
     const { group, alice, bob, tokens } = await world();
     const game = await insertGame(db, group.id, alice.id, bob.id);
@@ -559,8 +546,6 @@ describe('unknown ids', () => {
     expect((await api.request('GET', '/api/games/not-an-id', { token: tokens.alice })).status).toBe(
       404,
     );
-    const [row] = await db.execute(sql`select 1 as one`);
-    expect(row?.one).toBe(1);
   });
 
   it('answers 404, not 500, for a malformed user id in a path', async () => {

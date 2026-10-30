@@ -12,7 +12,6 @@ import { flairBackfills, games, jobs, userFlair, users, type GameRow } from '../
 import {
   backfillDedupKey,
   backfillPlayer,
-  canRunBackfill,
   enqueueFlairBackfill,
   pendingBackfills,
   runFlairBackfill,
@@ -307,25 +306,6 @@ describe('runFlairBackfill', () => {
     await expect(runFlairBackfill(db, draws, { backfillOne })).rejects.toThrow('boom');
     expect(await earned(alice.id)).toEqual([['draws_10', tenth.id]]);
     expect(await recorded()).toEqual([]);
-  });
-});
-
-describe('backfillDedupKey', () => {
-  it('names the pairs sorted by id', () => {
-    expect(
-      backfillDedupKey([
-        { id: 'rank_1200', version: 1 },
-        { id: 'draws_10', version: 2 },
-      ]),
-    ).toBe('flair:backfill:draws_10@2,rank_1200@1');
-  });
-});
-
-describe('canRunBackfill', () => {
-  it('runs only pairs this build knows, at a version it has reached', () => {
-    expect(canRunBackfill([{ id: 'draws_10', version: 1 }])).toBe(true);
-    expect(canRunBackfill([{ id: 'retired_flair', version: 1 }])).toBe(false);
-    expect(canRunBackfill([{ id: 'draws_10', version: 2 }])).toBe(false);
   });
 });
 

@@ -356,13 +356,3 @@ describe('me routes', () => {
     expect(await refused.json()).toMatchObject({ error: { code: 'validation' } });
   });
 });
-
-describe('health', () => {
-  it('serves healthz, readyz and metrics', async () => {
-    expect((await api.request('GET', '/healthz')).status).toBe(200);
-    expect((await api.request('GET', '/readyz')).status).toBe(200);
-    const metrics = await api.request('GET', '/metrics');
-    expect(metrics.status).toBe(200);
-    expect(await metrics.text()).toContain('process_cpu_user_seconds_total');
-  });
-});

@@ -60,16 +60,8 @@ describe('fetchFonts', () => {
 });
 
 describe('FONT_MANIFEST', () => {
-  it('pins seven fonts by https URL and sha256', () => {
-    expect(FONT_MANIFEST.map((entry) => entry.file)).toEqual([
-      'NotoSans-Regular.ttf',
-      'NotoSans-SemiBold.ttf',
-      'NotoSans-Bold.ttf',
-      'NotoEmoji-Regular.ttf',
-      'NotoSansSymbols2-Regular.ttf',
-      'NotoSansCJKsc-Regular.otf',
-      'YoungSerif-Regular.ttf',
-    ]);
+  // Which fonts, by file name, is pinned in fonts.test.ts against what the renderer loads.
+  it('pins every font by https URL and sha256', () => {
     for (const entry of FONT_MANIFEST) {
       expect(entry.url).toMatch(/^https:\/\//);
       expect(entry.sha256).toMatch(/^[0-9a-f]{64}$/);

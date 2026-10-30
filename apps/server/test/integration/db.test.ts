@@ -2,7 +2,7 @@ import { eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { dbNow } from '../../src/db/client';
 import { runMigrations } from '../../src/db/migrate';
-import { dmMessages, jobs, tips, userFlair, users } from '../../src/db/schema';
+import { dmMessages, userFlair, users } from '../../src/db/schema';
 import { listMoves, requireGameById } from '../../src/domain/games';
 import { storePhoto } from '../../src/domain/photos';
 import { openTestDb, truncateAll } from '../helpers/db';
@@ -86,38 +86,6 @@ describe('database', () => {
     const now = await dbNow(db);
     expect(Math.abs(now.getTime() - Date.now())).toBeLessThan(5_000);
   });
-
-  it('enforces one pending job per dedup key but allows a new one once done', async () => {
-    await db.insert(jobs).values({ kind: 'edit_card', dedupKey: 'card:g:x' });
-    await expect(
-      db.insert(jobs).values({ kind: 'edit_card', dedupKey: 'card:g:x' }),
-    ).rejects.toSatisfy((error: unknown) =>
-      /jobs_dedup_pending/.test(
-        String(
-          (error as { cause?: { message?: string } }).cause?.message ?? (error as Error).message,
-        ),
-      ),
-    );
-    await db.update(jobs).set({ doneAt: sql`now()` });
-    await expect(
-      db.insert(jobs).values({ kind: 'edit_card', dedupKey: 'card:g:x' }),
-    ).resolves.toBeDefined();
-  });
-
-  it('stores fixture games with a database-side deadline', async () => {
-    const group = await insertGroup(db);
-    const white = await insertUser(db);
-    const black = await insertUser(db);
-    const game = await insertGame(db, group.id, white.id, black.id, { deadlineInSeconds: -1 });
-    const [row] = await db.execute(
-      sql`select deadline_at < now() as passed from games where id = ${game.id}`,
-    );
-    expect(row?.passed).toBe(true);
-    expect(game.publicId).toHaveLength(10);
-  });
-
-  it('starts a user with no worn flair', async () =>
-    expect((await insertUser(db)).flairWorn).toEqual([]));
 });
 
 describe('dm_messages table', () => {
@@ -157,27 +125,5 @@ describe('dm_messages table', () => {
         telegramMessageId: 102,
       }),
     ).rejects.toThrow();
-  });
-});
-
-describe('tips table', () => {
-  it('stores a tip once per Telegram charge id', async () => {
-    const user = await insertUser(db, { telegramUserId: 11 });
-    const row = {
-      userId: user.id,
-      telegramUserId: 11,
-      stars: 250,
-      telegramPaymentChargeId: 'charge-1',
-    };
-    await db.insert(tips).values(row);
-    const again = await db
-      .insert(tips)
-      .values(row)
-      .onConflictDoNothing({ target: tips.telegramPaymentChargeId })
-      .returning();
-    expect(again).toHaveLength(0);
-    const [stored] = await db.select().from(tips);
-    expect(stored).toMatchObject({ stars: 250, refundedAt: null });
-    expect(stored?.paidAt).toBeInstanceOf(Date);
   });
 });

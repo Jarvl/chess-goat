@@ -82,7 +82,9 @@ describe('POST /api/tips', () => {
     expect(res.status).toBe(500);
     expect(await res.json()).toMatchObject({ error: { code: 'internal' } });
   });
+});
 
+describe('DELETE /api/me', () => {
   it('keeps tip rows when the payer deletes their data', async () => {
     const payer = await insertUser(db, { telegramUserId: 11 });
     await db.insert(tips).values({

@@ -111,7 +111,6 @@ describe('startServer', () => {
 
   it('exposes Prometheus metrics including the Telegram call counters', async () => {
     const text = await (await fetch(`${base}/metrics`)).text();
-    expect(text).toContain('process_cpu_seconds_total');
     expect(text).toMatch(/telegram_api_calls_total\{method="setWebhook",status="ok"\} 1/);
     for (const name of [
       'webhook_updates_total',

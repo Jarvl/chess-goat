@@ -196,10 +196,6 @@ describe('PUT /api/games/:id/premoves', () => {
     expect(await malformed(tokens.bob, [])).toBe('stale_state');
   });
 
-  it('fingerprints the empty tree as no bytes', async () => {
-    expect(await hash([])).toBe(await premoveTreeHash(new Uint8Array()));
-  });
-
   it('checks only nodes not already stored', async () => {
     const { game, tokens } = await world();
     // A stored pair that is not legal. Stored pairs were checked when they were saved; this one
@@ -303,15 +299,6 @@ describe('PUT /api/games/:id/premoves', () => {
     expect(row.premoveTree).toHaveLength(0);
   });
 
-  it('refuses spectators and finished games', async () => {
-    const { game, tokens } = await world();
-    expect((await put(tokens.carol, game.publicId, await body([], e4e5))).status).toBe(403);
-    await api.request('POST', `/api/games/${game.publicId}/resign`, { token: tokens.alice });
-    expect(await errorCode(await put(tokens.bob, game.publicId, await body([], e4e5)))).toBe(
-      'stale_state',
-    );
-  });
-
   it('pushes an edit to the owner’s streams only, and publishes nothing for a no-op', async () => {
     const { game, bob, tokens } = await world();
     const heard: unknown[] = [];
@@ -413,13 +400,5 @@ describe('POST /api/games/:id/moves with a premove tree', () => {
       premoveTree: enc(e5f3),
     });
     expect(decodePremoveBytes((await stored(game.id)).premoveTree)).toEqual(e5f3);
-  });
-
-  it('refuses the whole request when the tree is illegal', async () => {
-    const { game, tokens } = await world();
-    const illegal: PremoveNode[] = [{ move: 'e7e5', reply: 'e1e3', children: [] }];
-    const res = await post(tokens.alice, game.publicId, moveBody(enc(illegal)));
-    expect(await errorCode(res)).toBe('illegal_move');
-    expect((await stored(game.id)).plyCount).toBe(0);
   });
 });

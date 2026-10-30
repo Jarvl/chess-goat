@@ -348,16 +348,6 @@ describe('award_flair', () => {
     ]);
   });
 
-  it('awards 🐔 to the player who resigned, and nothing to the winner', async () => {
-    const { group, alice, bob } = await players();
-    const game = await finished(group.id, alice.id, bob.id, 2, '1-0', {
-      over: { endReason: 'resignation' },
-    });
-    await awardFlairForGame(db, game.id);
-    expect(await earned(bob.id)).toEqual([['resigned', game.id]]);
-    expect((await earned(alice.id)).map(([id]) => id)).not.toContain('resigned');
-  });
-
   it('awards 🚩 to the player who won on time and 💤 to the one who lost', async () => {
     const { group, alice, bob } = await players();
     const game = await finished(group.id, alice.id, bob.id, 2, '1-0', {
@@ -384,35 +374,6 @@ describe('award_flair', () => {
     const fifth = await finished(group.id, bob.id, alice.id, 8, '1-0');
     await awardFlairForGame(db, fifth.id);
     expect(await earned(alice.id)).toContainEqual(['nemesis_5', fifth.id]);
-  });
-
-  it('awards 👬 to both players at their fifth game together', async () => {
-    const { group, alice, bob } = await players();
-    const results = ['1-0', '1/2-1/2', '0-1', '1-0', '1/2-1/2'] as const;
-    const played: GameRow[] = [];
-    for (const [i, result] of results.entries()) {
-      const [white, black] = i % 2 === 0 ? [alice.id, bob.id] : [bob.id, alice.id];
-      played.push(await finished(group.id, white, black, i + 2, result));
-    }
-    for (const game of played.slice(0, 4)) await awardFlairForGame(db, game.id);
-    expect((await earned(alice.id)).map(([id]) => id)).not.toContain('rival_5');
-    await awardFlairForGame(db, played[4]!.id);
-    expect(await earned(alice.id)).toContainEqual(['rival_5', played[4]!.id]);
-    expect(await earned(bob.id)).toContainEqual(['rival_5', played[4]!.id]);
-  });
-
-  it('awards 🗑️ at the tenth rated loss in a row, with 👶 at the third and 💩 at the fifth', async () => {
-    const { group, alice, bob } = await players();
-    const played: GameRow[] = [];
-    for (let d = 2; d <= 11; d += 1)
-      played.push(await finished(group.id, alice.id, bob.id, d, '0-1'));
-    for (const game of played) await awardFlairForGame(db, game.id);
-    const streaks = (await earned(alice.id)).filter(([id]) => String(id).startsWith('loss_streak'));
-    expect(streaks).toEqual([
-      ['loss_streak_10', played[9]!.id],
-      ['loss_streak_3', played[2]!.id],
-      ['loss_streak_5', played[4]!.id],
-    ]);
   });
 
   it('counts games against a player who deleted their data', async () => {

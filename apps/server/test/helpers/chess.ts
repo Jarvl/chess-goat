@@ -1,4 +1,4 @@
-import { applyMove, positionKey } from '@group-chess/shared';
+import { applyMove, positionKey, type PremoveNode } from '@group-chess/shared';
 import type { StoredMove } from '../../src/flair/patterns';
 
 /** White to move, with a pawn on e7 one step from promoting on e8 (flair spec §7). */
@@ -86,4 +86,17 @@ export function play(start: string, ...ucis: string[]): StoredMove[] {
     keys.push(positionKey(fen));
     return { ply: index + 1, uci: result.uci, san: result.san, fenAfter: result.fenAfter };
   });
+}
+
+/** A knight shuffle `pairs` deep from the initial position, as a premove line, and its last list. */
+export function deepLine(pairs: number): { root: PremoveNode[]; bottom: PremoveNode[] } {
+  const root: PremoveNode[] = [];
+  let bottom = root;
+  for (let index = 0; index < pairs; index += 1) {
+    const [move, reply] = index % 2 === 0 ? ['g1f3', 'g8f6'] : ['f3g1', 'f6g8'];
+    const entry: PremoveNode = { move: move!, reply: reply!, children: [] };
+    bottom.push(entry);
+    bottom = entry.children;
+  }
+  return { root, bottom };
 }

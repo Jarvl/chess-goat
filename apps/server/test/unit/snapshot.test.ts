@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { FLAIR } from '@group-chess/shared';
 import { Resvg } from '@resvg/resvg-js';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -150,9 +151,7 @@ describe('renderSnapshotSvg', () => {
 describe('snapshotImageKey', () => {
   it('is the sha256 of the card, so identical cards share a key', async () => {
     const svg = await render();
-    expect(snapshotImageKey(svg)).toMatch(/^[0-9a-f]{64}$/);
-    expect(snapshotImageKey(svg)).toBe(snapshotImageKey(await render()));
-    expect(snapshotImageKey(svg)).not.toBe(snapshotImageKey(await render(mated())));
+    expect(snapshotImageKey(svg)).toBe(createHash('sha256').update(svg).digest('hex'));
   });
 });
 

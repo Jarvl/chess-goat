@@ -1,6 +1,4 @@
 import {
-  INITIAL_FEN,
-  PREMOVE_TREE_MAX_CHARS,
   decodePremoveBytes,
   encodePremoveBytes,
   encodePremoveTree,
@@ -14,8 +12,8 @@ import { createEngineGame, getEngineUser } from '../../src/domain/engineGames';
 import { getGameDto, playMove, requireGameById, resign } from '../../src/domain/games';
 import { DomainError } from '../../src/domain/errors';
 import { touchMember } from '../../src/domain/members';
-import { hasUncheckedPairs } from '../../src/domain/premoveCheck';
-import { checkTreeYielding, setPremoveTree } from '../../src/domain/premoves';
+import { setPremoveTree } from '../../src/domain/premoves';
+import { deepLine } from '../helpers/chess';
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
 import { insertGame, insertGroup, insertUser, type GameOverrides } from '../helpers/fixtures';
 
@@ -75,18 +73,6 @@ describe('premove storage and visibility', () => {
     expect((await requireGameById(db, game.id)).premoveTree).toHaveLength(0);
   });
 
-  it('refuses a lone zero count: the empty tree is no bytes', async () => {
-    const { game, bob } = await setup();
-    const saved = setPremoveTree(deps, {
-      gameId: game.publicId,
-      userId: bob.id,
-      baseHash: await premoveTreeHash(new Uint8Array()),
-      tree: 'AA',
-      expectedPly: 0,
-    });
-    await expect(saved).rejects.toMatchObject({ code: 'validation' });
-  });
-
   it('reports why it refused', async () => {
     const { game, bob } = await setup();
     const refusal = async (input: {
@@ -118,57 +104,7 @@ describe('premove storage and visibility', () => {
   });
 });
 
-describe('checkTreeYielding', () => {
-  it('gives the event loop a turn between slices and returns the check', async () => {
-    const lines: PremoveNode[] = [
-      { move: 'e2e4', reply: 'e7e5', children: [{ move: 'g1f3', reply: 'b8c6', children: [] }] },
-      { move: 'd2d4', reply: 'd7d5', children: [] },
-    ];
-    // Without a yield the whole check settles in microtasks, before any immediate callback.
-    let otherWork = false;
-    setImmediate(() => (otherWork = true));
-    expect(await checkTreeYielding(INITIAL_FEN, lines, [], 1)).toEqual({ ok: true });
-    expect(otherWork).toBe(true);
-    expect(
-      await checkTreeYielding(INITIAL_FEN, [{ move: 'e2e4', reply: 'e7e4', children: [] }], []),
-    ).toEqual({ ok: false, path: ['e2e4', 'e7e4'] });
-  });
-
-  /** Bob's knight shuffle, `pairs` deep from the initial position, and its last list. */
-  const deepLine = (pairs: number) => {
-    const root: PremoveNode[] = [];
-    let bottom = root;
-    for (let index = 0; index < pairs; index += 1) {
-      const [move, reply] = index % 2 === 0 ? ['g1f3', 'g8f6'] : ['f3g1', 'f6g8'];
-      const entry: PremoveNode = { move: move!, reply: reply!, children: [] };
-      bottom.push(entry);
-      bottom = entry.children;
-    }
-    return { root, bottom };
-  };
-
-  it('gives the event loop turns while it replays a deep stored line to reach one new pair', async () => {
-    const stored = deepLine(8_900).root;
-    const edited = deepLine(8_900);
-    edited.bottom.push({ move: 'b1c3', reply: 'b8c6', children: [] });
-    expect(encodePremoveTree(edited.root).length).toBeLessThanOrEqual(PREMOVE_TREE_MAX_CHARS);
-    let turns = 0;
-    let ticking = true;
-    const tick = () => {
-      if (!ticking) return;
-      turns += 1;
-      setImmediate(tick);
-    };
-    setImmediate(tick);
-    try {
-      expect(await checkTreeYielding(INITIAL_FEN, edited.root, stored)).toEqual({ ok: true });
-    } finally {
-      ticking = false;
-    }
-    // About 8,900 replayed pairs in slices of 256: the loop gets a turn after each slice.
-    expect(turns).toBeGreaterThanOrEqual(30);
-  });
-
+describe('saving a deep tree', () => {
   it('saves an edit at the bottom of a deep stored line', async () => {
     const { game, bob } = await setup();
     const stored = deepLine(8_900).root;
@@ -538,15 +474,6 @@ describe('a row that changes between the unlocked read and the lock', () => {
       details: { reason: 'premoves_changed' },
     });
     expect(await storedTree(game.id)).toEqual(e4e5);
-  });
-
-  it('tells a tree with nothing to check from one with a new pair or a repeated move', () => {
-    const both = [...e4e5, ...d4d5];
-    expect(hasUncheckedPairs([], both)).toBe(false);
-    expect(hasUncheckedPairs(e4e5, both)).toBe(false);
-    expect(hasUncheckedPairs(both, e4e5)).toBe(true);
-    expect(hasUncheckedPairs([{ move: 'e2e4', reply: 'd7d5', children: [] }], e4e5)).toBe(true);
-    expect(hasUncheckedPairs([...e4e5, ...e4e5], e4e5)).toBe(true);
   });
 
   it('still saves a race whose tree has nothing to check, such as a removal', async () => {

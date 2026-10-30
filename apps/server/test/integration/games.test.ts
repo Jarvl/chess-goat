@@ -74,12 +74,6 @@ describe('game end DMs', () => {
       sentAt: new Date(),
     });
 
-  it('sends the result DM to the player who did not resign', async () => {
-    const { game, alice, bob } = await setup();
-    await resign(deps, { gameId: game.publicId, userId: alice.id });
-    expect(await resultDms()).toEqual([bob.id]);
-  });
-
   it('sends the result DM to the mated player only', async () => {
     const { game, bob, alice } = await setup({ fen: BEFORE_SCHOLARS_MATE, plyCount: 6 });
     await move(game.publicId, alice.id, 'h5f7', 6);

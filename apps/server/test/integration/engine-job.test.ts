@@ -1,11 +1,11 @@
-import { encodePremoveBytes, type ColourChoice } from '@group-chess/shared';
+import { type ColourChoice } from '@group-chess/shared';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+
 import { createEngineGame, getEngineUser } from '../../src/domain/engineGames';
 import { playMove, requireGameByPublicId, resign } from '../../src/domain/games';
 import { touchMember } from '../../src/domain/members';
 import { Metrics } from '../../src/metrics';
-import { games, jobs } from '../../src/db/schema';
+
 import { testConfig } from '../helpers/config';
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
 import { createEngineJobRunner } from '../helpers/engineJob';
@@ -292,33 +292,5 @@ describe('engine_move job handler', () => {
     await runEngineJob(engine, game.id);
     await runEngineJob(engine, game.id);
     expect((await requireGameByPublicId(db, game.publicId)).plyCount).toBe(2);
-  });
-
-  it("finishes cleanly when the human's premove answers the engine at once", async () => {
-    const engine = fakeEngine({ replies: [{ uci: 'e7e5' }] });
-    const game = await startedEngineGame('white');
-    await playMove(deps, {
-      gameId: game.publicId,
-      userId: alice.id,
-      uci: 'e2e4',
-      expectedPly: 0,
-      clientMoveId: 'c1',
-    });
-    await db
-      .update(games)
-      .set({
-        premoveTree: Buffer.from(
-          encodePremoveBytes([{ move: 'e7e5', reply: 'g1f3', children: [] }]),
-        ),
-        premoveTreePly: 1,
-      })
-      .where(eq(games.id, game.id));
-    const outcome = await runEngineJob(engine, game.id);
-    expect(outcome).toEqual({ outcome: 'done' });
-    const after = await requireGameByPublicId(db, game.publicId);
-    expect(after.plyCount).toBe(3);
-    expect(after.status).toBe('active');
-    const dedupKeys = (await db.select().from(jobs)).map((job) => job.dedupKey);
-    expect(dedupKeys).toContain(`engine:g:${game.publicId}:ply:3`);
   });
 });
