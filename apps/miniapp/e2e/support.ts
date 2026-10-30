@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, test as base, type Page } from '@playwright/test';
 import { decodePremoveTree, type PremoveNode } from '@group-chess/shared';
 import { createHmac } from 'node:crypto';
 import {
@@ -6,6 +6,19 @@ import {
   type FakeWebAppOptions,
   type FakeWebAppRecord,
 } from '../test/support/fakeWebApp';
+
+/**
+ * Playwright's `test`, whose `page` fails the test afterwards if the app used a Telegram method
+ * below the client version that has it: the fake records each such use (see `fakeWebApp.ts`).
+ */
+export const test = base.extend({
+  page: async ({ page }, use) => {
+    await use(page);
+    if (page.isClosed()) return;
+    const unsupported = await page.evaluate(() => window.__tg?.unsupported ?? []);
+    expect(unsupported, 'Telegram methods used below their minimum version').toEqual([]);
+  },
+});
 
 export const BOT_TOKEN = '123456:TEST-TOKEN';
 export const HARNESS = 'http://127.0.0.1:4181';
@@ -146,6 +159,8 @@ export async function tgState(
       backButton: record.backButton,
       haptics: record.haptics,
       links: record.links,
+      telegramLinks: record.telegramLinks,
+      unsupported: record.unsupported,
       downloads: record.downloads,
       closed: record.closed,
       chrome: record.chrome,

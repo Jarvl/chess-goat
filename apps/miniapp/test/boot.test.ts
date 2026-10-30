@@ -112,7 +112,7 @@ describe('boot', () => {
       challenges: [],
       players: [],
     };
-    const { tg, client, router, prefetched, calls, record } = setup('6.0', 'l_GrOuPiDxYz', () => ({
+    const { tg, client, router, prefetched, calls } = setup('6.0', 'l_GrOuPiDxYz', () => ({
       status: 200,
       body: launchBody({ kind: 'lobby', lobby }, true),
     }));
@@ -120,8 +120,7 @@ describe('boot', () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(router.tab.value).toBe('groups');
     expect(router.stack.value).toEqual([{ name: 'lobby', groupId: 'GrOuPiDxYz' }]);
-    expect(record.calls).not.toContain('requestWriteAccess');
-    expect(record.calls).not.toContain('disableVerticalSwipes');
+    // No write-access answer is sent; that the prompt itself never opened is the global check's.
     expect(calls).toHaveLength(1);
   });
 

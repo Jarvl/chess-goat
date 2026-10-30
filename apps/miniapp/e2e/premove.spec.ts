@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Request } from '@playwright/test';
+import { expect, type Page, type Request } from '@playwright/test';
 import { decodePremoveTree } from '@group-chess/shared';
 import {
   clickBack,
@@ -10,6 +10,7 @@ import {
   scriptEngine,
   seed,
   storedPremoves,
+  test,
   tgState,
 } from './support';
 

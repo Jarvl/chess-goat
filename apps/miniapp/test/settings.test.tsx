@@ -194,10 +194,8 @@ describe('Settings', () => {
     expect(r.root.querySelector('img.banner-img')?.getAttribute('src')).toMatch(/goat-banner/);
     await r.click('[data-action="author"]');
     await r.click('[data-action="source"]');
-    expect(window.__tg!.links).toEqual([
-      'https://t.me/Jarvl',
-      'https://github.com/Jarvl/telegram-chess-bot',
-    ]);
+    expect(window.__tg!.telegramLinks).toEqual(['https://t.me/Jarvl']);
+    expect(window.__tg!.links).toEqual(['https://github.com/Jarvl/telegram-chess-bot']);
     await r.click('[data-action="about"]');
     expect(window.__tg!.popups.at(-1)).toMatchObject({
       title: 'About Chess Goat',

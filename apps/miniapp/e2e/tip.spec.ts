@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test';
-import { openApp, seed } from './support';
+import { expect } from '@playwright/test';
+import { openApp, seed, test } from './support';
 
 test('a preset tip goes through the server and Telegram and says thank you', async ({ page }) => {
   const world = await seed('ranked', {});

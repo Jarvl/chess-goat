@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test';
-import { openApp, seed, tgState } from './support';
+import { expect } from '@playwright/test';
+import { openApp, seed, test, tgState } from './support';
 
 test('replays a finished game and reaches analysis and the PGN', async ({ page }) => {
   const world = await seed('finished');

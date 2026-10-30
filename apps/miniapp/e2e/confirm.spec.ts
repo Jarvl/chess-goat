@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
 import {
   clickMain,
   clickSecondary,
@@ -7,6 +7,7 @@ import {
   harnessGame,
   openApp,
   seed,
+  test,
   tgState,
 } from './support';
 

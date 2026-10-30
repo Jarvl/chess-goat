@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test';
-import { harnessGame, openApp, seed, tapMove } from './support';
+import { expect } from '@playwright/test';
+import { harnessGame, openApp, seed, tapMove, test } from './support';
 
 test('promotes through the chooser', async ({ page }) => {
   const world = await seed('promotion', { alice: { moveConfirmations: 'never' } });

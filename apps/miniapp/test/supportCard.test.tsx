@@ -201,6 +201,6 @@ describe('SupportCard', () => {
   it('opens the author chat from the card body', async () => {
     const r = renderApp(() => <SupportCard />, mints);
     await r.click('[data-action="support-author"]');
-    expect(window.__tg!.links).toEqual(['https://t.me/Jarvl']);
+    expect(window.__tg!.telegramLinks).toEqual(['https://t.me/Jarvl']);
   });
 });

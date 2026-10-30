@@ -1,5 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
-import { dragMove, dropConnections, openApp, openStreams, seed } from './support';
+import { expect, type Page } from '@playwright/test';
+import { dragMove, dropConnections, openApp, openStreams, seed, test } from './support';
 
 test('the opponent sees a move without refreshing', async ({ browser }) => {
   const world = await seed('fresh', { alice: { moveConfirmations: 'never' } });
