@@ -60,6 +60,8 @@ export const BOT_COMMANDS = {
 export type RunningServer = {
   port: number;
   app: Hono<ApiEnv>;
+  /** The API's shared state, for the end-to-end harness to reset its rate limits between seeds. */
+  ctx: ApiContext;
   /** Drops every open connection (SSE streams included); clients see a dead socket and reconnect. */
   closeConnections(): void;
   stop(): Promise<void>;
@@ -210,6 +212,7 @@ export async function startServer(
   return {
     port,
     app,
+    ctx: apiCtx,
     closeConnections() {
       if ('closeAllConnections' in server) server.closeAllConnections();
     },

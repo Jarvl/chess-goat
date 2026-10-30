@@ -2,7 +2,13 @@ import type { GameSummary, MeGamesDto } from '@group-chess/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
-import { resetStrip, stripGames, type StripGame } from '../src/state/switcher';
+import {
+  resetStrip,
+  setStripMinimized,
+  stripGames,
+  stripMinimized,
+  type StripGame,
+} from '../src/state/switcher';
 import { setYourMoveCount, yourMoveCount } from '../src/state/yourMove';
 import { STRIP_REFRESH_MS } from '../src/ui/game/useStrip';
 import { gameDto } from './support/gameFixtures';
@@ -30,6 +36,8 @@ vi.mock('../src/board/adapter', async () => {
 beforeEach(() => {
   adapter = resetGameScreen();
   resetStrip();
+  localStorage.clear();
+  setStripMinimized(false);
 });
 afterEach(cleanupGameScreen);
 
@@ -46,19 +54,25 @@ const CURRENT = strip(GAME, ['2', 'Bob']);
 const CAROL = strip('OtherAaaaa', ['3', 'Carol']);
 const DAVE = strip('OtherBbbbb', ['4', 'Dave'], { yourTurn: false, sideToMove: 'black' });
 
-/** A game screen on `initial` whose strip list answers `items`. */
+/**
+ * A game screen on `initial` whose strip list answers `items`, opened from the Games list as the
+ * app opens one: the router is on the game, with the tab bar showing.
+ */
 const mountWith = (
   items: StripGame[],
   initial = gameDto(),
   opts: { hop?: boolean } = {},
-): Rendered & { allCalls: Rendered['calls'] } =>
-  mountGame(initial, {
+): Rendered & { allCalls: Rendered['calls'] } => {
+  const r = mountGame(initial, {
     ...opts,
     route: gameRoutes(initial, {
       meGames: () => ({ status: 200, body: { items } satisfies MeGamesDto }),
       move: () => ({ status: 200, body: played(['e2e4']) }),
     }),
   });
+  r.app.router.land('games', { name: 'game', gameId: GAME }, [{ name: 'games' }]);
+  return r;
+};
 const thumbs = (r: Rendered) =>
   [...r.root.querySelectorAll('.switcher [data-switch]')].map((el) =>
     el.getAttribute('data-switch'),
@@ -82,14 +96,12 @@ describe('the game switcher strip', () => {
     expect(r.root.querySelector('.game')!.classList.contains('with-switcher')).toBe(true);
   });
 
-  it('sits at the bottom, under the game buttons, within reach of a thumb', async () => {
+  it('docks at the bottom of the game, within reach of a thumb', async () => {
     const r = mountWith([CURRENT, CAROL, DAVE]);
     await r.flush();
-    const game = r.root.querySelector('.game')!;
-    expect(game.lastElementChild!.classList.contains('switcher')).toBe(true);
-    expect(game.lastElementChild!.previousElementSibling!.classList.contains('icon-bar')).toBe(
-      true,
-    );
+    const dock = r.root.querySelector('.game')!.lastElementChild!;
+    expect(dock.classList.contains('switcher-dock')).toBe(true);
+    expect(dock.querySelector('.switcher')).not.toBeNull();
   });
 
   it('is hidden when there is no other game', async () => {
@@ -117,7 +129,6 @@ describe('the game switcher strip', () => {
 
   it('opens a game in place, so Back still leads to the list', async () => {
     const r = mountWith([CURRENT, CAROL, DAVE]);
-    r.app.router.land('games', { name: 'game', gameId: GAME }, [{ name: 'games' }]);
     await r.flush();
     await r.click('[data-switch="OtherAaaaa"]');
     expect(r.app.router.current.value).toEqual({ name: 'game', gameId: 'OtherAaaaa', hop: true });
@@ -127,25 +138,22 @@ describe('the game switcher strip', () => {
 
   it('does nothing on the current game', async () => {
     const r = mountWith([CURRENT, CAROL, DAVE]);
-    r.app.router.land('games', { name: 'game', gameId: GAME }, [{ name: 'games' }]);
     await r.flush();
     await r.click(`[data-switch="${GAME}"]`);
     expect(r.app.router.current.value).toEqual({ name: 'game', gameId: GAME });
   });
 
-  it('asks once before leaving an unsent move', async () => {
+  it('hides with the tab bar while a move waits for Confirm, and comes back after', async () => {
     useConfirmations('people');
     const r = mountWith([CURRENT, CAROL, DAVE]);
-    r.app.router.land('games', { name: 'game', gameId: GAME }, [{ name: 'games' }]);
     await r.flush();
     adapter.drop('e2', 'e4');
     await r.flush();
-    await r.click('[data-switch="OtherAaaaa"]');
-    await r.click('[data-switch="OtherAaaaa"]');
-    expect(window.__tg!.popups).toHaveLength(1);
-    window.__tg!.answerPopup('cancel');
+    expect(r.app.router.showTabs.value).toBe(false);
+    expect(r.root.querySelector('.switcher-dock')).toBeNull();
+    window.__tg!.clickSecondary(); // Cancel
     await r.flush();
-    expect(r.app.router.current.value).toEqual({ name: 'game', gameId: GAME });
+    expect(r.root.querySelector('.switcher-dock')).not.toBeNull();
   });
 
   it('keeps the order it arrived with when you hop', async () => {
@@ -173,6 +181,65 @@ describe('the game switcher strip', () => {
   });
 });
 
+describe('minimizing the strip', () => {
+  const toggle = (r: Rendered) => r.root.querySelector<HTMLElement>('.switcher-toggle')!;
+
+  it('hides the games behind a chevron, and the chevron brings them back', async () => {
+    const r = mountWith([CURRENT, CAROL, DAVE]);
+    await r.flush();
+    expect(toggle(r).getAttribute('aria-expanded')).toBe('true');
+    expect(toggle(r).getAttribute('aria-label')).toBe('Hide your games');
+    expect(toggle(r).textContent).toBe('');
+    await r.click('.switcher-toggle');
+    expect(r.root.querySelector('.switcher')).toBeNull();
+    expect(r.root.querySelector('.switcher-dock')!.classList.contains('minimized')).toBe(true);
+    expect(r.root.querySelector('.game')!.classList.contains('switcher-minimized')).toBe(true);
+    expect(toggle(r).getAttribute('aria-expanded')).toBe('false');
+    expect(toggle(r).getAttribute('aria-label')).toBe('Show your games');
+    await r.click('.switcher-toggle');
+    expect(thumbs(r)).toEqual([GAME, 'OtherAaaaa', 'OtherBbbbb']);
+  });
+
+  it('stays minimized in the next game and on the next visit', async () => {
+    const first = mountWith([CURRENT, CAROL, DAVE]);
+    await first.flush();
+    await first.click('.switcher-toggle');
+    expect(localStorage.getItem('switcher.minimized')).toBe('1');
+    const next = mountWith([CURRENT, CAROL, DAVE]);
+    await next.flush();
+    expect(next.root.querySelector('.switcher')).toBeNull();
+    expect(next.root.querySelector('.switcher-toggle')).not.toBeNull();
+  });
+
+  it('marks the chevron while another game waits on you', async () => {
+    setStripMinimized(true);
+    const waiting = mountWith([CURRENT, CAROL, DAVE]);
+    await waiting.flush();
+    expect(toggle(waiting).querySelector('.dot')).not.toBeNull();
+    const quiet = mountWith([CURRENT, DAVE]);
+    await quiet.flush();
+    expect(toggle(quiet).querySelector('.dot')).toBeNull();
+  });
+
+  it('shows no dot on the chevron while the strip is open', async () => {
+    const r = mountWith([CURRENT, CAROL, DAVE]);
+    await r.flush();
+    expect(toggle(r).querySelector('.dot')).toBeNull();
+  });
+
+  it('still minimizes for the visit when storage is blocked', async () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    const r = mountWith([CURRENT, CAROL, DAVE]);
+    await r.flush();
+    await r.click('.switcher-toggle');
+    expect(stripMinimized.value).toBe(true);
+    expect(r.root.querySelector('.switcher')).toBeNull();
+    vi.restoreAllMocks();
+  });
+});
+
 describe('refreshing the strip', () => {
   let visibility: DocumentVisibilityState = 'visible';
   beforeEach(() => {
@@ -190,11 +257,13 @@ describe('refreshing the strip', () => {
   /** A game screen whose strip list answers each of `answers` in turn, the last one from then on. */
   const mountAnswering = (answers: (FakeResponse | Promise<FakeResponse>)[]) => {
     let next = 0;
-    return mountGame(gameDto(), {
+    const r = mountGame(gameDto(), {
       route: gameRoutes(gameDto(), {
         meGames: () => answers[Math.min(next++, answers.length - 1)]!,
       }),
     });
+    r.app.router.land('games', { name: 'game', gameId: GAME }, [{ name: 'games' }]);
+    return r;
   };
   const list = (...items: StripGame[]): FakeResponse => ({ status: 200, body: { items } });
   const gets = (r: { allCalls: Rendered['calls'] }) =>

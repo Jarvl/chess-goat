@@ -952,28 +952,97 @@ button {
   padding: 8px 0 24px;
 }
 
-/* The switcher strip under the icon bar, just above the tab bar where a thumb reaches it (game
-   switcher spec): 56px boards, the 11px name under them, the strip's padding and its gap above.
-   The board gives the whole row back, so a short phone keeps the strip above the tab bar. */
+/* The switcher strip, docked just above the tab bar where a thumb reaches it (game switcher spec).
+   It lies over the game, so the board keeps its size: the game's bottom padding lets every
+   control scroll clear of the strip (92px) and the chevron tab on its edge (28px), or of the tab
+   alone once minimized. */
 .game.with-switcher {
-  --switcher-row: 98px;
+  padding-bottom: calc(24px + 92px + 28px);
+}
+
+.game.with-switcher.switcher-minimized {
+  padding-bottom: calc(24px + 28px);
+}
+
+.switcher-dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: var(--tabbar-h);
+  z-index: 9;
+  background: var(--card);
+  border-top: 1px solid var(--sep);
+  box-shadow: 0 -6px 16px rgb(0 0 0 / 6%);
+}
+
+.switcher-dock.minimized {
+  background: none;
+  border-top: 0;
+  box-shadow: none;
 }
 
 .switcher {
   display: flex;
-  flex: none;
   gap: 10px;
-  margin: 8px 12px 0;
-  padding: 8px 10px;
-  border-radius: 18px;
+  padding: 10px 12px 8px;
   overflow-x: auto;
   overscroll-behavior-x: contain;
   scrollbar-width: none;
-  background: var(--card);
 }
 
 .switcher::-webkit-scrollbar {
   display: none;
+}
+
+/* The one control, a chevron on the strip's top edge at the right: down hides, up shows. */
+.switcher-toggle {
+  position: absolute;
+  right: 12px;
+  bottom: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--sep);
+  border-bottom: 0;
+  border-radius: 14px 14px 0 0;
+  background: var(--card);
+  color: var(--text);
+  box-shadow: 0 -4px 10px rgb(0 0 0 / 5%);
+}
+
+/* A 28px tab is short for a finger: the hit area reaches 10px further up. */
+.switcher-toggle::before {
+  content: '';
+  position: absolute;
+  inset: -10px -4px 0;
+}
+
+.switcher-toggle svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.2s;
+}
+
+.switcher-dock.minimized .switcher-toggle svg {
+  transform: rotate(180deg);
+}
+
+.switcher-toggle .dot {
+  position: absolute;
+  top: 4px;
+  right: 10px;
+  width: 9px;
+  height: 9px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--card);
+  border-radius: 50%;
+  background: var(--move);
 }
 
 .switcher-game {
@@ -1021,6 +1090,7 @@ button {
 
 .switcher-game .name {
   max-width: 56px;
+  line-height: 14px;
   overflow: hidden;
   font-size: 11px;
   text-overflow: ellipsis;
@@ -1047,7 +1117,7 @@ button {
     100vw,
     calc(
       var(--stable-height) - 200px - var(--board-reserve) - var(--replay-row) -
-        var(--icon-bar-extra) - var(--meta-rows) - var(--switcher-row, 0px)
+        var(--icon-bar-extra) - var(--meta-rows)
     )
   );
   max-width: 640px;

@@ -193,6 +193,8 @@ export const en = {
   'app.switcher.label': 'Your games',
   'app.switcher.yours': '{name}, your move',
   'app.switcher.theirs': '{name}, their move',
+  'app.switcher.hide': 'Hide your games',
+  'app.switcher.show': 'Show your games',
   'app.groups.title': 'Your groups',
   'app.groups.empty': 'No groups yet. Add the bot to a group and open a game card there once.',
   'app.groups.summary': '{active} active · {yourMove} your move',

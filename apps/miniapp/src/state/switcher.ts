@@ -12,6 +12,34 @@ export type StripGame = MeGamesDto['items'][number];
  */
 export const stripGames = signal<StripGame[] | null>(null);
 
+const MINIMIZED_KEY = 'switcher.minimized';
+
+/** Whether the viewer minimized the strip on this device; open when storage is unreadable. */
+export function loadStripMinimized(): boolean {
+  try {
+    return localStorage.getItem(MINIMIZED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The strip minimized behind its chevron: one choice for every game, remembered on this device
+ * until the viewer opens it again (game switcher spec). Telegram has no setting for it, and it is
+ * a convenience, so blocked storage only shortens it to this visit.
+ */
+export const stripMinimized = signal(loadStripMinimized());
+
+export function setStripMinimized(minimized: boolean): void {
+  stripMinimized.value = minimized;
+  try {
+    if (minimized) localStorage.setItem(MINIMIZED_KEY, '1');
+    else localStorage.removeItem(MINIMIZED_KEY);
+  } catch {
+    // Private mode or blocked site data: the choice lasts this visit.
+  }
+}
+
 /** Forgets the order: the next list is taken in the server's order. */
 export function resetStrip(): void {
   stripGames.value = null;

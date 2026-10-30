@@ -1,5 +1,11 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import { arrangeStrip, resetStrip, stripGames, type StripGame } from '../src/state/switcher';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  arrangeStrip,
+  loadStripMinimized,
+  resetStrip,
+  stripGames,
+  type StripGame,
+} from '../src/state/switcher';
 import { gameSummary } from './support/summaryFixtures';
 
 const game = (id: string, yourTurn = true): StripGame => ({
@@ -45,5 +51,25 @@ describe('resetStrip', () => {
     stripGames.value = [A, B];
     resetStrip();
     expect(stripGames.value).toBeNull();
+  });
+});
+
+describe('loadStripMinimized', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  it('reads the choice remembered on this device', () => {
+    expect(loadStripMinimized()).toBe(false);
+    localStorage.setItem('switcher.minimized', '1');
+    expect(loadStripMinimized()).toBe(true);
+  });
+
+  it('opens the strip when storage is blocked', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    expect(loadStripMinimized()).toBe(false);
   });
 });

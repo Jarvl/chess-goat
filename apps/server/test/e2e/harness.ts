@@ -131,6 +131,10 @@ async function main(): Promise<void> {
     await truncateAll(db);
     fake.reset();
     engine.reset();
+    // Ids restart with the truncate, so every seed's Alice is the same user to the rate limiters:
+    // without this, a whole run's requests add up against her, as the integration tests avoid too.
+    server.ctx.rateLimiter.reset();
+    server.ctx.tipLimiter.reset();
     for (const user of Object.values(TELEGRAM_USERS)) fake.members.set(user.id, 'member');
     fake.admins = [TELEGRAM_USERS.alice.id];
     const group = await insertGroup(db, {

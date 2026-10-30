@@ -23,6 +23,7 @@ import {
 } from '../../board/promotion';
 import { diffNotices, GameStore, positionAt, type Notice } from '../../state/game';
 import { fenAt, moveLabel, playAt, removeAt, type PlayResult } from '../../state/premoveDraft';
+import { stripMinimized } from '../../state/switcher';
 import { noteTurnChange } from '../../state/yourMove';
 import {
   needsConfirmation,
@@ -886,7 +887,15 @@ export function GameView(props: {
   const percent = (index: number): string => `${end ? +((index / end) * 100).toFixed(3) : 0}%`;
 
   return (
-    <div class={strip ? 'game with-switcher' : 'game'}>
+    <div
+      class={
+        strip
+          ? stripMinimized.value
+            ? 'game with-switcher switcher-minimized'
+            : 'game with-switcher'
+          : 'game'
+      }
+    >
       <div class="game-meta">
         {t('app.game.meta', {
           group: dto.group.title,
@@ -1109,7 +1118,7 @@ export function GameView(props: {
           </button>
         </div>
       )}
-      {/* Last, just above the tab bar, where a thumb reaches it (game switcher spec). */}
+      {/* Docked just above the tab bar, where a thumb reaches it (game switcher spec). */}
       {strip ? <GameSwitcher games={strip} current={dto} /> : null}
     </div>
   );
