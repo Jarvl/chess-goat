@@ -206,7 +206,7 @@ describe('games', () => {
     expect((await move(tokens.alice, game.publicId, 'e4e6', 2)).status).toBe(422);
   });
 
-  it('offers, declines and accepts draws, resigns and aborts', async () => {
+  it('offers and declines draws, resigns and aborts', async () => {
     const { group, alice, bob, tokens } = await world();
     const game = await insertGame(db, group.id, alice.id, bob.id);
     expect(

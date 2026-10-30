@@ -221,13 +221,16 @@ describe('send_share_photo', () => {
     ]);
   });
 
-  it('shares the initial position and an earlier ply', async () => {
+  it('draws the position at the shared ply, the initial one included', async () => {
     const { carol, game } = await table();
     await share(game.id, carol.id, 0);
     await share(game.id, carol.id, 1);
+    await share(game.id, carol.id, 2);
     await worker.runOnce();
-    const captions = fake.callsTo('sendPhoto').map((call) => call.body.caption);
-    expect(captions).toEqual([
+    // Plies 0 to 2 are all "move 1", so only the images tell them apart: one card each.
+    expect(await db.select().from(boardImages)).toHaveLength(3);
+    expect(fake.callsTo('sendPhoto').map((call) => call.body.caption)).toEqual([
+      'Carol shared move 1 of Alice vs Bob',
       'Carol shared move 1 of Alice vs Bob',
       'Carol shared move 1 of Alice vs Bob',
     ]);
@@ -249,7 +252,16 @@ describe('send_share_photo', () => {
     expect(await db.select().from(boardImages)).toHaveLength(0);
   });
 
-  it('does nothing once the share was sent or when the bot has left', async () => {
+  it('does nothing once the share was sent', async () => {
+    const { alice, game } = await table();
+    const row = await share(game.id, alice.id, 2);
+    await db.update(shares).set({ messageId: 555 }).where(eq(shares.id, row.id));
+    await worker.runOnce();
+    expect(fake.callsTo('sendPhoto')).toHaveLength(0);
+    expect(await pendingJobs()).toHaveLength(0);
+  });
+
+  it('does nothing when the bot has left', async () => {
     const { alice, game } = await table('left');
     await share(game.id, alice.id, 2);
     await worker.runOnce();

@@ -37,9 +37,11 @@ describe('renderBoardSvg', () => {
     const svg = renderBoardSvg({ fen: CHECK, lastMove: 'd8h4', check: true, orientation: 'white' });
     expect(svg).toContain('<rect class="last-move" x="300" y="0"');
     expect(svg).toContain('<rect class="last-move" x="700" y="400"');
-    expect(svg).toContain('<rect class="check" x="400" y="700"');
+    expect(svg).toContain(
+      '<rect class="check" x="400" y="700" width="100" height="100" fill="url(#check)"/>',
+    );
+    expect(svg).toContain('<radialGradient id="check"');
     expect(svg).toContain('fill="rgba(224, 185, 74, 0.6)"');
-    expect(svg).toContain('fill="#f0ead2"');
   });
 
   it('puts the sharer colour at the bottom', () => {

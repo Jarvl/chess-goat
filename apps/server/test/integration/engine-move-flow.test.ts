@@ -123,12 +123,8 @@ describe('playMove and finishGame with an engine opponent', () => {
     expect(after.reminderAt).toBeNull();
   });
 
-  // Correction to the brief: the original test forged a past deadline onto an engine game and
-  // expected it to survive. But forfeitOverdueGames has no engine awareness at all (by design —
-  // teaching the scanner to parse side-to-move out of a FEN was rejected). The real mechanism is
-  // that an engine game's deadline is NEVER set in the first place, so the scanner never picks it
-  // up. This test exercises that real mechanism instead, with a human control game proving the
-  // scanner actually ran.
+  // forfeitOverdueGames knows nothing of engines: an engine game is safe because it never gets a
+  // deadline. The human control game proves the scanner ran.
   it('is never forfeited because it is never given a deadline, unlike a human game', async () => {
     const { group, alice } = await setup();
     const engineGame = await createEngineGame(deps, {
@@ -161,9 +157,8 @@ describe('playMove and finishGame with an engine opponent', () => {
       level: 'club',
       colour: 'white',
     });
-    // A move first, so plyCount > 0 and the pre-existing `game.plyCount > 0` term of `importable`
-    // is already satisfied — the `!engineGame` conjunct this task adds is then the only thing
-    // suppressing the import. Resigning immediately (plyCount 0) would make this vacuous.
+    // A move first, so plyCount > 0 and only the game being an engine game stops the import.
+    // Resigning at once (plyCount 0) would make this vacuous.
     await playMove(deps, {
       gameId: game.publicId,
       userId: alice.id,

@@ -54,11 +54,12 @@ describe('the bot in the picker and the engine-games endpoint', () => {
     expect(parsed.players.map((player) => player.id)).not.toContain(String(engine.id));
   });
 
-  it('creates a game and returns it', async () => {
+  it('creates an unrated game and returns it, even when the body asks for rated', async () => {
     const { group, tokens } = await world();
     const response = await post(`/api/groups/${group.publicId}/engine-games`, tokens.member, {
       level: 'club',
       colour: 'white',
+      rated: true,
     });
     expect(response.status).toBe(200);
     const body = GameDtoSchema.parse(await response.json());

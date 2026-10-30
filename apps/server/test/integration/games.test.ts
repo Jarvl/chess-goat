@@ -114,7 +114,8 @@ describe('game end DMs', () => {
 
 describe('playMove', () => {
   it('plays a legal move, resets the opponent’s clock and enqueues the card edit and turn DM', async () => {
-    const { game, alice, bob } = await setup();
+    // A clock nearly run down, so only the move resetting it can put a day back on it.
+    const { game, alice, bob } = await setup({ deadlineInSeconds: 60 });
     const dto = await move(game.publicId, alice.id, 'e2e4', 0);
     expect(dto).toMatchObject({
       fen: AFTER_E4,

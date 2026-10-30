@@ -41,18 +41,6 @@ describe('createEngineGame', () => {
     expect(kinds).not.toContain('edit_card');
   });
 
-  it('forces the game unrated even when the caller asks for rated', async () => {
-    const { group, alice } = await setup();
-    // `rated` is not part of the input at all, which is the point: it cannot be requested.
-    const game = await createEngineGame(deps, {
-      groupId: group.id,
-      userId: alice.id,
-      level: 'club',
-      colour: 'random',
-    });
-    expect(game.rated).toBe(false);
-  });
-
   it('enqueues an engine move immediately when the engine has white', async () => {
     const { group, alice } = await setup();
     const game = await createEngineGame(deps, {

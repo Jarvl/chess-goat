@@ -129,7 +129,8 @@ describe('live DM rows', () => {
       description: 'Bad Request: message to delete not found',
     });
     await worker.runOnce();
-    expect((await db.select().from(jobs)).every((job) => job.doneAt !== null)).toBe(true);
+    expect(fake.callsTo('deleteMessage')).toHaveLength(1);
+    expect((await db.select().from(jobs)).map((job) => job.doneAt !== null)).toEqual([true]);
   });
 
   it('turns DMs off and forgets rows when the user blocked the bot', async () => {

@@ -172,3 +172,14 @@ describe('runMigrations with resetOnMismatch', () => {
     expect(await tables()).toContain(branchA.tag);
   });
 });
+
+describe('the migrations', () => {
+  it('create exactly one engine user, Stockfish, with no Telegram id and no DMs', async () => {
+    await runMigrations(scratchUrl, { migrationsFolder: migrationsFolder('main') });
+    const rows = await scratch<
+      { first_name: string; telegram_user_id: number | null; dm_allowed: boolean }[]
+    >`
+      select first_name, telegram_user_id, dm_allowed from users where is_engine`;
+    expect(rows).toEqual([{ first_name: 'Stockfish', telegram_user_id: null, dm_allowed: false }]);
+  });
+});

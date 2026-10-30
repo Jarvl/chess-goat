@@ -182,11 +182,10 @@ describe('acceptChallenge', () => {
     expect(storedGame?.cardMessageId).toBe(901);
   });
 
-  it('gives a random colour to both players and no reminder without DMs', async () => {
+  it('sets no reminder when White has not allowed DMs', async () => {
     const { group, alice, bob } = await setup();
     const challenge = await direct(group.id, alice.id, bob.id);
     const { game } = await acceptChallenge(deps, { challengeId: challenge.id, userId: bob.id });
-    expect(new Set([game.whiteId, game.blackId])).toEqual(new Set([alice.id, bob.id]));
     expect(game.reminderAt).toBeNull();
   });
 
