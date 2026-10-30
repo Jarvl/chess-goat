@@ -55,8 +55,9 @@ async function finished(
   const game = await insertGame(db, groupId, whiteId, blackId, {
     status: 'finished',
     result,
-    // No flair reads a timeout, so only a test that asks for a resignation earns 🐔.
-    endReason: 'timeout',
+    // No flair reads the end reason checkmate (mates are found in the moves), so only a test that
+    // asks for a resignation or a timeout earns 🐔 or 💤.
+    endReason: 'checkmate',
     // An hour long unless a test says otherwise, well outside 🏎️'s three minutes.
     startedAt: new Date(day(d).getTime() - 3_600_000),
     finishedAt: day(d),
@@ -126,6 +127,9 @@ describe('backfillPlayer', () => {
     const resigned = await finished(group.id, bob.id, alice.id, 20, '1-0', {
       over: { endReason: 'resignation' },
     });
+    const flagged = await finished(group.id, alice.id, bob.id, 21, '0-1', {
+      over: { endReason: 'timeout' },
+    });
 
     expect(await backfillPlayer(db, alice.id, FLAIR)).toEqual({
       // In catalog order.
@@ -138,6 +142,7 @@ describe('backfillPlayer', () => {
         'rival_5',
         'scholars_mate_loss',
         'resigned',
+        'timed_out',
       ],
       moved: [],
     });
@@ -150,6 +155,7 @@ describe('backfillPlayer', () => {
       // The fifth game with Bob.
       ['rival_5', wins[3]!.id],
       ['scholars_mate_loss', mated.id],
+      ['timed_out', flagged.id],
       ['win_streak_3', wins[1]!.id],
       ['win_streak_5', wins[3]!.id],
     ]);

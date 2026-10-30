@@ -45,8 +45,9 @@ async function finished(
   const game = await insertGame(db, groupId, whiteId, blackId, {
     status: 'finished',
     result,
-    // No flair reads a timeout, so only a test that asks for a resignation earns 🐔.
-    endReason: 'timeout',
+    // No flair reads the end reason checkmate (mates are found in the moves), so only a test that
+    // asks for a resignation or a timeout earns 🐔 or 💤.
+    endReason: 'checkmate',
     // An hour long unless a test says otherwise, well outside 🏎️'s three minutes.
     startedAt: new Date(day(d).getTime() - 3_600_000),
     finishedAt: day(d),
@@ -355,6 +356,16 @@ describe('award_flair', () => {
     await awardFlairForGame(db, game.id);
     expect(await earned(bob.id)).toEqual([['resigned', game.id]]);
     expect((await earned(alice.id)).map(([id]) => id)).not.toContain('resigned');
+  });
+
+  it('awards 💤 to the player who lost on time, and nothing to the winner', async () => {
+    const { group, alice, bob } = await players();
+    const game = await finished(group.id, alice.id, bob.id, 2, '1-0', {
+      over: { endReason: 'timeout' },
+    });
+    await awardFlairForGame(db, game.id);
+    expect(await earned(bob.id)).toEqual([['timed_out', game.id]]);
+    expect((await earned(alice.id)).map(([id]) => id)).not.toContain('timed_out');
   });
 
   it('awards 😈 at the fifth loss to one person, games against others between', async () => {

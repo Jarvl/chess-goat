@@ -207,6 +207,14 @@ describe('ended', () => {
       ruleHolds(ended('loss', 'resignation'), at([game(1, 'loss', { endReason: null })])),
     ).toBe(false);
   });
+
+  it('holds for a loss on time, and not for the win on time', () => {
+    const flagged = game(1, 'loss', { endReason: 'timeout' });
+    expect(ruleHolds(ended('loss', 'timeout'), at([flagged]))).toBe(true);
+    expect(
+      ruleHolds(ended('loss', 'timeout'), at([game(1, 'win', { endReason: 'timeout' })])),
+    ).toBe(false);
+  });
 });
 
 describe('against', () => {

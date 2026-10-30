@@ -163,6 +163,7 @@ export const FLAIR = [
   { id: 'loss_streak_10', emoji: '🗑️', category: 'dubious', rule: streak('loss', 10) },
   { id: 'nemesis_5', emoji: '😈', category: 'dubious', rule: against(5, 'loss') },
   { id: 'resigned', emoji: '🐔', category: 'dubious', rule: ended('loss', 'resignation') },
+  { id: 'timed_out', emoji: '💤', category: 'dubious', rule: ended('loss', 'timeout') },
 ] as const satisfies readonly FlairDefinition[];
 
 export type FlairEntry = (typeof FLAIR)[number];
