@@ -1,6 +1,7 @@
 import type { DraftNode } from '@group-chess/shared';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { LinesPanel } from '../src/ui/game/LinesPanel';
 import { renderApp } from './support/render';
@@ -114,7 +115,10 @@ describe('LinesPanel', () => {
 });
 
 describe('Lines panel CSS', () => {
-  const css = readFileSync(resolve(process.cwd(), 'src/styles.css'), 'utf8');
+  const css = readFileSync(
+    resolve(dirname(fileURLToPath(import.meta.url)), '../src/styles.css'),
+    'utf8',
+  );
   const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
     .filter((match) => /\.lines-/.test(match[1]!))
     .map((match) => ({ selector: match[1]!.trim(), body: match[2]! }));
