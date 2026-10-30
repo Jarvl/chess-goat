@@ -298,29 +298,14 @@ describe('Game', () => {
     expect(r.root.querySelector('.result-card')).toBeNull();
     expect(r.root.querySelector('.clock')).toBeNull();
     expect(black.querySelector('.result-tag')?.textContent).toBe('Won');
-    expect(black.querySelector('.result-tag')?.className).toContain('won');
     expect(black.querySelector('.sub')?.textContent).toBe('Checkmate');
-    expect(black.querySelector('.sub')?.className).toContain('reason');
     expect(black.querySelector('.rating')?.textContent).toBe('1500? → 1662?');
     expect(white.querySelector('.result-tag')?.textContent).toBe('Lost');
     expect(white.querySelector('.sub')).toBeNull();
   });
 
-  it('tags both bars Draw with the reason under each name', async () => {
-    const finished = afterPlies(4, {
-      viewerRole: 'white',
-      status: 'finished',
-      result: '1/2-1/2',
-      endReason: 'draw_agreement',
-    });
-    const r = mount(finished, okRoute(finished), '7.0');
-    for (const bar of r.root.querySelectorAll('.player-bar')) {
-      expect(bar.querySelector('.result-tag')?.textContent).toBe('Draw');
-      expect(bar.querySelector('.sub')?.textContent).toBe('Draw agreed');
-    }
-  });
-
-  it('tags both bars Voided for a voided game, and offers no rematch', async () => {
+  // Which tag and reason each side gets is sideResult's, tested in result.test.ts.
+  it('offers no rematch for a voided game', async () => {
     const finished = afterPlies(4, {
       viewerRole: 'white',
       status: 'finished',
@@ -329,8 +314,6 @@ describe('Game', () => {
       voided: true,
     });
     const r = mount(finished, okRoute(finished), '7.0');
-    const tags = [...r.root.querySelectorAll('.result-tag')].map((tag) => tag.textContent);
-    expect(tags).toEqual(['Voided', 'Voided']);
     expect(r.root.querySelector('[data-action="rematch"]')).toBeNull();
   });
 
@@ -751,6 +734,7 @@ describe('Game with move confirmations', () => {
     await r.flush();
     // Telegram's own prompt guards closing while the move waits (this replaced the no-prompt rule).
     expect(window.__tg!.closingConfirmation).toBe(true);
+    expect(r.app.router.leaveGuard).not.toBeNull();
     render(null, r.root);
     await r.flush();
     expect(window.__tg!.closingConfirmation).toBe(false);
@@ -2018,16 +2002,6 @@ describe('Game leaving with an unconfirmed draft', () => {
     await r.flush();
     expect(window.__tg!.popups).toHaveLength(0);
     expect(r.app.router.current.value).toEqual({ name: 'games' });
-  });
-
-  it('lets go of the guard and the closing confirmation when the screen goes', async () => {
-    const r = mountInGame(played([]));
-    await dropAll(r, [['e2', 'e4']]);
-    expect(r.app.router.leaveGuard).not.toBeNull();
-    render(null, r.root);
-    await r.flush();
-    expect(r.app.router.leaveGuard).toBeNull();
-    expect(window.__tg!.closingConfirmation).toBe(false);
   });
 
   it('does not ask, or hold closing, once Confirm move is tapped and the move is sending', async () => {

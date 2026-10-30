@@ -16,9 +16,10 @@ describe('Avatar', () => {
       () => ({ status: 200, body: {} }),
     );
     const [person, bot, group] = [...r.root.querySelectorAll('.avatar')] as HTMLElement[];
+    // Which colour and initial is the shared avatar helpers' (packages/shared/test/avatar.test.ts).
     expect(person!.textContent).toBe('M');
-    // happy-dom may keep the hex or serialise it as rgb(); either is the palette's red.
-    expect(person!.getAttribute('style')).toMatch(/#e17076|rgb\(225, 112, 118\)/);
+    expect(person!.querySelector('img')).toBeNull();
+    expect(person!.getAttribute('style')).toContain('background');
     expect(bot!.tagName).toBe('IMG');
     expect(bot!.getAttribute('src')).toMatch(/goat-mark/);
     expect(group!.className).toContain('group');
@@ -54,14 +55,6 @@ describe('Avatar', () => {
     url.value = '/b.jpg';
     await r.flush();
     expect(r.root.querySelector('img.photo')?.getAttribute('src')).toBe('/b.jpg');
-  });
-
-  it("draws exactly today's avatar without a photo", async () => {
-    const r = renderApp(() => <Avatar player={maya(null)} size={40} />, noFetch);
-    const avatar = r.root.querySelector('span.avatar')!;
-    expect(avatar.querySelector('img')).toBeNull();
-    expect(avatar.textContent).toBe('M');
-    expect(avatar.getAttribute('style')).toMatch(/#e17076|rgb\(225, 112, 118\)/);
   });
 
   it("keeps the bot's mark even with a photo url", async () => {

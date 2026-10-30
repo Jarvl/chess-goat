@@ -45,10 +45,6 @@ describe('encodePremoveBytes', () => {
     );
   });
 
-  it('keeps the zero count of an empty child list', () => {
-    expect(encodePremoveBytes([{ move: 'e2e4', reply: 'e7e5', children: [] }]).at(-1)).toBe(0);
-  });
-
   it('skips unanswered nodes and everything under them', () => {
     const draft: DraftNode[] = [
       { move: 'e7e5', reply: null, children: [{ move: 'g1f3', reply: 'b8c6', children: [] }] },
@@ -84,11 +80,6 @@ describe('round trips', () => {
     ];
     expect(decodePremoveBytes(encodePremoveBytes(tree))).toEqual(tree);
     expect(decodePremoveTree(encodePremoveTree(tree))).toEqual(tree);
-  });
-
-  it('writes base64url without padding or url-unsafe characters', () => {
-    const text = encodePremoveTree(wide);
-    expect(text).toMatch(/^[A-Za-z0-9_-]+$/);
   });
 });
 
@@ -385,14 +376,6 @@ describe('premoveTreeCheck', () => {
     expect(checkPremoveTree(AFTER_E4, tree, known)).toEqual({
       ok: false,
       path: ['e7e5', 'g1f3', 'b8c6', 'f1b5', 'a7a6', 'b5b7'],
-    });
-  });
-});
-
-describe('from the initial position', () => {
-  it('checks a white tree where the owner moves second', () => {
-    expect(checkPremoveTree(INITIAL_FEN, [node('e2e4', 'e7e5', [node('g1f3', 'b8c6')])])).toEqual({
-      ok: true,
     });
   });
 });

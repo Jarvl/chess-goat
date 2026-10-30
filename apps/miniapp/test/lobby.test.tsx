@@ -109,7 +109,7 @@ describe('Lobby', () => {
     r.app.router.back();
     await r.flush();
     expect(ids(r.root)).toEqual(['GameWwwwww']);
-    r.app.router.back();
+    // A fresh visit: a new lobby screen on the stack.
     r.app.router.push({ name: 'lobby', groupId: 'GrOuPiDxYz' });
     await r.flush();
     expect(ids(r.root)).toEqual(['GameBbbbbb', 'GameAaaaaa', 'GameCccccc']);

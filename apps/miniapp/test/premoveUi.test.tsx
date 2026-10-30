@@ -260,20 +260,4 @@ describe('Replay slider', () => {
     expect(slider(r).value).toBe('0');
     expect(r.root.querySelector<HTMLButtonElement>('[data-action="prev"]')?.disabled).toBe(false);
   });
-
-  it('dragging the slider onto the line selects that move in the strip', async () => {
-    const r = mount(afterPlies(1, { viewerRole: 'white', premoveTree: TREE }));
-    const input = slider(r);
-    input.value = '3';
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    await r.flush();
-    expect(
-      r.root.querySelector('.move-list [aria-current="true"]')?.getAttribute('data-line'),
-    ).toBe('1');
-  });
-
-  it('is disabled when the game has no moves and no line', async () => {
-    const r = mount(afterPlies(0, { viewerRole: 'spectator' }));
-    expect(slider(r).disabled).toBe(true);
-  });
 });

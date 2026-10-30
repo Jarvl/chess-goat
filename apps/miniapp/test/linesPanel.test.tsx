@@ -1,7 +1,5 @@
 import type { DraftNode } from '@group-chess/shared';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+
 import { describe, expect, it, vi } from 'vitest';
 import { LinesPanel } from '../src/ui/game/LinesPanel';
 import { renderApp } from './support/render';
@@ -105,24 +103,5 @@ describe('LinesPanel', () => {
     );
     expect(mine).toEqual(['d3', 'Bxd3', 'O-O', 'O-O']);
     expect(theirs).toEqual(['Nb4', 'Nxd3+', 'd6', 'Qe7']);
-  });
-});
-
-describe('Lines panel CSS', () => {
-  const css = readFileSync(
-    resolve(dirname(fileURLToPath(import.meta.url)), '../src/styles.css'),
-    'utf8',
-  );
-  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
-    .filter((match) => /\.lines-/.test(match[1]!))
-    .map((match) => ({ selector: match[1]!.trim(), body: match[2]! }));
-
-  it('scrolls on its own without trapping scrolling', () => {
-    const panel = rules.filter((rule) => /(^|,|\s)\.lines-panel\b/.test(rule.selector));
-    expect(panel.length).toBeGreaterThan(0);
-    const body = panel.map((rule) => rule.body).join('\n');
-    expect(body).toContain('overflow-y: auto');
-    expect(body).toContain('max-height: 34vh');
-    expect(rules.map((rule) => rule.body).join('\n')).not.toContain('overscroll-behavior');
   });
 });

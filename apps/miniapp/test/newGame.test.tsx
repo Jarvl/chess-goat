@@ -307,7 +307,6 @@ describe('NewGame', () => {
       'Anyone in the group can accept',
     );
     await r.click('[data-opponent="2"]');
-    expect(r.root.querySelector('[data-opponent="2"]')?.className).toContain('on');
-    expect(r.root.querySelector('[data-opponent="2"] .radio.on')).not.toBeNull();
+    expect(r.root.querySelector('[data-opponent="2"]')?.getAttribute('aria-pressed')).toBe('true');
   });
 });

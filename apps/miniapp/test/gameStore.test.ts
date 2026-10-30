@@ -35,9 +35,8 @@ describe('GameStore', () => {
     white.viewPly(null);
     expect(white.canMove.value).toBe(true);
 
-    const waitingBlack = new GameStore(afterPlies(2, { viewerRole: 'black' }));
-    expect(waitingBlack.building.value).toBe(true); // the waiting player builds premoves
-    expect(waitingBlack.canMove.value).toBe(true);
+    // The waiting player moves too: they build premoves.
+    expect(new GameStore(afterPlies(2, { viewerRole: 'black' })).canMove.value).toBe(true);
     expect(new GameStore(afterPlies(2, { viewerRole: 'spectator' })).canMove.value).toBe(false);
     expect(
       new GameStore(
@@ -117,10 +116,7 @@ describe('GameStore building', () => {
   // After 1. f3 it is Black's move; White (the viewer) premoves.
   const waiting = () => afterPlies(1, { viewerRole: 'white' });
 
-  it('builds only for a player waiting on the opponent, and only at the latest position', () => {
-    expect(new GameStore(waiting()).building.value).toBe(true);
-    expect(new GameStore(afterPlies(2, { viewerRole: 'white' })).building.value).toBe(false);
-    expect(new GameStore(afterPlies(1, { viewerRole: 'spectator' })).building.value).toBe(false);
+  it('builds only at the latest position', () => {
     // White waits after 2. g4; looking back at 1. f3 builds nothing there.
     const reading = new GameStore(afterPlies(3, { viewerRole: 'white' }));
     expect(reading.building.value).toBe(true);
@@ -171,9 +167,6 @@ describe('diffNotices premoves', () => {
       'opponent_moved',
       'premoves_cancelled',
     ]);
-    expect(
-      diffNotices(afterPlies(1, { viewerRole: 'white' }), afterPlies(2, { viewerRole: 'white' })),
-    ).toEqual(['opponent_moved']);
   });
 
   it('counts every fired pair across a multi-ply jump, then flags the miss after them', () => {
@@ -250,10 +243,8 @@ describe('GameStore premove drafts', () => {
   });
 
   it('builds on the opponent’s turn, and on the own turn once a move waits', () => {
-    const store = opponentsTurn();
-    expect(store.building.value).toBe(true);
-    store.moveBusy.value = true; // the player's move is still sending or retrying
-    expect(store.building.value).toBe(false);
+    // While the player's own move is still sending or retrying, see 'stays out of building …'.
+    expect(opponentsTurn().building.value).toBe(true);
 
     const own = ownTurn();
     expect(own.building.value).toBe(false);

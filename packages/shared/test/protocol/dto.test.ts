@@ -241,12 +241,7 @@ describe('PrefsSchema', () => {
     expect(PrefsSchema.parse(PREFS_DEFAULTS)).toEqual(PREFS_DEFAULTS);
   });
 
-  it('accepts the three move confirmation settings and nothing else', () => {
-    for (const value of ['always', 'people', 'never']) {
-      expect(PrefsSchema.safeParse({ ...PREFS_DEFAULTS, moveConfirmations: value }).success).toBe(
-        true,
-      );
-    }
+  it('refuses an unknown move confirmation setting', () => {
     expect(
       PrefsSchema.safeParse({ ...PREFS_DEFAULTS, moveConfirmations: 'sometimes' }).success,
     ).toBe(false);

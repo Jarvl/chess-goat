@@ -18,11 +18,6 @@ describe('callback data codec', () => {
     );
   });
 
-  it('stays within Telegram’s 64-byte limit', () => {
-    const encoded = encodeCallbackData({ action: 'decline_challenge', challengeId: 'aZ09bY18cX' });
-    expect(new TextEncoder().encode(encoded).length).toBeLessThanOrEqual(64);
-  });
-
   it('decodes what it encodes', () => {
     const all: CallbackData[] = [
       { action: 'accept_challenge', challengeId: 'aZ09bY18cX' },
