@@ -120,6 +120,7 @@ came after that, with the `ended` and `against` rule kinds and streaks made alwa
 | feat | 🐢 | U+1F422 | `marathon_win` | `won('marathon')` | Win a game longer than 100 moves |
 | feat | 🕊️ | U+1F54A U+FE0F | `pacifist_mate` | `won('pacifist_mate')` | Checkmate without making a single capture |
 | feat | 👬 | U+1F46C | `rival_5` | `against(5)` | Play the same person five times |
+| feat | 🚩 | U+1F6A9 | `timeout_win` | `ended('win', 'timeout')` | Win a game on time |
 | dubious | 🪤 | U+1FAA4 | `scholars_mate_loss` | `lost('scholars_mate')` | Lose to a scholar’s mate |
 | dubious | 💨 | U+1F4A8 | `bongcloud_win` | `won('bongcloud')` | Win with the Bongcloud opening |
 | dubious | 👶 | U+1F476 | `loss_streak_3` | `streak('loss', 3)` | Lose three rated games in a row |

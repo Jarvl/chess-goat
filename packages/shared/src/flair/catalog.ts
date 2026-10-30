@@ -156,6 +156,7 @@ export const FLAIR = [
   { id: 'marathon_win', emoji: '🐢', category: 'feat', rule: won('marathon') },
   { id: 'pacifist_mate', emoji: '🕊️', category: 'feat', rule: won('pacifist_mate') },
   { id: 'rival_5', emoji: '👬', category: 'feat', rule: against(5) },
+  { id: 'timeout_win', emoji: '🚩', category: 'feat', rule: ended('win', 'timeout') },
   { id: 'scholars_mate_loss', emoji: '🪤', category: 'dubious', rule: lost('scholars_mate') },
   { id: 'bongcloud_win', emoji: '💨', category: 'dubious', rule: won('bongcloud') },
   { id: 'loss_streak_3', emoji: '👶', category: 'dubious', rule: streak('loss', 3) },

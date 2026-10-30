@@ -130,6 +130,9 @@ describe('backfillPlayer', () => {
     const flagged = await finished(group.id, alice.id, bob.id, 21, '0-1', {
       over: { endReason: 'timeout' },
     });
+    const flaggedBob = await finished(group.id, alice.id, bob.id, 22, '1-0', {
+      over: { endReason: 'timeout' },
+    });
 
     expect(await backfillPlayer(db, alice.id, FLAIR)).toEqual({
       // In catalog order.
@@ -140,6 +143,7 @@ describe('backfillPlayer', () => {
         'win_streak_5',
         'draws_10',
         'rival_5',
+        'timeout_win',
         'scholars_mate_loss',
         'resigned',
         'timed_out',
@@ -156,6 +160,7 @@ describe('backfillPlayer', () => {
       ['rival_5', wins[3]!.id],
       ['scholars_mate_loss', mated.id],
       ['timed_out', flagged.id],
+      ['timeout_win', flaggedBob.id],
       ['win_streak_3', wins[1]!.id],
       ['win_streak_5', wins[3]!.id],
     ]);

@@ -358,14 +358,14 @@ describe('award_flair', () => {
     expect((await earned(alice.id)).map(([id]) => id)).not.toContain('resigned');
   });
 
-  it('awards 💤 to the player who lost on time, and nothing to the winner', async () => {
+  it('awards 🚩 to the player who won on time and 💤 to the one who lost', async () => {
     const { group, alice, bob } = await players();
     const game = await finished(group.id, alice.id, bob.id, 2, '1-0', {
       over: { endReason: 'timeout' },
     });
     await awardFlairForGame(db, game.id);
+    expect(await earned(alice.id)).toEqual([['timeout_win', game.id]]);
     expect(await earned(bob.id)).toEqual([['timed_out', game.id]]);
-    expect((await earned(alice.id)).map(([id]) => id)).not.toContain('timed_out');
   });
 
   it('awards 😈 at the fifth loss to one person, games against others between', async () => {

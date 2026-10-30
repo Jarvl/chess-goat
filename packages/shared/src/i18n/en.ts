@@ -60,6 +60,7 @@ export const en = {
   'flair.marathon_win': 'Win a game longer than 100 moves',
   'flair.pacifist_mate': 'Checkmate without making a single capture',
   'flair.rival_5': 'Play the same person five times',
+  'flair.timeout_win': 'Win a game on time',
   'flair.scholars_mate_loss': 'Lose to a scholar’s mate',
   'flair.bongcloud_win': 'Win with the Bongcloud opening',
   'flair.loss_streak_3': 'Lose three rated games in a row',
