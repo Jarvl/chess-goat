@@ -67,6 +67,7 @@ export const en = {
   'flair.loss_streak_10': 'Lose ten rated games in a row',
   'flair.nemesis_5': 'Lose five games to the same person',
   'flair.resigned': 'Resign a game',
+  'flair.timed_out': 'Lose a game on time',
   'card.challenge.direct': '♟ {challenger} challenges {opponent}',
   'card.challenge.open': '♟ {challenger} is looking for a game',
   'card.challenge.terms': '{timePerMove} · {rated}',
