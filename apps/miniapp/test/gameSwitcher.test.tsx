@@ -1,6 +1,10 @@
 import type { GameSummary, MeGamesDto } from '@group-chess/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { render } from 'preact';
+import { act } from 'preact/test-utils';
 import { resetStrip, stripGames, type StripGame } from '../src/state/switcher';
+import { setYourMoveCount, yourMoveCount } from '../src/state/yourMove';
+import { STRIP_REFRESH_MS } from '../src/ui/game/useStrip';
 import { gameDto } from './support/gameFixtures';
 import {
   cleanupGameScreen,
@@ -11,6 +15,7 @@ import {
   resetGameScreen,
   useConfirmations,
 } from './support/gameScreen';
+import type { FakeResponse } from './support/fakeFetch';
 import type { Rendered } from './support/render';
 import { type StubAdapter } from './support/stubAdapter';
 import { gameSummary, playerRef } from './support/summaryFixtures';
@@ -165,5 +170,99 @@ describe('the game switcher strip', () => {
     await r.flush();
     expect(thumb(r, GAME).querySelector('[data-square="e4"]')!.classList.contains('lm')).toBe(true);
     expect(thumb(r, GAME).classList.contains('dim')).toBe(false);
+  });
+});
+
+describe('refreshing the strip', () => {
+  let visibility: DocumentVisibilityState = 'visible';
+  beforeEach(() => {
+    vi.useFakeTimers();
+    visibility = 'visible';
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => visibility,
+    });
+  });
+  afterEach(() => {
+    Reflect.deleteProperty(document, 'visibilityState');
+  });
+
+  /** A game screen whose strip list answers each of `answers` in turn, the last one from then on. */
+  const mountAnswering = (answers: (FakeResponse | Promise<FakeResponse>)[]) => {
+    let next = 0;
+    return mountGame(gameDto(), {
+      route: gameRoutes(gameDto(), {
+        meGames: () => answers[Math.min(next++, answers.length - 1)]!,
+      }),
+    });
+  };
+  const list = (...items: StripGame[]): FakeResponse => ({ status: 200, body: { items } });
+  const gets = (r: { allCalls: Rendered['calls'] }) =>
+    r.allCalls.filter((call) => call.path === '/api/me/games').length;
+  const settle = () => vi.advanceTimersByTimeAsync(100);
+
+  it('refreshes every 30 seconds', async () => {
+    const daveToMove = { ...DAVE, yourTurn: true };
+    const r = mountAnswering([list(CURRENT, CAROL, DAVE), list(CURRENT, CAROL, daveToMove)]);
+    await settle();
+    expect(gets(r)).toBe(1);
+    expect(thumb(r, 'OtherBbbbb').classList.contains('dim')).toBe(true);
+    await vi.advanceTimersByTimeAsync(STRIP_REFRESH_MS);
+    expect(gets(r)).toBe(2);
+    expect(thumb(r, 'OtherBbbbb').classList.contains('dim')).toBe(false);
+    expect(thumb(r, 'OtherBbbbb').querySelector('.dot')).not.toBeNull();
+  });
+
+  it('refreshes when the app comes back, and not while it is hidden', async () => {
+    const r = mountAnswering([list(CURRENT, CAROL, DAVE)]);
+    await settle();
+    visibility = 'hidden';
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(2 * STRIP_REFRESH_MS);
+    expect(gets(r)).toBe(1);
+    visibility = 'visible';
+    document.dispatchEvent(new Event('visibilitychange'));
+    await settle();
+    expect(gets(r)).toBe(2);
+  });
+
+  it('keeps the last strip when a refresh fails', async () => {
+    const r = mountAnswering([
+      list(CURRENT, CAROL, DAVE),
+      { status: 500, body: { error: { code: 'internal', message: 'boom' } } },
+    ]);
+    await settle();
+    await vi.advanceTimersByTimeAsync(STRIP_REFRESH_MS);
+    expect(gets(r)).toBe(2);
+    expect(thumbs(r)).toEqual([GAME, 'OtherAaaaa', 'OtherBbbbb']);
+    expect(document.querySelector('.toast')).toBeNull();
+  });
+
+  it('reconciles the Games badge', async () => {
+    setYourMoveCount(0);
+    mountAnswering([list(CURRENT, CAROL, DAVE)]);
+    await settle();
+    expect(yourMoveCount.value).toBe(2);
+  });
+
+  it('stops refreshing once the game screen is gone', async () => {
+    const r = mountAnswering([list(CURRENT, CAROL, DAVE)]);
+    await settle();
+    act(() => render(null, r.root)); // effect cleanups run now, as on a real unmount
+    await vi.advanceTimersByTimeAsync(2 * STRIP_REFRESH_MS);
+    visibility = 'visible';
+    document.dispatchEvent(new Event('visibilitychange'));
+    await settle();
+    expect(gets(r)).toBe(1);
+  });
+
+  it('ignores a list that arrives after the game screen is gone', async () => {
+    let answer: (response: FakeResponse) => void = () => undefined;
+    const r = mountAnswering([new Promise<FakeResponse>((resolve) => (answer = resolve))]);
+    await settle();
+    act(() => render(null, r.root)); // effect cleanups run now, as on a real unmount
+    answer(list(CURRENT, CAROL, DAVE));
+    await settle();
+    expect(stripGames.value).toBeNull();
   });
 });
