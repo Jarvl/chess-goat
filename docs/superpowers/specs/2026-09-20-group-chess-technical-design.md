@@ -48,7 +48,7 @@ Revisions: v0.2 adds §3.6 and decision D13, the reasoning behind the bot, HTTP 
 
 - No event log for games. The move list is the log; an SSE reconnect gets a snapshot.
 - No Redis, message broker or separate worker deployment at v1.
-- No per-second clock ticks from the server, no in-app chat. (Premoves were added on 2026-09-24; see the [premoves spec](./2026-09-24-premoves-design.md).)
+- No per-second clock ticks from the server, no in-app chat. (Premoves were added on 2026-09-24, and replaced by conditional premoves on 2026-10-29; see the [conditional premoves spec](./2026-10-29-conditional-premoves-design.md).)
 - No cross-group rating. Ratings are keyed by group; a cross-group projection can be added later without touching game data.
 - No group-mention fallback for users who declined DMs (PRD open question 3). Nothing here blocks it.
 - No admin web console. Admin actions live in the Mini App.

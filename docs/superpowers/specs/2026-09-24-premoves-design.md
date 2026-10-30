@@ -1,6 +1,7 @@
 # Premoves
 
-Status: accepted for planning, 2026-09-24. Implements the premove behaviour of the Chess Goat
+Status: superseded by [conditional premoves](./2026-10-29-conditional-premoves-design.md)
+(2026-10-29). Was: accepted for planning, 2026-09-24. Implements the premove behaviour of the Chess Goat
 prototype (`Chess Goat Prototype.dc.html`: `onPremoveSquare`, `firePremove`, `premoveBoard`, the
 premove stepper and the premove chips in the move strip). The stepper later became part of the
 game's one replay slider (see Slider). Replaces "No premoves" in §2 of the

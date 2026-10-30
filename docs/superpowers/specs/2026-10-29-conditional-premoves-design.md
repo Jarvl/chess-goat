@@ -68,7 +68,7 @@ The player chose 1.
   real.
 - **One reply per opponent move.** Two branches at the same point never share an opponent move.
 - **No size limit.** The only bound is the API's 64 KB request limit (`apps/server/src/api/app.ts`),
-  a transport limit rather than a product rule: about 9,800 pairs in one tree, once base64-encoded.
+  a transport limit rather than a product rule: about 9,000 pairs in one tree, once base64-encoded.
   Requests carry the tree once (edits send a fingerprint of the old tree, not the tree itself), so
   the whole range can be edited. If a change would ever take a tree past it, the app keeps the
   change on screen and shows "This premove tree is too big to save. Remove some lines first."
@@ -301,7 +301,7 @@ request limit can still be edited. Players only. Returns the caller's `GameDto`.
   position. It then takes the lock (`lockActiveGame`) and re-checks the ply and the fingerprint
   before writing. A large new tree is therefore never checked while the row is locked.
 - **Never block the event loop for long.** A whole new tree of thousands of pairs takes seconds to
-  check (about 1.7 s for 9,800). The check runs off the main thread or in slices that yield, so a big
+  check (about 1.5 s for 9,000). The check runs off the main thread or in slices that yield, so a big
   tree cannot stall the server.
 - A `tree` equal to the stored one changes nothing and publishes nothing. Otherwise the tree is
   replaced, `version` is left alone, and the owner's streams get the new DTO.
@@ -391,8 +391,8 @@ premove paths of `GameView` are rewritten. What has to hold:
 
 - `packages/shared/src/chess/premove.ts` (the pattern rule, the imagined position,
   `checkPremoveChain`) and its tests; the Mini App's `premoveLabel` and premove-step logic.
-- `PremovesRequestSchema`'s list shape. `games.premoves` goes from `schema.ts` now and from the
-  database in a later release (see Data).
+- `PremovesRequestSchema`'s list shape. `games.premoves` stays declared in `schema.ts`, unused, and
+  goes from the database in a later release (see Data).
 
 ## Testing
 
