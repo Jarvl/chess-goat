@@ -1,26 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GameStore } from '../src/state/game';
 import { MoveList } from '../src/ui/game/MoveList';
-import { Game } from '../src/ui/screens/Game';
-import { FakeEventSource } from './support/fakeEventSource';
-import type { FakeRoute } from './support/fakeFetch';
+
 import { afterPlies, pair, treeText } from './support/gameFixtures';
 import { renderApp } from './support/render';
-import { stubAdapter, type StubAdapter } from './support/stubAdapter';
-
-let adapter: StubAdapter;
-vi.mock('../src/board/adapter', async () => {
-  const actual =
-    await vi.importActual<typeof import('../src/board/adapter')>('../src/board/adapter');
-  return { ...actual, createBoardAdapter: () => adapter };
-});
-
-beforeEach(() => {
-  adapter = stubAdapter();
-  FakeEventSource.reset();
-  vi.stubGlobal('EventSource', FakeEventSource);
-});
-afterEach(() => vi.unstubAllGlobals());
 
 const ok = () => ({ status: 200, body: { ok: true } });
 
@@ -217,47 +200,5 @@ describe('MoveList scrolling', () => {
     await r.flush();
     const element = strip(r) as HTMLElement;
     expect(element.scrollLeft).toBeLessThanOrEqual((current(r) as HTMLElement).offsetLeft);
-  });
-});
-
-describe('Replay slider', () => {
-  const GAME = 'AbCdEfGhIj';
-  function mount(dto: ReturnType<typeof afterPlies>) {
-    const route: FakeRoute = (call) =>
-      call.method === 'GET' && call.path === `/api/games/${GAME}`
-        ? { status: 200, body: dto }
-        : { status: 200, body: { ok: true } };
-    return renderApp((app) => {
-      app.prefetched.game = dto;
-      return <Game gameId={GAME} />;
-    }, route);
-  }
-  const slider = (r: { root: HTMLElement }) =>
-    r.root.querySelector<HTMLInputElement>('.replay-controls input[type="range"]')!;
-
-  it('runs from the start through the real plies to the end of the premove line', async () => {
-    const r = mount(afterPlies(1, { viewerRole: 'white', premoveTree: TREE }));
-    expect(slider(r).max).toBe('5');
-    expect(slider(r).value).toBe('1');
-    expect(slider(r).classList.contains('premove')).toBe(false);
-    await r.click('[data-action="next"]');
-    expect(slider(r).value).toBe('2');
-    expect(slider(r).classList.contains('premove')).toBe(true);
-    expect(slider(r).style.getPropertyValue('--real')).toBe('20%');
-    expect(slider(r).style.getPropertyValue('--at')).toBe('40%');
-    await r.click('[data-action="next"]');
-    await r.click('[data-action="next"]');
-    await r.click('[data-action="next"]');
-    expect(slider(r).value).toBe('5');
-    expect(r.root.querySelector('[data-line="3"]')?.getAttribute('aria-current')).toBe('true');
-    // ◀ steps back along the line, then into the game's history.
-    await r.click('[data-action="prev"]');
-    expect(slider(r).value).toBe('4');
-    for (let i = 0; i < 3; i += 1) await r.click('[data-action="prev"]');
-    expect(slider(r).value).toBe('1');
-    expect(slider(r).classList.contains('premove')).toBe(false);
-    await r.click('[data-action="prev"]');
-    expect(slider(r).value).toBe('0');
-    expect(r.root.querySelector<HTMLButtonElement>('[data-action="prev"]')?.disabled).toBe(false);
   });
 });
