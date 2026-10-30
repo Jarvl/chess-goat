@@ -1,6 +1,6 @@
 # Conditional premoves
 
-Status: draft for review, 2026-10-29. Replaces the blind premove chain of the
+Status: accepted, 2026-10-29. Replaces the blind premove chain of the
 [premoves spec](./2026-09-24-premoves-design.md) everywhere. Changes the confirmation flow of the
 [move confirmations spec](./2026-09-24-move-confirmations-design.md) where a move carries premoves.
 The clickable mockup the behaviour was settled on is

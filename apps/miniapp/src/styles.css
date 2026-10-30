@@ -1479,7 +1479,8 @@ cg-board square.move-dest:hover {
   background: var(--dot);
 }
 
-/* Premoves (premoves spec, Board): the viewed premove's squares and blue destination dots. */
+/* Premoves (conditional premoves spec, The game screen): the viewed premove's squares and blue
+   destination dots. */
 cg-board square.premove-sq {
   background-color: var(--pm-sq);
 }
@@ -2079,8 +2080,6 @@ coords.squares:nth-of-type(even) :nth-child(even) {
   object-position: 50% 30%;
 }
 
-/* Lines panel (conditional premoves): every branch at once. It scrolls on its own, and has no
-   overscroll-behavior so a swipe on a panel that cannot scroll further scrolls the page. */
 /* The status line under the slider: where the premoves stand, then what a move would do. */
 .premove-status {
   display: flex;
@@ -2109,6 +2108,8 @@ coords.squares:nth-of-type(even) :nth-child(even) {
   white-space: nowrap;
 }
 
+/* Lines panel (conditional premoves): every branch at once. It scrolls on its own, and has no
+   overscroll-behavior so a swipe on a panel that cannot scroll further scrolls the page. */
 .lines-panel {
   max-height: 34vh;
   overflow-y: auto;
