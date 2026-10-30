@@ -55,6 +55,12 @@ export class Router {
   readonly stacks: Signal<Stacks> = signal({ games: [], groups: [], settings: [] });
   /** Set by a screen that needs the bottom edge to itself for a while (a move waiting for Confirm move). */
   readonly suppressTabs: Signal<boolean> = signal(false);
+  /**
+   * Set by a screen that holds something to lose (an unconfirmed draft): every way out of it
+   * (Back, a tab, Telegram's Settings item, push, replace) asks first and goes on only on true.
+   */
+  leaveGuard: (() => Promise<boolean>) | null = null;
+  private asking = false;
   readonly stack: ReadonlySignal<Route[]>;
   readonly current: ReadonlySignal<Route>;
   readonly showTabs: ReadonlySignal<boolean>;
@@ -82,18 +88,39 @@ export class Router {
 
   /** A lateral move: another tab resumes where it was left, the active one returns to its root. */
   select(tab: TabName): void {
-    const kept = this.stacks.value[tab];
-    const next = tab === this.tab.value || kept.length === 0 ? [TAB_ROOT[tab]] : kept;
-    this.tab.value = tab;
-    this.write(tab, next);
+    void this.leave(() => {
+      const kept = this.stacks.value[tab];
+      const next = tab === this.tab.value || kept.length === 0 ? [TAB_ROOT[tab]] : kept;
+      this.tab.value = tab;
+      this.write(tab, next);
+    });
   }
 
   push(route: Route): void {
-    this.write(this.tab.value, [...this.stack.value, route]);
+    void this.leave(() => this.write(this.tab.value, [...this.stack.value, route]));
   }
 
   replace(route: Route): void {
-    this.write(this.tab.value, [...this.stack.value.slice(0, -1), route]);
+    void this.leave(() => this.write(this.tab.value, [...this.stack.value.slice(0, -1), route]));
+  }
+
+  /**
+   * Runs `action` when nothing guards the screen, or when the guard agrees to leave. With no
+   * guard it runs in the same tick, so unguarded navigation stays synchronous.
+   */
+  async leave(action: () => void): Promise<void> {
+    const guard = this.leaveGuard;
+    if (guard) {
+      // One question at a time: a second tap while it is open is not a second request.
+      if (this.asking) return;
+      this.asking = true;
+      try {
+        if (!(await guard())) return;
+      } finally {
+        this.asking = false;
+      }
+    }
+    action();
   }
 
   /** Pops one level within the active tab; false at its root, where the caller may close. */
@@ -111,7 +138,9 @@ export class Router {
   private sync(): void {
     const visible = this.stack.value.length > 1 || this.options.closeFromRoot;
     this.tg.setBackButton(visible, () => {
-      if (!this.back()) this.tg.close();
+      void this.leave(() => {
+        if (!this.back()) this.tg.close();
+      });
     });
   }
 }

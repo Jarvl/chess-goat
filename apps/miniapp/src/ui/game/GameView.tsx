@@ -488,6 +488,33 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
   useEffect(() => {
     router.suppressTabs.value = hideTabs;
   }, [router, hideTabs]);
+  // An unconfirmed draft (the waiting move alone counts) is asked about before any way out of the
+  // game, and Telegram asks before closing the app. With confirmations off there is never a draft
+  // to lose. Both are put back when the draft goes or the screen does.
+  const guarded = confirmOn && store.draftDirty.value;
+  useEffect(() => {
+    if (!guarded) return undefined;
+    router.leaveGuard = () => {
+      const moveWaiting = store.waiting.value !== null;
+      const premoves = store.premoveDraftChanged.value;
+      const message = moveWaiting
+        ? premoves
+          ? t('app.game.leave_move_premoves')
+          : t('app.game.leave_move')
+        : t('app.game.leave_premoves');
+      return confirmDialog(message, {
+        title: t('app.game.leave_title'),
+        confirmLabel: t('app.game.leave'),
+        cancelLabel: t('app.game.stay'),
+        danger: true,
+      });
+    };
+    tg.setClosingConfirmation(true);
+    return () => {
+      router.leaveGuard = null;
+      tg.setClosingConfirmation(false);
+    };
+  }, [guarded, router, tg, store]);
   // Leaving the screen (a tab, Back, Telegram's Settings item, another game) discards the draft
   // with the component; this puts Telegram's buttons and the tab bar back. Minimising keeps it.
   useEffect(

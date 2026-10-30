@@ -798,16 +798,19 @@ describe('Game with move confirmations', () => {
     await r.flush();
     adapter.drop('e2', 'e4');
     await r.flush();
-    expect(window.__tg!.closingConfirmation).toBe(false);
+    // Telegram's own prompt guards closing while the move waits (this replaced the no-prompt rule).
+    expect(window.__tg!.closingConfirmation).toBe(true);
     render(null, r.root);
     await r.flush();
+    expect(window.__tg!.closingConfirmation).toBe(false);
+    expect(r.app.router.leaveGuard).toBeNull();
     expect(window.__tg!.mainButton.visible).toBe(false);
     expect(window.__tg!.secondaryButton!.visible).toBe(false);
     expect(r.app.router.suppressTabs.value).toBe(false);
     window.__tg!.clickMain(); // the handler is gone with the screen
     await r.flush();
     expect(r.calls.filter((c) => c.method === 'POST')).toHaveLength(0);
-    expect(window.__tg!.calls).not.toContain('enableClosingConfirmation');
+    expect(window.__tg!.popups).toHaveLength(0);
   });
 
   it('lets a confirmed move land when the app is minimised while it sends', async () => {
@@ -1967,5 +1970,149 @@ describe('Game premove board and status line', () => {
     await again.flush();
     expect(document.querySelector('.toast')?.textContent).toContain('Premoves cancelled');
     expect(window.__tg!.haptics).toContain('notification:warning');
+  });
+});
+
+// Leaving with an unconfirmed draft (Move confirmations spec, Sending it).
+describe('Game leaving with an unconfirmed draft', () => {
+  const LEAVE_TITLE = 'Leave this game?';
+  const mountInGame = (initial: GameDto) => {
+    const r = mount(initial);
+    r.app.router.land('games', { name: 'game', gameId: GAME }, [{ name: 'games' }]);
+    return r;
+  };
+  const dropAll = async (r: ReturnType<typeof mount>, moves: [string, string][]) => {
+    for (const [orig, dest] of moves) {
+      adapter.drop(orig as never, dest as never);
+      await r.flush();
+    }
+  };
+  const leaveByBack = async (r: ReturnType<typeof mount>, answer: 'confirm' | 'cancel') => {
+    window.__tg!.clickBack();
+    await r.flush();
+    const popup = window.__tg!.popups.at(-1);
+    window.__tg!.answerPopup(answer);
+    await r.flush();
+    return popup;
+  };
+
+  beforeEach(() => {
+    wantPrefs.moveConfirmations = 'people';
+  });
+
+  it('asks about a waiting move alone, and Stay keeps the game and the draft', async () => {
+    const r = mountInGame(played([]));
+    await r.flush();
+    await dropAll(r, [['e2', 'e4']]);
+    const popup = await leaveByBack(r, 'cancel');
+    expect(popup).toEqual({
+      title: LEAVE_TITLE,
+      message: "Your move hasn't been sent and will be lost.",
+      buttons: [
+        { id: 'cancel', type: 'default', text: 'Stay' },
+        { id: 'confirm', type: 'destructive', text: 'Leave' },
+      ],
+    });
+    expect(r.app.router.current.value).toEqual({ name: 'game', gameId: GAME });
+    expect(window.__tg!.mainButton).toMatchObject({ text: 'Confirm move', visible: true });
+  });
+
+  it('leaves on Leave', async () => {
+    const r = mountInGame(played([]));
+    await r.flush();
+    await dropAll(r, [['e2', 'e4']]);
+    await leaveByBack(r, 'confirm');
+    expect(r.app.router.current.value).toEqual({ name: 'games' });
+  });
+
+  it('asks about the move and its premoves together', async () => {
+    const r = mountInGame(played([]));
+    await r.flush();
+    await dropAll(r, [
+      ['e2', 'e4'],
+      ['e7', 'e5'],
+      ['g1', 'f3'],
+    ]);
+    const popup = await leaveByBack(r, 'cancel');
+    expect(popup?.message).toBe("Your move and premoves haven't been sent and will be lost.");
+  });
+
+  it('asks about premove changes alone', async () => {
+    const r = mountInGame(played(['e2e4']));
+    await r.flush();
+    await dropAll(r, [
+      ['e7', 'e5'],
+      ['g1', 'f3'],
+    ]);
+    const popup = await leaveByBack(r, 'cancel');
+    expect(popup).toMatchObject({
+      title: LEAVE_TITLE,
+      message: "Your premoves haven't been confirmed and will be lost.",
+    });
+  });
+
+  it('guards a tab change, which is also what Telegram’s Settings item does', async () => {
+    const r = mountInGame(played(['e2e4']));
+    await r.flush();
+    await dropAll(r, [
+      ['e7', 'e5'],
+      ['g1', 'f3'],
+    ]);
+    r.app.router.select('settings');
+    await r.flush();
+    expect(window.__tg!.popups).toHaveLength(1);
+    window.__tg!.answerPopup('cancel');
+    await r.flush();
+    expect(r.app.router.tab.value).toBe('games');
+    r.app.router.select('settings');
+    await r.flush();
+    window.__tg!.answerPopup('confirm');
+    await r.flush();
+    expect(r.app.router.tab.value).toBe('settings');
+  });
+
+  it('asks the client before closing while a draft is open, and not otherwise', async () => {
+    const r = mountInGame(played([]));
+    await r.flush();
+    expect(r.app.router.leaveGuard).toBeNull();
+    expect(window.__tg!.closingConfirmation).toBe(false);
+    await dropAll(r, [['e2', 'e4']]);
+    expect(r.app.router.leaveGuard).not.toBeNull();
+    expect(window.__tg!.closingConfirmation).toBe(true);
+    window.__tg!.clickSecondary();
+    await r.flush();
+    expect(r.app.router.leaveGuard).toBeNull();
+    expect(window.__tg!.closingConfirmation).toBe(false);
+    // With nothing to lose, Back leaves without a question.
+    window.__tg!.clickBack();
+    await r.flush();
+    expect(window.__tg!.popups).toHaveLength(0);
+    expect(r.app.router.current.value).toEqual({ name: 'games' });
+  });
+
+  it('lets go of the guard and the closing confirmation when the screen goes', async () => {
+    const r = mountInGame(played([]));
+    await r.flush();
+    await dropAll(r, [['e2', 'e4']]);
+    expect(r.app.router.leaveGuard).not.toBeNull();
+    render(null, r.root);
+    expect(r.app.router.leaveGuard).toBeNull();
+    expect(window.__tg!.closingConfirmation).toBe(false);
+  });
+
+  it('never asks with move confirmations off', async () => {
+    wantPrefs.moveConfirmations = 'never';
+    const r = mountInGame(played(['e2e4']));
+    await r.flush();
+    await dropAll(r, [
+      ['e7', 'e5'],
+      ['g1', 'f3'],
+    ]);
+    expect(r.app.router.leaveGuard).toBeNull();
+    expect(window.__tg!.closingConfirmation).toBe(false);
+    window.__tg!.clickBack();
+    await r.flush();
+    expect(window.__tg!.popups).toHaveLength(0);
+    expect(r.app.router.current.value).toEqual({ name: 'games' });
   });
 });
