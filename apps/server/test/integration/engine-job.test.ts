@@ -2,15 +2,15 @@ import { type ColourChoice } from '@group-chess/shared';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { createEngineGame, getEngineUser } from '../../src/domain/engineGames';
-import { playMove, requireGameByPublicId, resign } from '../../src/domain/games';
+import { requireGameByPublicId, resign } from '../../src/domain/games';
 import { touchMember } from '../../src/domain/members';
 import { Metrics } from '../../src/metrics';
 
 import { testConfig } from '../helpers/config';
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
-import { createEngineJobRunner } from '../helpers/engineJob';
+import { createEngineJobRunner, gameAwaitingEngine } from '../helpers/engineJob';
 import { fakeEngine } from '../helpers/fakeEngine';
-import { insertGame, insertGroup, insertUser } from '../helpers/fixtures';
+import { insertGame, insertGroup, insertUser, played } from '../helpers/fixtures';
 
 const { db, close } = openTestDb();
 const deps = testDeps(db);
@@ -42,14 +42,7 @@ async function startedEngineGame(colour: ColourChoice) {
 describe('engine_move job handler', () => {
   it('plays the engine reply and hands the turn back', async () => {
     const engine = fakeEngine({ replies: [{ uci: 'e7e5' }] });
-    const game = await startedEngineGame('white');
-    await playMove(deps, {
-      gameId: game.publicId,
-      userId: alice.id,
-      uci: 'e2e4',
-      expectedPly: 0,
-      clientMoveId: 'c1',
-    });
+    const game = await gameAwaitingEngine(deps, { groupId: group.id, userId: alice.id });
     await runEngineJob(engine, game.id);
     const after = await requireGameByPublicId(db, game.publicId);
     expect(after.plyCount).toBe(2);
@@ -58,14 +51,7 @@ describe('engine_move job handler', () => {
 
   it('substitutes a legal move when the engine returns an illegal one, and counts it', async () => {
     const engine = fakeEngine({ replies: [{ uci: 'a1a8' }] });
-    const game = await startedEngineGame('white');
-    await playMove(deps, {
-      gameId: game.publicId,
-      userId: alice.id,
-      uci: 'e2e4',
-      expectedPly: 0,
-      clientMoveId: 'c1',
-    });
+    const game = await gameAwaitingEngine(deps, { groupId: group.id, userId: alice.id });
     await runEngineJob(engine, game.id);
     const after = await requireGameByPublicId(db, game.publicId);
     expect(after.status).toBe('active');
@@ -76,14 +62,7 @@ describe('engine_move job handler', () => {
 
   it('completes without moving when the game already ended', async () => {
     const engine = fakeEngine();
-    const game = await startedEngineGame('white');
-    await playMove(deps, {
-      gameId: game.publicId,
-      userId: alice.id,
-      uci: 'e2e4',
-      expectedPly: 0,
-      clientMoveId: 'c1',
-    });
+    const game = await gameAwaitingEngine(deps, { groupId: group.id, userId: alice.id });
     await resign(deps, { gameId: game.publicId, userId: alice.id });
     await expect(runEngineJob(engine, game.id)).resolves.toMatchObject({ outcome: 'done' });
     expect(engine.calls).toHaveLength(0);
@@ -93,14 +72,7 @@ describe('engine_move job handler', () => {
   it('completes without moving when the game ended while the engine was thinking', async () => {
     // Spec §9's `(none)` row: the game really did end between the job being enqueued and the reply
     // arriving, so the job is a success and writes nothing.
-    const game = await startedEngineGame('white');
-    await playMove(deps, {
-      gameId: game.publicId,
-      userId: alice.id,
-      uci: 'e2e4',
-      expectedPly: 0,
-      clientMoveId: 'c1',
-    });
+    const game = await gameAwaitingEngine(deps, { groupId: group.id, userId: alice.id });
     const engine = fakeEngine({
       replies: [{ none: true }],
       onCall: async () => {
@@ -118,14 +90,7 @@ describe('engine_move job handler', () => {
     // move means Stockfish and our arbiter disagree — and an engine game carries no deadline, so
     // completing the job here would strand the game for good.
     const engine = fakeEngine({ replies: [{ none: true }] });
-    const game = await startedEngineGame('white');
-    await playMove(deps, {
-      gameId: game.publicId,
-      userId: alice.id,
-      uci: 'e2e4',
-      expectedPly: 0,
-      clientMoveId: 'c1',
-    });
+    const game = await gameAwaitingEngine(deps, { groupId: group.id, userId: alice.id });
     const result = await runEngineJob(engine, game.id);
     expect(result).toMatchObject({ outcome: 'retry_attempt' });
     const after = await requireGameByPublicId(db, game.publicId);
@@ -136,14 +101,7 @@ describe('engine_move job handler', () => {
 
   it('ends the game rather than stranding it when the engine never makes a move', async () => {
     const engine = fakeEngine({ replies: [{ none: true }] });
-    const game = await startedEngineGame('white');
-    await playMove(deps, {
-      gameId: game.publicId,
-      userId: alice.id,
-      uci: 'e2e4',
-      expectedPly: 0,
-      clientMoveId: 'c1',
-    });
+    const game = await gameAwaitingEngine(deps, { groupId: group.id, userId: alice.id });
     const result = await runEngineJob(engine, game.id, { attempts: 7, maxAttempts: 8 });
     expect(result).toMatchObject({ outcome: 'fail' });
     const after = await requireGameByPublicId(db, game.publicId);
@@ -172,14 +130,7 @@ describe('engine_move job handler', () => {
 
   it('asks for a retry, not silence, when the engine is unavailable', async () => {
     const engine = fakeEngine({ fail: new Error('spawn stockfish ENOENT') });
-    const game = await startedEngineGame('white');
-    await playMove(deps, {
-      gameId: game.publicId,
-      userId: alice.id,
-      uci: 'e2e4',
-      expectedPly: 0,
-      clientMoveId: 'c1',
-    });
+    const game = await gameAwaitingEngine(deps, { groupId: group.id, userId: alice.id });
     const result = await runEngineJob(engine, game.id);
     expect(result).toMatchObject({ outcome: 'retry_attempt' });
     expect((await requireGameByPublicId(db, game.publicId)).status).toBe('active');
@@ -187,31 +138,9 @@ describe('engine_move job handler', () => {
 
   it('aborts the game once the retry ladder is exhausted, even past the player abort deadline', async () => {
     const engine = fakeEngine({ fail: new Error('spawn stockfish ENOENT') });
-    const game = await startedEngineGame('white');
-    await playMove(deps, {
-      gameId: game.publicId,
-      userId: alice.id,
-      uci: 'e2e4',
-      expectedPly: 0,
-      clientMoveId: 'c1',
-    });
     // Get plyCount to 2 (past the point where a human's abortGame would refuse) so this proves
     // the failure path does not go through abortGame's player-facing guard.
-    const engineUser = await getEngineUser(db);
-    await playMove(deps, {
-      gameId: game.publicId,
-      userId: engineUser.id,
-      uci: 'e7e5',
-      expectedPly: 1,
-      clientMoveId: 'e1',
-    });
-    await playMove(deps, {
-      gameId: game.publicId,
-      userId: alice.id,
-      uci: 'd2d4',
-      expectedPly: 2,
-      clientMoveId: 'c2',
-    });
+    const game = await played(db, await startedEngineGame('white'), ['e2e4', 'e7e5', 'd2d4']);
     const before = await requireGameByPublicId(db, game.publicId);
     expect(before.plyCount).toBeGreaterThanOrEqual(2);
     const result = await runEngineJob(engine, game.id, { attempts: 7, maxAttempts: 8 });
@@ -223,14 +152,7 @@ describe('engine_move job handler', () => {
 
   it('asks for a retry, not silence, when the engine is disabled', async () => {
     const engine = fakeEngine();
-    const game = await startedEngineGame('white');
-    await playMove(deps, {
-      gameId: game.publicId,
-      userId: alice.id,
-      uci: 'e2e4',
-      expectedPly: 0,
-      clientMoveId: 'c1',
-    });
+    const game = await gameAwaitingEngine(deps, { groupId: group.id, userId: alice.id });
     const result = await runEngineJob(engine, game.id, {}, testConfig({ ENGINE_ENABLED: false }));
     expect(result).toMatchObject({ outcome: 'retry_attempt' });
     expect(engine.calls).toHaveLength(0);
@@ -239,31 +161,9 @@ describe('engine_move job handler', () => {
 
   it('aborts the game once the retry ladder is exhausted while the engine is disabled', async () => {
     const engine = fakeEngine();
-    const game = await startedEngineGame('white');
-    await playMove(deps, {
-      gameId: game.publicId,
-      userId: alice.id,
-      uci: 'e2e4',
-      expectedPly: 0,
-      clientMoveId: 'c1',
-    });
     // Same past-ply-1 setup as the outage test, so this also proves the disabled path does not
     // go through abortGame's player-facing guard.
-    const engineUser = await getEngineUser(db);
-    await playMove(deps, {
-      gameId: game.publicId,
-      userId: engineUser.id,
-      uci: 'e7e5',
-      expectedPly: 1,
-      clientMoveId: 'e1',
-    });
-    await playMove(deps, {
-      gameId: game.publicId,
-      userId: alice.id,
-      uci: 'd2d4',
-      expectedPly: 2,
-      clientMoveId: 'c2',
-    });
+    const game = await played(db, await startedEngineGame('white'), ['e2e4', 'e7e5', 'd2d4']);
     const before = await requireGameByPublicId(db, game.publicId);
     expect(before.plyCount).toBeGreaterThanOrEqual(2);
     const result = await runEngineJob(
@@ -281,14 +181,7 @@ describe('engine_move job handler', () => {
 
   it('plays only once when the same ply is triggered twice', async () => {
     const engine = fakeEngine({ replies: [{ uci: 'e7e5' }, { uci: 'd7d5' }] });
-    const game = await startedEngineGame('white');
-    await playMove(deps, {
-      gameId: game.publicId,
-      userId: alice.id,
-      uci: 'e2e4',
-      expectedPly: 0,
-      clientMoveId: 'c1',
-    });
+    const game = await gameAwaitingEngine(deps, { groupId: group.id, userId: alice.id });
     await runEngineJob(engine, game.id);
     await runEngineJob(engine, game.id);
     expect((await requireGameByPublicId(db, game.publicId)).plyCount).toBe(2);

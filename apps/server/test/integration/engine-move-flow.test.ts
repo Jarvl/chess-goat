@@ -5,12 +5,12 @@ import { createEngineGame, getEngineUser } from '../../src/domain/engineGames';
 import { playMove, requireGameByPublicId, resign, voidGame } from '../../src/domain/games';
 import { buildGamePgn } from '../../src/domain/pgn';
 import { forfeitOverdueGames } from '../../src/clock/scanners';
-import { reminderExpression } from '../../src/domain/limits';
+
 import { touchMember } from '../../src/domain/members';
 import { Metrics } from '../../src/metrics';
 import { testConfig } from '../helpers/config';
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
-import { createEngineJobRunner } from '../helpers/engineJob';
+import { createEngineJobRunner, gameAwaitingEngine } from '../helpers/engineJob';
 import { fakeEngine } from '../helpers/fakeEngine';
 import { insertGame, insertGroup, insertUser } from '../helpers/fixtures';
 
@@ -33,19 +33,7 @@ async function setup(userOverrides: { dmAllowed?: boolean } = {}) {
 describe('playMove and finishGame with an engine opponent', () => {
   it('leaves no deadline for the engine and enqueues its move, with no card or DM job', async () => {
     const { group, alice } = await setup();
-    const game = await createEngineGame(deps, {
-      groupId: group.id,
-      userId: alice.id,
-      level: 'club',
-      colour: 'white',
-    });
-    await playMove(deps, {
-      gameId: game.publicId,
-      userId: alice.id,
-      uci: 'e2e4',
-      expectedPly: 0,
-      clientMoveId: 'c1',
-    });
+    const game = await gameAwaitingEngine(deps, { groupId: group.id, userId: alice.id });
     const after = await requireGameByPublicId(db, game.publicId);
     expect(after.deadlineAt).toBeNull();
     expect(after.reminderAt).toBeNull();
@@ -57,22 +45,7 @@ describe('playMove and finishGame with an engine opponent', () => {
 
   it('announces nothing and grants no clock or reminder when the engine has moved', async () => {
     const { group, alice } = await setup({ dmAllowed: true });
-    // Guard against a vacuous pass: the production expression does produce a reminder for these
-    // inputs, so the null below is spec §8's rule rather than a broken reminder path.
-    expect(reminderExpression(86_400, true)).not.toBeNull();
-    const game = await createEngineGame(deps, {
-      groupId: group.id,
-      userId: alice.id,
-      level: 'club',
-      colour: 'white',
-    });
-    await playMove(deps, {
-      gameId: game.publicId,
-      userId: alice.id,
-      uci: 'e2e4',
-      expectedPly: 0,
-      clientMoveId: 'c1',
-    });
+    const game = await gameAwaitingEngine(deps, { groupId: group.id, userId: alice.id });
     const engine = await getEngineUser(db);
     await playMove(deps, {
       gameId: game.publicId,

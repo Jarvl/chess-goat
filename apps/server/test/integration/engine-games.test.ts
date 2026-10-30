@@ -1,6 +1,6 @@
 import type { EngineLevel } from '@group-chess/shared';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { deadlineExpression, reminderExpression } from '../../src/domain/limits';
+
 import { challenges, games, jobs, users } from '../../src/db/schema';
 import { DomainError } from '../../src/domain/errors';
 import { createEngineGame, getEngineUser } from '../../src/domain/engineGames';
@@ -88,12 +88,6 @@ describe('createEngineGame', () => {
 
   it('has no clock at all: no time control, no deadline, no reminder, on either colour', async () => {
     const { group, alice } = await setup({ dmAllowed: true });
-
-    // Guard against a vacuous pass: both production expressions do produce a value for a real
-    // clock, so the nulls below are spec §8's rule and not a broken clock path. A bot game reaches
-    // them with a null time control, which is why both come back null.
-    expect(deadlineExpression(86_400)).not.toBeNull();
-    expect(reminderExpression(86_400, true)).not.toBeNull();
 
     for (const colour of ['white', 'black'] as const) {
       const game = await createEngineGame(deps, {

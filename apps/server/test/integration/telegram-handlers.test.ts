@@ -4,11 +4,10 @@ import { challenges, dmMessages, games, groups, jobs, moves, users } from '../..
 import { recordDm } from '../../src/domain/dms';
 import { enqueue } from '../../src/jobs/queue';
 import { telegramJobHandlers } from '../../src/jobs/handlers/telegram';
-import { JobWorker } from '../../src/jobs/worker';
-import { createTelegramApi } from '../../src/telegram/client';
-import { testConfig } from '../helpers/config';
+import type { JobWorker } from '../../src/jobs/worker';
+
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
-import { FakeTelegram } from '../helpers/fakeTelegram';
+import type { FakeTelegram } from '../helpers/fakeTelegram';
 import {
   insertChallenge,
   insertGame,
@@ -17,6 +16,7 @@ import {
   insertUser,
 } from '../helpers/fixtures';
 import { AFTER_E4 } from '../helpers/chess';
+import { jobWorker } from '../helpers/worker';
 
 const { db, close } = openTestDb();
 const deps = testDeps(db);
@@ -26,15 +26,7 @@ const CHAT = -1001000000002;
 const AFTER_E5 = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2';
 
 beforeAll(async () => {
-  fake = await FakeTelegram.start();
-  const config = testConfig({ TELEGRAM_API_ROOT: fake.url });
-  const api = createTelegramApi(config, { apiRoot: fake.url });
-  worker = new JobWorker({
-    db,
-    log: deps.log,
-    handlers: telegramJobHandlers({ deps, api, config }),
-    workerId: 't',
-  });
+  ({ fake, worker } = await jobWorker(deps, telegramJobHandlers));
 });
 beforeEach(async () => {
   await truncateAll(db);

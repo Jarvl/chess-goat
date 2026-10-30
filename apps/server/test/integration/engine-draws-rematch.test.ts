@@ -5,9 +5,10 @@ import { createRematch } from '../../src/domain/challenges';
 import { offerDraw } from '../../src/domain/draws';
 import { isDomainError } from '../../src/domain/errors';
 import { createEngineGame } from '../../src/domain/engineGames';
-import { getGameDto, playMove, requireGameByPublicId, resign } from '../../src/domain/games';
+import { getGameDto, requireGameByPublicId, resign } from '../../src/domain/games';
 import { touchMember } from '../../src/domain/members';
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
+import { gameAwaitingEngine } from '../helpers/engineJob';
 import { insertGame, insertGroup, insertUser } from '../helpers/fixtures';
 
 const { db, close } = openTestDb();
@@ -45,19 +46,7 @@ describe('GameDto.engineLevel', () => {
 
 describe('draw offers against the bot', () => {
   it('refuses a draw offer, leaving no offer and queueing no engine job', async () => {
-    const game = await createEngineGame(deps, {
-      groupId: group.id,
-      userId: alice.id,
-      level: 'club',
-      colour: 'white',
-    });
-    await playMove(deps, {
-      gameId: game.publicId,
-      userId: alice.id,
-      uci: 'e2e4',
-      expectedPly: 0,
-      clientMoveId: 'c1',
-    });
+    const game = await gameAwaitingEngine(deps, { groupId: group.id, userId: alice.id });
     const jobsBefore = (await db.select().from(jobs)).length;
     const error = await offerDraw(deps, { gameId: game.publicId, userId: alice.id }).catch(
       (err) => err,

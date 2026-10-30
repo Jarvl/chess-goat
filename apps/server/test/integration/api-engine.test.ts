@@ -116,7 +116,7 @@ describe('the bot in the picker and the engine-games endpoint', () => {
         `/api/groups/${group.publicId}/engine-games`,
         {
           token,
-          body: { level: 'club', colour: 'white', timePerMove: 86_400 },
+          body: { level: 'club', colour: 'white' },
         },
       );
       expect(response.status).toBe(403);

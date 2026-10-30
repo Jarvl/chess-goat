@@ -5,11 +5,10 @@ import { flairAwardDedupKey } from '../../src/domain/games';
 import { loadFonts } from '../../src/images/fonts';
 import { sharePhotoJobHandlers } from '../../src/jobs/handlers/sharePhoto';
 import { enqueue } from '../../src/jobs/queue';
-import { JobWorker } from '../../src/jobs/worker';
-import { createTelegramApi } from '../../src/telegram/client';
-import { testConfig } from '../helpers/config';
+import type { JobWorker } from '../../src/jobs/worker';
+
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
-import { FakeTelegram } from '../helpers/fakeTelegram';
+import type { FakeTelegram } from '../helpers/fakeTelegram';
 import {
   insertGame,
   insertGroup,
@@ -18,6 +17,7 @@ import {
   type GameOverrides,
 } from '../helpers/fixtures';
 import { AFTER_E4, AFTER_E4_C5 } from '../helpers/chess';
+import { jobWorker } from '../helpers/worker';
 
 const { db, close } = openTestDb();
 const deps = testDeps(db);
@@ -26,16 +26,8 @@ let worker: JobWorker;
 const CHAT = -1001000000006;
 
 beforeAll(async () => {
-  fake = await FakeTelegram.start();
-  const config = testConfig({ TELEGRAM_API_ROOT: fake.url });
-  const api = createTelegramApi(config, { apiRoot: fake.url });
   const fonts = await loadFonts();
-  worker = new JobWorker({
-    db,
-    log: deps.log,
-    handlers: sharePhotoJobHandlers({ deps, api, config }, fonts),
-    workerId: 'r',
-  });
+  ({ fake, worker } = await jobWorker(deps, (ctx) => sharePhotoJobHandlers(ctx, fonts)));
 });
 beforeEach(async () => {
   await truncateAll(db);
