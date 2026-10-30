@@ -1,0 +1,95 @@
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { INITIAL_FEN } from '@group-chess/shared';
+import postgres from 'postgres';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { runMigrations } from '../../src/db/migrate';
+
+const REAL_FOLDER = fileURLToPath(new URL('../../drizzle', import.meta.url));
+const TAG = '0011_conditional_premoves';
+const baseUrl = process.env.TEST_DATABASE_URL!;
+const admin = postgres(baseUrl, { max: 1, onnotice: () => undefined });
+const scratchName = `group_chess_migration_0011_${process.pid}`;
+const scratchUrl = (() => {
+  const url = new URL(baseUrl);
+  url.pathname = `/${scratchName}`;
+  return url.toString();
+})();
+
+let tempDir: string;
+let scratch: postgres.Sql;
+
+type Journal = { entries: { tag: string }[] };
+
+/** The real migrations up to, not including, 0011: the database a running release has. */
+function migrationsBefore0011(): string {
+  const folder = join(tempDir, 'before');
+  cpSync(REAL_FOLDER, folder, { recursive: true });
+  rmSync(join(folder, `${TAG}.sql`));
+  const journalPath = join(folder, 'meta', '_journal.json');
+  const journal = JSON.parse(readFileSync(journalPath, 'utf8')) as Journal;
+  journal.entries = journal.entries.filter((entry) => entry.tag !== TAG);
+  writeFileSync(journalPath, JSON.stringify(journal));
+  return folder;
+}
+
+beforeAll(async () => {
+  tempDir = mkdtempSync(join(tmpdir(), 'group-chess-0011-'));
+  await admin.unsafe(`drop database if exists ${scratchName} with (force)`);
+  await admin.unsafe(`create database ${scratchName}`);
+  scratch = postgres(scratchUrl, { max: 1, onnotice: () => undefined });
+});
+
+afterAll(async () => {
+  await scratch.end({ timeout: 5 });
+  await admin.unsafe(`drop database if exists ${scratchName} with (force)`);
+  await admin.end({ timeout: 5 });
+  rmSync(tempDir, { recursive: true, force: true });
+});
+
+describe('migration 0011: conditional premoves', () => {
+  it('empties queued chains, leaves the old column in place and adds the tree columns', async () => {
+    await runMigrations(scratchUrl, { migrationsFolder: migrationsBefore0011() });
+    const [white] = await scratch<{ id: number }[]>`
+      insert into users (first_name) values ('Alice') returning id`;
+    const [black] = await scratch<{ id: number }[]>`
+      insert into users (first_name) values ('Bob') returning id`;
+    const [group] = await scratch<{ id: number }[]>`
+      insert into groups (public_id, telegram_chat_id, title, type)
+      values ('g0011', -1000011, 'Group', 'supergroup') returning id`;
+    const game = (publicId: string, premoves: string[]) => scratch`
+      insert into games (public_id, group_id, white_id, black_id, rated, fen, premoves)
+      values (${publicId}, ${group!.id}, ${white!.id}, ${black!.id}, true, ${INITIAL_FEN},
+        ${premoves}::text[])`;
+    await game('chained', ['e2e4', 'g1f3']);
+    await game('unchained', []);
+
+    await runMigrations(scratchUrl);
+
+    const rows = await scratch<
+      { public_id: string; premoves: string[]; premove_tree: Buffer; premove_tree_ply: number }[]
+    >`select public_id, premoves, premove_tree, premove_tree_ply from games order by public_id`;
+    expect(
+      rows.map((row) => [
+        row.public_id,
+        row.premoves,
+        row.premove_tree.length,
+        row.premove_tree_ply,
+      ]),
+    ).toEqual([
+      ['chained', [], 0, 0],
+      ['unchained', [], 0, 0],
+    ]);
+    const columns = await scratch<{ name: string; type: string; nullable: string }[]>`
+      select column_name as name, data_type as type, is_nullable as nullable
+      from information_schema.columns
+      where table_name = 'games' and column_name like 'premove%' order by column_name`;
+    expect(columns).toEqual([
+      { name: 'premove_tree', type: 'bytea', nullable: 'NO' },
+      { name: 'premove_tree_ply', type: 'integer', nullable: 'NO' },
+      { name: 'premoves', type: 'ARRAY', nullable: 'NO' },
+    ]);
+  });
+});

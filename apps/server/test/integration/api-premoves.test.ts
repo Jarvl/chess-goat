@@ -245,6 +245,64 @@ describe('PUT /api/games/:id/premoves', () => {
     expect(decodePremoveBytes((await stored(game.id)).premoveTree)).toEqual(edited);
   });
 
+  it('checks without holding the lock: an opponent move during the check makes it stale', async () => {
+    const { game, tokens } = await world();
+    // Bob's stored reply to the root move the big tree leaves free, so Alice's move fires it and
+    // the game moves on to White's turn again.
+    const chess = new Chess();
+    const free = chess.moves({ verbose: true }).at(-1)!;
+    chess.move(free);
+    const answer: PremoveNode[] = [
+      { move: uciOf(free), reply: uciOf(chess.moves({ verbose: true })[0]!), children: [] },
+    ];
+    await db
+      .update(games)
+      .set({ premoveTree: Buffer.from(encodePremoveBytes(answer)) })
+      .where(eq(games.id, game.id));
+    const edited = [...bigTree(2_000), ...answer];
+
+    // Hold the check at its first slice boundary, while Alice moves.
+    const realSetImmediate = globalThis.setImmediate;
+    let release!: () => void;
+    let markChecking!: () => void;
+    const checking = new Promise<void>((resolve) => (markChecking = resolve));
+    let holding = false;
+    const spy = vi.spyOn(globalThis, 'setImmediate').mockImplementation(((
+      callback: (...args: unknown[]) => void,
+      ...args: unknown[]
+    ) => {
+      if (!holding && new Error().stack?.includes('premoveCheck')) {
+        holding = true;
+        void new Promise<void>((resolve) => (release = resolve)).then(() =>
+          realSetImmediate(callback, ...args),
+        );
+        markChecking();
+        return undefined;
+      }
+      return realSetImmediate(callback, ...args);
+    }) as unknown as typeof setImmediate);
+    try {
+      const saving = put(tokens.bob, game.publicId, await body(answer, edited));
+      await checking;
+      // The row is not locked: Alice's move goes through, and Bob's stored reply fires.
+      const moved = await api.request('POST', `/api/games/${game.publicId}/moves`, {
+        token: tokens.alice,
+        body: { uci: uciOf(free), expectedPly: 0, clientMoveId: 'during-the-check' },
+      });
+      expect(moved.status).toBe(200);
+      expect(GameDtoSchema.parse(await moved.json()).plyCount).toBe(2);
+      release();
+      const res = await saving;
+      expect(res.status).toBe(409);
+      expect(await errorCode(res)).toBe('stale_state');
+    } finally {
+      spy.mockRestore();
+    }
+    const row = await stored(game.id);
+    expect(row.plyCount).toBe(2);
+    expect(row.premoveTree).toHaveLength(0);
+  });
+
   it('refuses spectators and finished games', async () => {
     const { game, tokens } = await world();
     expect((await put(tokens.carol, game.publicId, await body([], e4e5))).status).toBe(403);
