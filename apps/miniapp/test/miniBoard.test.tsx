@@ -16,8 +16,8 @@ describe('MiniBoard', () => {
     const squares = [...r.root.querySelectorAll('[data-square]')];
     expect(squares).toHaveLength(64);
     expect(squares[0]!.getAttribute('data-square')).toBe('a8');
-    expect(squares[0]!.className).toContain('l');
-    expect(r.root.querySelector('[data-square="a1"]')!.className).toContain('d');
+    expect(squares[0]!.classList.contains('l')).toBe(true);
+    expect(r.root.querySelector('[data-square="a1"]')!.classList.contains('d')).toBe(true);
     expect(r.root.querySelector('[data-square="e4"] piece')!.getAttribute('class')).toBe(
       'pawn white',
     );

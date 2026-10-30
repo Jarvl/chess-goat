@@ -1,55 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { GameDto } from '@group-chess/shared';
 import { GameStream } from '../src/api/stream';
 import { FakeEventSource } from './support/fakeEventSource';
+import { gameDto } from './support/gameFixtures';
 
-const dto = (version: number): GameDto => ({
-  id: 'AbCdEfGhIj',
-  group: { id: 'GrOuPiDxYz', title: 'G' },
-  status: 'active',
-  white: {
-    id: '1',
-    name: 'A',
-    username: null,
-    rating: 1500,
-    provisional: true,
-    isBot: false,
-    photoUrl: null,
-    flair: [],
-    ratingAfter: null,
-    provisionalAfter: null,
-  },
-  black: {
-    id: '2',
-    name: 'B',
-    username: null,
-    rating: 1500,
-    provisional: true,
-    isBot: false,
-    photoUrl: null,
-    flair: [],
-    ratingAfter: null,
-    provisionalAfter: null,
-  },
-  timePerMove: 86400,
-  rated: true,
-  fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-  plyCount: 0,
-  version,
-  moves: [],
-  deadlineAt: null,
-  serverTime: new Date().toISOString(),
-  drawOffer: null,
-  claims: { threefold: false, fiftyMove: false },
-  viewerRole: 'spectator',
-  result: null,
-  endReason: null,
-  voided: false,
-  startedAt: new Date().toISOString(),
-  finishedAt: null,
-  engineLevel: null,
-  premoveTree: '',
-});
+const dto = (version: number) => gameDto({ version, viewerRole: 'spectator', deadlineAt: null });
 
 let visibility: 'visible' | 'hidden' = 'visible';
 /** Every stream a test made: each listens on the real document and window until stopped. */

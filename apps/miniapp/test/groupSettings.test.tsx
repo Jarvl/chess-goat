@@ -2,6 +2,7 @@ import type { GroupSettingsDto, LobbyDto } from '@group-chess/shared';
 import { describe, expect, it } from 'vitest';
 import { GroupSettings } from '../src/ui/screens/GroupSettings';
 import { renderApp } from './support/render';
+import { playerRef } from './support/summaryFixtures';
 
 const dto: GroupSettingsDto = {
   group: { id: 'GrOuPiDxYz', title: 'Chess Club' },
@@ -12,18 +13,7 @@ const dto: GroupSettingsDto = {
     cardTopicMode: 'origin',
     fixedTopicId: null,
   },
-  blocked: [
-    {
-      id: '3',
-      name: 'Carol',
-      username: null,
-      rating: 1500,
-      provisional: true,
-      isBot: false,
-      photoUrl: null,
-      flair: [],
-    },
-  ],
+  blocked: [playerRef('3', 'Carol')],
   botIsAdmin: true,
   isForum: true,
 };
@@ -34,20 +24,7 @@ const lobby: LobbyDto = {
   active: [],
   finished: { items: [], nextCursor: null },
   challenges: [],
-  players: [
-    {
-      id: '2',
-      name: 'Bob',
-      username: null,
-      rating: 1500,
-      provisional: true,
-      isBot: false,
-      photoUrl: null,
-      flair: [],
-      gamesPlayed: 1,
-      record: { wins: 1, draws: 0, losses: 0 },
-    },
-  ],
+  players: [{ ...playerRef('2', 'Bob'), gamesPlayed: 1, record: { wins: 1, draws: 0, losses: 0 } }],
 };
 
 describe('GroupSettings', () => {

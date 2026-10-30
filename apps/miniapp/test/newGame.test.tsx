@@ -4,19 +4,11 @@ import { App } from '../src/ui/App';
 import { NewGame } from '../src/ui/screens/NewGame';
 import { gameDto } from './support/gameFixtures';
 import { renderApp } from './support/render';
+import { playerRef } from './support/summaryFixtures';
 
 const settings = { defaultTimePerMove: 86400, ratedDefault: true, allowOpenChallenges: true };
 
-const bob = {
-  id: '2',
-  name: 'Bob',
-  username: 'bob',
-  rating: 1520,
-  provisional: false,
-  isBot: false,
-  photoUrl: null,
-  flair: [],
-};
+const bob = playerRef('2', 'Bob', { username: 'bob', rating: 1520, provisional: false });
 
 const players = { players: [bob], settings, bot: null };
 
@@ -34,16 +26,7 @@ function pressedOpponentRows(root: HTMLElement): Element[] {
 }
 const challenge = {
   id: 'ChalAaaaaa',
-  challenger: {
-    id: '1',
-    name: 'Alice',
-    username: 'alice',
-    rating: 1500,
-    provisional: true,
-    isBot: false,
-    photoUrl: null,
-    flair: [],
-  },
+  challenger: playerRef('1', 'Alice', { username: 'alice' }),
   opponent: null,
   timePerMove: 28800,
   challengerColour: 'white',
