@@ -12,6 +12,15 @@ export type StripGame = MeGamesDto['items'][number];
  */
 export const stripGames = signal<StripGame[] | null>(null);
 
+/**
+ * Where the strip was scrolled, kept across hops like its order, so a thumbnail stays under the
+ * thumb that reached for it. Null on arrival, when the strip centres the game on screen.
+ */
+export const stripScroll: { left: number | null } = { left: null };
+
+/** Whether the docked strip is on screen, and how, so the app can lift toasts clear of it. */
+export const dock = signal<'open' | 'minimized' | null>(null);
+
 const MINIMIZED_KEY = 'switcher.minimized';
 
 /** Whether the viewer minimized the strip on this device; open when storage is unreadable. */
@@ -43,6 +52,7 @@ export function setStripMinimized(minimized: boolean): void {
 /** Forgets the order: the next list is taken in the server's order. */
 export function resetStrip(): void {
   stripGames.value = null;
+  stripScroll.left = null;
 }
 
 /**

@@ -76,7 +76,8 @@ function scriptedEngine(): Engine & {
   };
 }
 
-type Scenario = 'none' | 'fresh' | 'opening' | 'promotion' | 'finished' | 'ranked' | 'several';
+type Scenario =
+  'none' | 'fresh' | 'opening' | 'promotion' | 'finished' | 'ranked' | 'several' | 'crowd';
 type SeedRequest = {
   scenario: Scenario;
   prefs?: Record<string, Record<string, unknown>>;
@@ -189,6 +190,20 @@ async function main(): Promise<void> {
       });
       await insertMove(db, carol.id, 1, 'e2e4', 'e4', AFTER_E4);
       game = row;
+    }
+    if (request.scenario === 'crowd') {
+      // Nine of Alice's games, more than a phone's strip shows at once (game switcher spec): the
+      // first five hers to move, the rest her opponents'.
+      for (let index = 0; index < 9; index += 1) {
+        const opponent = index % 2 === 0 ? bob : rows.carol!.id;
+        const yours = index < 5;
+        const row = await insertGame(db, group.id, alice, opponent, {
+          fen: yours ? INITIAL_FEN : AFTER_E4,
+          plyCount: yours ? 0 : 1,
+        });
+        if (!yours) await insertMove(db, row.id, 1, 'e2e4', 'e4', AFTER_E4);
+        game ??= row;
+      }
     }
     if (request.scenario === 'promotion')
       game = await insertGame(db, group.id, alice, bob, { fen: PROMOTION_FEN, plyCount: 6 });

@@ -1,10 +1,19 @@
 import { sideToMove, t, type GameDto } from '@group-chess/shared';
 import { useEffect, useRef } from 'preact/hooks';
 import { session } from '../../state/session';
-import { setStripMinimized, stripMinimized, type StripGame } from '../../state/switcher';
+import {
+  dock,
+  setStripMinimized,
+  stripMinimized,
+  stripScroll,
+  type StripGame,
+} from '../../state/switcher';
 import { useApp } from '../context';
 import { MiniBoard } from '../MiniBoard';
 import { roleOf } from '../pill';
+
+/** Room left beside the game on screen when the strip scrolls it into view: the strip's padding. */
+const SCROLL_MARGIN = 12;
 
 /**
  * The strip of the viewer's games, docked above the tab bar (game switcher spec): one tap opens
@@ -15,7 +24,14 @@ import { roleOf } from '../pill';
 export function GameSwitcher(props: { games: StripGame[]; current: GameDto }) {
   const { router } = useApp();
   const minimized = stripMinimized.value;
-  if (!router.showTabs.value) return null;
+  const shown = router.showTabs.value;
+  useEffect(() => {
+    dock.value = shown ? (minimized ? 'minimized' : 'open') : null;
+    return () => {
+      dock.value = null;
+    };
+  }, [shown, minimized]);
+  if (!shown) return null;
   // Another game waiting on the viewer, said by a dot on the chevron while the strip is hidden.
   const waiting = props.games.some((game) => game.id !== props.current.id && game.yourTurn);
   return (
@@ -46,16 +62,32 @@ function Strip(props: { games: StripGame[]; current: GameDto }) {
   const { current } = props;
   const viewerId = session.value?.user.id ?? null;
 
-  // Opens scrolled so the game on screen is in view, centred where the strip allows.
+  // A hop finds the strip where it was left, so nothing moves under the thumb, nudged only if the
+  // game on screen is out of view; an arrival centres that game where the strip allows.
   useEffect(() => {
     const strip = stripRef.current;
-    const ringed = strip?.querySelector<HTMLElement>('.switcher-game.current');
-    if (!strip || !ringed) return;
-    strip.scrollLeft = ringed.offsetLeft - (strip.clientWidth - ringed.offsetWidth) / 2;
+    if (!strip) return;
+    const ringed = strip.querySelector<HTMLElement>('.switcher-game.current');
+    if (stripScroll.left === null) {
+      if (ringed)
+        strip.scrollLeft = ringed.offsetLeft - (strip.clientWidth - ringed.offsetWidth) / 2;
+      return;
+    }
+    strip.scrollLeft = stripScroll.left;
+    if (!ringed) return;
+    const left = ringed.offsetLeft - SCROLL_MARGIN;
+    const right = ringed.offsetLeft + ringed.offsetWidth + SCROLL_MARGIN - strip.clientWidth;
+    if (strip.scrollLeft > left) strip.scrollLeft = left;
+    else if (strip.scrollLeft < right) strip.scrollLeft = right;
   }, []);
 
   return (
-    <nav class="switcher" ref={stripRef} aria-label={t('app.switcher.label')}>
+    <nav
+      class="switcher"
+      ref={stripRef}
+      aria-label={t('app.switcher.label')}
+      onScroll={(event) => (stripScroll.left = event.currentTarget.scrollLeft)}
+    >
       {props.games.map((game) => {
         const role = roleOf(game, viewerId) ?? 'white';
         const opponent = game[role === 'white' ? 'black' : 'white'];

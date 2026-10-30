@@ -72,3 +72,37 @@ for (const height of [667, 844]) {
     await shot(page, `switcher-min-${height}`);
   });
 }
+
+test('keeps the strip where it was when you hop, so nothing moves under your thumb', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 844 });
+  const world = await seed('crowd');
+  await openApp(page, { user: world.users.alice.telegram });
+  await page.locator('.game-card').first().click();
+  await expect(page.locator('.switcher [data-switch]')).toHaveCount(9);
+  await page.locator('.switcher').evaluate((strip) => (strip.scrollLeft = 100));
+  const target = page.locator('.switcher [data-switch]').nth(3);
+  const id = await target.getAttribute('data-switch');
+  const before = (await target.boundingBox())!;
+  await target.click();
+  const after = page.locator(`.switcher [data-switch="${id}"]`);
+  await expect(after).toHaveClass(/\bcurrent\b/);
+  expect(Math.abs((await after.boundingBox())!.x - before.x)).toBeLessThanOrEqual(1);
+});
+
+test('raises toasts above the strip, open or minimized', async ({ page }) => {
+  await openFirstGame(page);
+  const box = async (selector: string) => (await page.locator(selector).boundingBox())!;
+  const clearOfStrip = async () => {
+    await page.locator('[data-action="share"]').click();
+    await expect(page.locator('.toast')).toBeVisible();
+    const toast = await box('.toast');
+    expect(toast.y + toast.height).toBeLessThanOrEqual((await box('.switcher-toggle')).y);
+  };
+  await clearOfStrip();
+  await page.locator('.switcher-toggle').click();
+  await expect(page.locator('.switcher')).toHaveCount(0);
+  await expect(page.locator('.toast')).toHaveCount(0, { timeout: 10_000 });
+  await clearOfStrip();
+});

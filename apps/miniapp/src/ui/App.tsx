@@ -1,3 +1,4 @@
+import { dock } from '../state/switcher';
 import { useApp } from './context';
 import { Dialogs } from './dialog';
 import { FlairScreen } from './screens/Flair';
@@ -65,7 +66,15 @@ export function App() {
   const { router } = useApp();
   return (
     <>
-      <div class={router.showTabs.value ? 'app with-tabbar' : 'app'}>
+      <div
+        class={[
+          'app',
+          router.showTabs.value ? 'with-tabbar' : '',
+          dock.value ? `dock-${dock.value}` : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+      >
         <Screen />
       </div>
       <TabBar />

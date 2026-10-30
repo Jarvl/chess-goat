@@ -4,6 +4,7 @@ import {
   loadStripMinimized,
   resetStrip,
   stripGames,
+  stripScroll,
   type StripGame,
 } from '../src/state/switcher';
 import { gameSummary } from './support/summaryFixtures';
@@ -51,6 +52,12 @@ describe('resetStrip', () => {
     stripGames.value = [A, B];
     resetStrip();
     expect(stripGames.value).toBeNull();
+  });
+
+  it('forgets where the strip was scrolled, so a fresh arrival centres the game', () => {
+    stripScroll.left = 120;
+    resetStrip();
+    expect(stripScroll.left).toBeNull();
   });
 });
 

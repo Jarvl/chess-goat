@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import {
+  dock,
   resetStrip,
   setStripMinimized,
   stripGames,
@@ -225,6 +226,25 @@ describe('minimizing the strip', () => {
     const r = mountWith([CURRENT, CAROL, DAVE]);
     await r.flush();
     expect(toggle(r).querySelector('.dot')).toBeNull();
+  });
+
+  it('tells the app whether the dock is open, minimized or gone, so toasts clear it', async () => {
+    const r = mountWith([CURRENT, CAROL, DAVE]);
+    await r.flush();
+    expect(dock.value).toBe('open');
+    await r.click('.switcher-toggle');
+    expect(dock.value).toBe('minimized');
+    act(() => render(null, r.root));
+    expect(dock.value).toBeNull();
+  });
+
+  it('tells the app the dock is gone while it hides with the tab bar', async () => {
+    useConfirmations('people');
+    const r = mountWith([CURRENT, CAROL, DAVE]);
+    await r.flush();
+    adapter.drop('e2', 'e4');
+    await r.flush();
+    expect(dock.value).toBeNull();
   });
 
   it('still minimizes for the visit when storage is blocked', async () => {

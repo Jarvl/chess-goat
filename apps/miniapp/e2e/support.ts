@@ -49,7 +49,8 @@ export type Seed = {
 };
 
 export async function seed(
-  scenario: 'none' | 'fresh' | 'opening' | 'promotion' | 'finished' | 'ranked' | 'several',
+  scenario:
+    'none' | 'fresh' | 'opening' | 'promotion' | 'finished' | 'ranked' | 'several' | 'crowd',
   prefs: Record<string, Record<string, unknown>> = {},
   options: { groupTitle?: string; bobName?: string; alicePhoto?: boolean; flair?: boolean } = {},
 ): Promise<Seed> {

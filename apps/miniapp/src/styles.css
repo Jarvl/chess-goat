@@ -868,6 +868,16 @@ button {
   bottom: calc(var(--tabbar-h) + 16px);
 }
 
+/* Clear of the game switcher docked on the tab bar: the strip and its chevron tab, or the tab
+   alone once minimized (game switcher spec), so a toast never covers a thumbnail. */
+.with-tabbar.dock-open ~ .toast {
+  bottom: calc(var(--tabbar-h) + 92px + 28px + 16px);
+}
+
+.with-tabbar.dock-minimized ~ .toast {
+  bottom: calc(var(--tabbar-h) + 28px + 16px);
+}
+
 .dialog-backdrop {
   position: fixed;
   inset: 0;
