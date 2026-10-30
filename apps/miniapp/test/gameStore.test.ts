@@ -516,4 +516,21 @@ describe('GameStore premove drafts', () => {
     store.dropDraftTree();
     expect(store.draftBase.value).toBeNull();
   });
+
+  it('restores a snapshot without undoing a save of the same draft', () => {
+    const store = opponentsTurn();
+    store.editDraft([pair('e7e5', 'g2g4')], ['e7e5', 'g2g4']);
+    const snapshot = store.snapshotDraft();
+    const saved = { ...store.draftBase.value!, tree: treeText(pair('e7e5', 'g2g4')) };
+    store.draftBase.value = saved;
+    store.restoreDraft(snapshot);
+    expect(store.draftBase.value).toBe(saved);
+    // A draft started since the snapshot goes back with it.
+    const empty = new GameStore(afterPlies(1, { viewerRole: 'white' }));
+    const before = empty.snapshotDraft();
+    empty.editDraft([pair('e7e5', 'g2g4')], ['e7e5', 'g2g4']);
+    empty.restoreDraft(before);
+    expect(empty.draftBase.value).toBeNull();
+    expect(empty.draftTree.value).toBeNull();
+  });
 });

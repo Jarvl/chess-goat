@@ -1578,6 +1578,43 @@ describe('Game premoves with move confirmations off', () => {
     expect(r.calls.filter((c) => c.method === 'GET')).toHaveLength(0);
   });
 
+  it('keeps the base a save moved forward when a replace popup opened meanwhile is cancelled', async () => {
+    const initial = played(['e2e4']);
+    const answers: ((response: FakeResponse) => void)[] = [];
+    const r = mount(
+      initial,
+      savesTree(initial, () => new Promise<FakeResponse>((resolve) => answers.push(resolve))),
+    );
+    await r.flush();
+    adapter.drop('e7', 'e5');
+    await r.flush();
+    adapter.drop('g1', 'f3');
+    await r.flush();
+    expect(putsOf(r)).toHaveLength(1);
+    // While T1 saves, a different reply opens the replace popup …
+    await r.click('.lines-panel [data-path="e7e5"]');
+    adapter.drop('b1', 'c3');
+    await r.flush();
+    expect(window.__tg!.popups.at(-1)?.message).toBe('Replace 2.Nf3 with 2.Nc3?');
+    // … the save lands, and then the popup is cancelled.
+    const t1 = encodePremoveTree([pair('e7e5', 'g1f3')]);
+    answers[0]!({ status: 200, body: { ...initial, premoveTree: t1 } });
+    await r.flush();
+    window.__tg!.answerPopup('cancel');
+    await r.flush();
+    expect(tokens(r)).toEqual(['e5', 'Nf3']);
+    await r.click('.lines-panel [data-path=""]');
+    adapter.drop('d7', 'd5');
+    await r.flush();
+    adapter.drop('e4', 'd5');
+    await r.flush();
+    expect(putsOf(r)[1]?.body).toEqual({
+      baseHash: await hashOf([pair('e7e5', 'g1f3')]),
+      tree: encodePremoveTree([pair('e7e5', 'g1f3'), pair('d7d5', 'e4d5')]),
+      expectedPly: 1,
+    });
+  });
+
   it('never saves an unsaved change over a tree another device saved meanwhile', async () => {
     limits.maxChars = 4;
     const initial = played(['e2e4']);

@@ -544,7 +544,12 @@ export class GameStore {
 
   restoreDraft(snapshot: DraftSnapshot): void {
     batch(() => {
-      this.draftBase.value = snapshot.base;
+      // A save can move the same draft's base forward while a popup is open; that newer base is
+      // what the server holds now, so it stays. Only a draft started since goes back.
+      const current = this.draftBase.value;
+      if (current === null || current.draft !== snapshot.base?.draft) {
+        this.draftBase.value = snapshot.base;
+      }
       this.waiting.value = snapshot.waiting;
       this.draftTree.value = snapshot.draftTree;
       this.selected.value = snapshot.selected;
