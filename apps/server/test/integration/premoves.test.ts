@@ -1,5 +1,6 @@
 import {
   INITIAL_FEN,
+  PREMOVE_TREE_MAX_CHARS,
   decodePremoveBytes,
   encodePremoveBytes,
   encodePremoveTree,
@@ -130,6 +131,57 @@ describe('checkTreeYielding', () => {
     expect(
       await checkTreeYielding(INITIAL_FEN, [{ move: 'e2e4', reply: 'e7e4', children: [] }], []),
     ).toEqual({ ok: false, path: ['e2e4', 'e7e4'] });
+  });
+
+  /** Bob's knight shuffle, `pairs` deep from the initial position, and its last list. */
+  const deepLine = (pairs: number) => {
+    const root: PremoveNode[] = [];
+    let bottom = root;
+    for (let index = 0; index < pairs; index += 1) {
+      const [move, reply] = index % 2 === 0 ? ['g1f3', 'g8f6'] : ['f3g1', 'f6g8'];
+      const entry: PremoveNode = { move: move!, reply: reply!, children: [] };
+      bottom.push(entry);
+      bottom = entry.children;
+    }
+    return { root, bottom };
+  };
+
+  it('gives the event loop turns while it replays a deep stored line to reach one new pair', async () => {
+    const stored = deepLine(8_900).root;
+    const edited = deepLine(8_900);
+    edited.bottom.push({ move: 'b1c3', reply: 'b8c6', children: [] });
+    expect(encodePremoveTree(edited.root).length).toBeLessThanOrEqual(PREMOVE_TREE_MAX_CHARS);
+    let turns = 0;
+    let ticking = true;
+    const tick = () => {
+      if (!ticking) return;
+      turns += 1;
+      setImmediate(tick);
+    };
+    setImmediate(tick);
+    try {
+      expect(await checkTreeYielding(INITIAL_FEN, edited.root, stored)).toEqual({ ok: true });
+    } finally {
+      ticking = false;
+    }
+    // About 8,900 replayed pairs in slices of 256: the loop gets a turn after each slice.
+    expect(turns).toBeGreaterThanOrEqual(30);
+  });
+
+  it('saves an edit at the bottom of a deep stored line', async () => {
+    const { game, bob } = await setup();
+    const stored = deepLine(8_900).root;
+    await storeTree(game.id, stored);
+    const edited = deepLine(8_900);
+    edited.bottom.push({ move: 'b1c3', reply: 'b8c6', children: [] });
+    const dto = await setPremoveTree(deps, {
+      gameId: game.publicId,
+      userId: bob.id,
+      baseHash: await premoveTreeHash(encodePremoveBytes(stored)),
+      tree: encodePremoveTree(edited.root),
+      expectedPly: 0,
+    });
+    expect(dto.premoveTree).toBe(encodePremoveTree(edited.root));
   });
 });
 

@@ -9,8 +9,9 @@ import {
 import { DomainError } from './errors';
 
 /**
- * Runs `premoveTreeCheck` to the end, giving the event loop a turn every `slice` checked pairs:
- * a whole new tree of thousands of pairs takes seconds (conditional premoves spec, API).
+ * Runs `premoveTreeCheck` to the end, giving the event loop a turn every `slice` pairs it plays
+ * (checked, or replayed to reach a new one): a whole new tree of thousands of pairs takes seconds,
+ * and so does one new pair under a line of thousands of stored ones (conditional premoves spec, API).
  */
 export async function checkTreeYielding(
   fen: string,

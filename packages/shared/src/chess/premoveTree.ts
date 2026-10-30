@@ -216,9 +216,12 @@ type CheckFrame = {
 
 /**
  * Checks that every pair is legal in its own line and that no list repeats an opponent move.
- * Yields once per newly checked pair so callers can slice the work. A pair found in `known`
- * (same path, move and reply) is not checked again; its children are compared against `known`'s.
- * Walks with its own stack, not recursion: the tree is decoded input and may be thousands deep.
+ * Yields once per pair it plays on a board, so callers can slice the work: each newly checked
+ * pair, and each stored pair replayed to reach the position of a new one below it. A pair found
+ * in `known` (same path, move and reply) is not checked again; its children are compared against
+ * `known`'s. A new pair under a line of thousands of known ones replays that whole line, which is
+ * why the replays yield too. Walks with its own stack, not recursion: the tree is decoded input
+ * and may be thousands deep.
  */
 export function* premoveTreeCheck(
   fen: string,
@@ -238,8 +241,11 @@ export function* premoveTreeCheck(
     next: 0,
     pathLength,
   });
-  /** The position of frame `index`, replaying the pairs above it if it was left unbuilt. */
-  const positionOf = (index: number): string => {
+  /**
+   * The position of frame `index`, replaying the pairs above it if it was left unbuilt. Yields
+   * once per replayed pair: used with `yield*`, so a long replay is sliced like new pairs.
+   */
+  function* positionOf(index: number): Generator<void, string> {
     let start = index;
     while (frames[start]?.fen === null) start -= 1;
     let position = frames[start]?.fen as string;
@@ -251,9 +257,10 @@ export function* premoveTreeCheck(
       playLegal(chess, entry.reply);
       position = chess.fen();
       (frames[level + 1] as CheckFrame).fen = position;
+      yield;
     }
     return position;
-  };
+  }
 
   const path: string[] = [];
   const frames = [open(tree, known, fen, 0)];
@@ -275,7 +282,7 @@ export function* premoveTreeCheck(
     );
     let after: string | null = null;
     if (!knownEntry) {
-      const chess = new Chess(positionOf(depth));
+      const chess = new Chess(yield* positionOf(depth));
       if (!playLegal(chess, entry.move)) return { ok: false, path };
       if (!playLegal(chess, entry.reply)) {
         path.push(entry.reply);

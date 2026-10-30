@@ -338,11 +338,35 @@ describe('premoveTreeCheck', () => {
     expect(countYields(AFTER_E4, good())).toEqual({ yields: 2, result: { ok: true } });
   });
 
-  it('skips nodes already in known', () => {
+  it('skips nodes already in known, yielding only for the replay that reaches a new one', () => {
     const known = good();
     const tree = [node('e7e5', 'g1f3', [node('b8c6', 'f1b5', [node('a7a6', 'b5a4')])])];
-    expect(countYields(AFTER_E4, tree, known)).toEqual({ yields: 1, result: { ok: true } });
+    // Two known pairs replayed to reach the new one, then the new one itself.
+    expect(countYields(AFTER_E4, tree, known)).toEqual({ yields: 3, result: { ok: true } });
     expect(countYields(AFTER_E4, known, known)).toEqual({ yields: 0, result: { ok: true } });
+  });
+
+  it('slices the replay of a deep known line, replaying it once for several new pairs', () => {
+    // A knight shuffle 2,000 pairs deep, all known, with two new leaves at the bottom.
+    const line = (): { root: PremoveNode[]; bottom: PremoveNode[] } => {
+      const root: PremoveNode[] = [];
+      let list = root;
+      for (let index = 0; index < 2_000; index += 1) {
+        const entry = index % 2 === 0 ? node('g8f6', 'g1f3') : node('f6g8', 'f3g1');
+        list.push(entry);
+        list = entry.children;
+      }
+      return { root, bottom: list };
+    };
+    const known = line().root;
+    const edited = line();
+    edited.bottom.push(node('b8c6', 'b1c3'), node('a7a6', 'a2a3'));
+    expect(countYields(AFTER_E4, edited.root, known)).toEqual({
+      yields: 2_002,
+      result: { ok: true },
+    });
+    edited.bottom.push(node('a7a5', 'a2a5'));
+    expect(checkPremoveTree(AFTER_E4, edited.root, known)).toMatchObject({ ok: false });
   });
 
   it('still checks a node whose reply differs from the known one', () => {
