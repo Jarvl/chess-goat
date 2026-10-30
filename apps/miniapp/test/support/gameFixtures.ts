@@ -77,7 +77,6 @@ export function gameDto(overrides: Partial<GameDto> = {}): GameDto {
     startedAt: '2026-09-20T10:00:00.000Z',
     finishedAt: null,
     engineLevel: null,
-    premoves: [],
     premoveTree: '',
     ...overrides,
   };

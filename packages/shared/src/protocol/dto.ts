@@ -106,8 +106,6 @@ export const GameDtoSchema = z.object({
   finishedAt: IsoDateSchema.nullable(),
   /** The bot level when this is a game against the bot, otherwise null. */
   engineLevel: EngineLevelSchema.nullable(),
-  /** The viewer's own premove chain while it is not their turn; `[]` for everyone else (premoves spec). */
-  premoves: z.array(UciSchema).default([]),
   /** The viewer's own premove tree while it is not their turn; `''` for everyone else. */
   premoveTree: PremoveTreeTextSchema.default(''),
   /** Only present once the game is finished (spec §7.6). */

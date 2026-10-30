@@ -6,7 +6,6 @@ import {
   MoveRequestSchema,
   PrefsUpdateRequestSchema,
   PremoveTreeRequestSchema,
-  PremovesRequestSchema,
   TelemetryRequestSchema,
   TipRequestSchema,
   TIP_MIN_STARS,
@@ -124,19 +123,6 @@ describe('TipRequestSchema', () => {
     ['nothing', undefined],
   ])('rejects %s', (_label, stars) => {
     expect(TipRequestSchema.safeParse({ stars }).success).toBe(false);
-  });
-});
-
-describe('PremovesRequestSchema', () => {
-  it('takes the shown list, the wanted list and the ply, with no length cap', () => {
-    const long = Array.from({ length: 200 }, () => 'g8f6');
-    expect(
-      PremovesRequestSchema.parse({ base: [], premoves: long, expectedPly: 3 }).premoves,
-    ).toHaveLength(200);
-    expect(() =>
-      PremovesRequestSchema.parse({ base: [], premoves: ['e7'], expectedPly: 0 }),
-    ).toThrow();
-    expect(() => PremovesRequestSchema.parse({ premoves: [], expectedPly: 0 })).toThrow();
   });
 });
 

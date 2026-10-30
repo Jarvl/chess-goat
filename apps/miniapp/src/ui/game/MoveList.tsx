@@ -25,10 +25,9 @@ function lineLabels(rootFen: string, line: readonly string[]): string[] {
 
 /**
  * The strip: the game's real moves, the player's waiting move, then the premove line being viewed.
- * `locked` while a move waits for Confirm move: the board holds that move, so the real moves can't
- * be tapped; the waiting move and the line still can. The ✕ follows the selected line move.
+ * The ✕ follows the selected line move.
  */
-export function MoveList(props: { store: GameStore; locked?: boolean; onRemove?: () => void }) {
+export function MoveList(props: { store: GameStore; onRemove?: () => void }) {
   const { store } = props;
   const { tg } = useApp();
   const dto = store.dto.value;
@@ -67,7 +66,6 @@ export function MoveList(props: { store: GameStore; locked?: boolean; onRemove?:
             key={move.ply}
             data-ply={move.ply}
             aria-current={at === move.ply ? 'true' : 'false'}
-            disabled={props.locked}
             onClick={() => view(move.ply)}
           >
             {move.san}

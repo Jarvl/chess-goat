@@ -189,8 +189,8 @@ export function engineJobHandlers(ctx: EngineHandlerContext): JobHandlers {
           // is owed, reaching here means Stockfish and the arbiter disagree — an error, not noise.
           const fresh = await requireGameById(deps.db, gameId);
           // A premove the human queued can answer the engine inside its own move, leaving the
-          // engine to move again at a later ply; that ply's job is already enqueued (premoves spec,
-          // Engine job). Only the same ply still owing a move is a stall.
+          // engine to move again at a later ply; that ply's job is already enqueued (conditional
+          // premoves spec, Firing). Only the same ply still owing a move is a stall.
           if (
             fresh.status === 'active' &&
             fresh.plyCount === game.plyCount &&

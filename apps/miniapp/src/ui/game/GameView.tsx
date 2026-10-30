@@ -99,7 +99,7 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
   // Confirm premoves is on its way to the server.
   const [confirmingPremoves, setConfirmingPremoves] = useState(false);
   const confirmingPremovesRef = useRef(false);
-  // A save with confirmations off is running (premoves spec, Queuing).
+  // A save with confirmations off is running (conditional premoves spec, Sending it).
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const now = useClock(store);

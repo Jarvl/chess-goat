@@ -6,7 +6,6 @@ export * from './protocol/callbackData';
 export * from './protocol/dto';
 export * from './protocol/requests';
 export * from './chess/arbiter';
-export * from './chess/premove';
 export * from './chess/premoveTree';
 export * from './chess/pgn';
 export * from './chess/material';

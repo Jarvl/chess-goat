@@ -65,7 +65,6 @@ const activeGame = {
   startedAt: '2026-09-20T09:00:00.000Z',
   finishedAt: null,
   engineLevel: null,
-  premoves: [],
   premoveTree: '',
 };
 
@@ -263,17 +262,6 @@ describe('TipInvoiceDtoSchema', () => {
 
   it('rejects an empty link', () => {
     expect(TipInvoiceDtoSchema.safeParse({ url: '' }).success).toBe(false);
-  });
-});
-
-describe('GameDtoSchema premoves', () => {
-  it('defaults premoves to an empty list and keeps a sent one', () => {
-    expect(GameDtoSchema.parse(activeGame).premoves).toEqual([]);
-    expect(GameDtoSchema.parse({ ...activeGame, premoves: ['e7e5', 'e5e4'] }).premoves).toEqual([
-      'e7e5',
-      'e5e4',
-    ]);
-    expect(() => GameDtoSchema.parse({ ...activeGame, premoves: ['e9e5'] })).toThrow();
   });
 });
 

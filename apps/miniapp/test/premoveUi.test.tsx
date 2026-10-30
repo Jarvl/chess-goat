@@ -124,17 +124,6 @@ describe('MoveList strip', () => {
     expect(store.viewingPly.value).toBe(1);
   });
 
-  it('locked disables the real moves but not the waiting move or the line', async () => {
-    const store = withWaiting();
-    const r = renderApp(() => <MoveList store={store} locked />, ok);
-    await r.flush();
-    for (const button of strip(r).querySelectorAll('[data-ply]'))
-      expect((button as HTMLButtonElement).disabled).toBe(true);
-    expect((strip(r).querySelector('[data-waiting]') as HTMLButtonElement).disabled).toBe(false);
-    await r.click('[data-line="0"]');
-    expect(store.selected.value).toEqual(['d7d5']);
-  });
-
   it('still says there are no moves when there is nothing at all', async () => {
     const store = new GameStore(afterPlies(0, { viewerRole: 'spectator' }));
     const r = renderApp(() => <MoveList store={store} />, ok);

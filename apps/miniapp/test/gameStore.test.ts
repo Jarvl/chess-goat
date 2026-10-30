@@ -36,7 +36,7 @@ describe('GameStore', () => {
     expect(white.canMove.value).toBe(true);
 
     const waitingBlack = new GameStore(afterPlies(2, { viewerRole: 'black' }));
-    expect(waitingBlack.premoveMode.value).toBe(true); // premoves spec: the waiting player premoves
+    expect(waitingBlack.building.value).toBe(true); // the waiting player builds premoves
     expect(waitingBlack.canMove.value).toBe(true);
     expect(new GameStore(afterPlies(2, { viewerRole: 'spectator' })).canMove.value).toBe(false);
     expect(
@@ -113,113 +113,38 @@ describe('diffNotices', () => {
   });
 });
 
-describe('GameStore premoves', () => {
+describe('GameStore building', () => {
   // After 1. f3 it is Black's move; White (the viewer) premoves.
-  const waiting = (premoves: string[] = []) => afterPlies(1, { viewerRole: 'white', premoves });
+  const waiting = () => afterPlies(1, { viewerRole: 'white' });
 
-  it('enters premove mode only for a player waiting on the latest position', () => {
-    expect(new GameStore(waiting()).premoveMode.value).toBe(true);
-    expect(new GameStore(afterPlies(2, { viewerRole: 'white' })).premoveMode.value).toBe(false);
-    expect(new GameStore(afterPlies(1, { viewerRole: 'spectator' })).premoveMode.value).toBe(false);
-    expect(
-      new GameStore(afterPlies(1, { viewerRole: 'white', status: 'finished' })).premoveMode.value,
-    ).toBe(false);
+  it('builds only for a player waiting on the opponent, and only at the latest position', () => {
+    expect(new GameStore(waiting()).building.value).toBe(true);
+    expect(new GameStore(afterPlies(2, { viewerRole: 'white' })).building.value).toBe(false);
+    expect(new GameStore(afterPlies(1, { viewerRole: 'spectator' })).building.value).toBe(false);
     const reading = new GameStore(afterPlies(3, { viewerRole: 'black' }));
     reading.viewPly(1);
-    expect(reading.premoveMode.value).toBe(false);
     expect(reading.canMove.value).toBe(false);
   });
 
-  it('applies a same-version state whose chain changed, and it replaces an optimistic chain', () => {
+  it('applies a same-version state whose tree changed', () => {
     const store = new GameStore(waiting());
-    store.optimisticPremoves.value = ['g1h3'];
-    expect(store.premoves.value).toEqual(['g1h3']);
-    expect(store.apply(waiting(['b1c3']))).toBe(true);
-    expect(store.premoves.value).toEqual(['b1c3']);
-    expect(store.optimisticPremoves.value).toBeNull();
-    expect(store.apply(waiting(['b1c3']))).toBe(false);
+    const changed = afterPlies(1, {
+      viewerRole: 'white',
+      premoveTree: treeText(pair('e7e5', 'g2g4')),
+    });
+    expect(store.apply(changed)).toBe(true);
+    expect(store.apply(changed)).toBe(false);
   });
 
-  it('clamps the viewed step to the end when the chain shrinks, and resets it when the game moves on', () => {
-    const store = new GameStore(waiting(['g1h3', 'h3g5']));
-    store.premoveStep.value = 2;
-    store.apply(waiting(['g1h3']));
-    // The chain shrank to (at or below) the stored step, so the step itself clamps to the end —
-    // not just the derived shownStep — otherwise a later append would jump back to it (fix round 1).
-    expect(store.premoveStep.value).toBeNull();
-    expect(store.shownStep.value).toBe(1);
-    store.apply(waiting(['g1h3', 'b1c3']));
-    expect(store.atChainEnd.value).toBe(true);
-    store.apply(afterPlies(3, { viewerRole: 'white' }));
-    expect(store.premoveStep.value).toBeNull();
-  });
-
-  it('stays out of premove mode while the player’s own move is still settling', () => {
+  it('stays out of building while the player’s own move is still settling', () => {
     // The stream can show the opponent's turn before the POST /moves answers or while it retries.
     const store = new GameStore(waiting());
     store.moveBusy.value = true;
-    expect(store.premoveMode.value).toBe(false);
+    expect(store.building.value).toBe(false);
     expect(store.canMove.value).toBe(false);
     expect(store.dests.value.size).toBe(0);
     store.moveBusy.value = false;
-    expect(store.premoveMode.value).toBe(true);
-  });
-
-  it('keeps the board live while a premove edit is being saved', () => {
-    const store = new GameStore(waiting());
-    store.premoveSending.value = true;
-    expect(store.canMove.value).toBe(true);
-  });
-
-  it('keeps an unsaved chain through a same-ply state while saving, and drops it on a new ply', () => {
-    const store = new GameStore(waiting());
-    store.premoveSending.value = true;
-    store.optimisticPremoves.value = ['g1h3', 'h3g5'];
-    store.apply(waiting(['g1h3']));
-    expect(store.premoves.value).toEqual(['g1h3', 'h3g5']);
-    store.apply(afterPlies(2, { viewerRole: 'white' }));
-    expect(store.optimisticPremoves.value).toBeNull();
-  });
-});
-
-describe('GameStore timeline', () => {
-  // After 1. f3 it is Black's move; White has queued Nh3 and Ng5.
-  const chained = () =>
-    new GameStore(afterPlies(1, { viewerRole: 'white', premoves: ['g1h3', 'h3g5'] }));
-
-  it('runs through the real moves, then on through the premoves, starting at the chain end', () => {
-    const store = chained();
-    expect(store.timelineEnd.value).toBe(3);
-    expect(store.timelineAt.value).toBe(3);
-    expect(store.viewTimeline(2)).toBe(true);
-    expect(store.shownStep.value).toBe(1);
-    expect(store.viewTimeline(1)).toBe(true);
-    expect(store.shownStep.value).toBe(0);
-    expect(store.isLatest.value).toBe(true);
-    expect(store.viewTimeline(1)).toBe(false);
-  });
-
-  it('keeps the premove stretch while an earlier real move is shown, and comes back into it', () => {
-    const store = chained();
-    store.viewTimeline(0);
-    expect(store.position.value.ply).toBe(0);
-    expect(store.premoveMode.value).toBe(false);
-    expect(store.premoveOpen.value).toBe(true);
-    expect(store.timelineEnd.value).toBe(3);
-    expect(store.timelineAt.value).toBe(0);
-    store.viewTimeline(2);
-    expect(store.isLatest.value).toBe(true);
-    expect(store.shownStep.value).toBe(1);
-    expect(store.timelineAt.value).toBe(2);
-  });
-
-  it('ends at the last real move when premoves are not possible', () => {
-    const store = new GameStore(afterPlies(2, { viewerRole: 'white' }));
-    expect(store.timelineEnd.value).toBe(2);
-    store.viewTimeline(1);
-    expect(store.timelineAt.value).toBe(1);
-    const watching = new GameStore(afterPlies(1, { viewerRole: 'spectator' }));
-    expect(watching.timelineEnd.value).toBe(1);
+    expect(store.building.value).toBe(true);
   });
 });
 

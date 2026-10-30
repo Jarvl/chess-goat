@@ -1,5 +1,6 @@
 import {
   GameDtoSchema,
+  PREMOVE_TREE_MAX_CHARS,
   countPremovePairs,
   decodePremoveBytes,
   encodePremoveBytes,
@@ -219,10 +220,11 @@ describe('PUT /api/games/:id/premoves', () => {
     );
   });
 
-  it('saves and edits a 9,000-pair tree', async () => {
+  it('saves and edits a tree of 8,990 pairs, near the size limit', async () => {
     const { game, tokens } = await world();
-    const tree = bigTree(9_000);
-    expect(countPremovePairs(tree)).toBe(9_000);
+    const tree = bigTree(8_990);
+    expect(countPremovePairs(tree)).toBe(8_990);
+    expect(encodePremoveTree(tree).length).toBeLessThanOrEqual(PREMOVE_TREE_MAX_CHARS);
     const first = await body([], tree);
     expect(new TextEncoder().encode(JSON.stringify(first)).length).toBeLessThan(64 * 1024);
     expect((await put(tokens.bob, game.publicId, first)).status).toBe(200);
@@ -236,6 +238,7 @@ describe('PUT /api/games/:id/premoves', () => {
       children: [],
     };
     const edited = [...tree, extra];
+    expect(encodePremoveTree(edited).length).toBeLessThanOrEqual(PREMOVE_TREE_MAX_CHARS);
     const second = await body(tree, edited);
     expect(new TextEncoder().encode(JSON.stringify(second)).length).toBeLessThan(64 * 1024);
     expect((await put(tokens.bob, game.publicId, second)).status).toBe(200);

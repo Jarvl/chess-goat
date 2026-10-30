@@ -130,7 +130,6 @@ export function buildGameDto(input: GameDtoInput): GameDto {
     startedAt: game.startedAt.toISOString(),
     finishedAt: game.finishedAt ? game.finishedAt.toISOString() : null,
     engineLevel: game.engineLevel,
-    premoves: owner ? [...game.premoves] : [],
     premoveTree: owner ? toBase64Url(game.premoveTree) : '',
   };
   if (game.status === 'finished') {

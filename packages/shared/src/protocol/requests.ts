@@ -21,15 +21,6 @@ export const MoveRequestSchema = z.object({
 
 export type MoveRequest = z.infer<typeof MoveRequestSchema>;
 
-/** Compare-and-set of the viewer's premove chain (premoves spec, API): `base` is the chain the device showed. */
-export const PremovesRequestSchema = z.object({
-  base: z.array(UciSchema),
-  premoves: z.array(UciSchema),
-  expectedPly: z.number().int().min(0),
-});
-
-export type PremovesRequest = z.infer<typeof PremovesRequestSchema>;
-
 /** Compare-and-set of the viewer's premove tree: `baseHash` fingerprints the tree the device showed. */
 export const PremoveTreeRequestSchema = z.object({
   baseHash: z.string().regex(/^[A-Za-z0-9_-]{43}$/),

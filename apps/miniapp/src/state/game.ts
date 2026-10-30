@@ -2,7 +2,6 @@ import {
   applyMove,
   decodePremoveTree,
   encodePremoveTree,
-  imaginedBoard,
   INITIAL_FEN,
   legalDests,
   sideToMove,
@@ -15,7 +14,6 @@ import { batch, computed, signal, type ReadonlySignal, type Signal } from '@prea
 import { Chess } from 'chess.js';
 import { fenAt, isPrefix, nodeAt } from './premoveDraft';
 import { buildTimeline, timelineTarget, type Timeline } from './premoveTimeline';
-import { premoveLabel, sameList } from './premoves';
 
 export type Position = {
   ply: number;
@@ -194,39 +192,15 @@ export class GameStore {
   readonly canMove: ReadonlySignal<boolean>;
   readonly dests: ReadonlySignal<Map<string, string[]>>;
   /**
-   * The chain the player has made but the server hasn't confirmed yet. A state from the server
-   * replaces it, except a same-ply one while a save is running: the save owns it until it settles
-   * (premoves spec, Queuing).
-   */
-  readonly optimisticPremoves: Signal<string[] | null> = signal(null);
-  /** null is the end of the chain; 0 the current position; k the position after premove k. */
-  readonly premoveStep: Signal<number | null> = signal(null);
-  /** A premove save is running. The board stays live; further edits wait their turn. */
-  readonly premoveSending: Signal<boolean> = signal(false);
-  /**
    * True while the player's own move is anywhere short of settled (waiting for Confirm, sending,
    * retrying). The stream can already show the opponent's turn then, but every drop would be
    * refused until the move settles, so the board offers no premoves meanwhile.
    */
   readonly moveBusy: Signal<boolean> = signal(false);
-  readonly premoves: ReadonlySignal<string[]>;
-  /** Premoves are possible: the player waits on the opponent. True while an earlier move is shown. */
-  readonly premoveOpen: ReadonlySignal<boolean>;
-  /** Premoves are possible and the latest position is shown, so the board shows the chain. */
-  readonly premoveMode: ReadonlySignal<boolean>;
-  /** The slider's last index: the real plies, then the premoves while they are possible. */
-  readonly timelineEnd: ReadonlySignal<number>;
-  /** Where the slider stands: a ply, or past the last one, a premove step. */
-  readonly timelineAt: ReadonlySignal<number>;
-  readonly shownStep: ReadonlySignal<number>;
-  readonly atChainEnd: ReadonlySignal<boolean>;
   readonly boardView: ReadonlySignal<Position>;
   readonly boardTurn: ReadonlySignal<Colour>;
-  readonly premoveSquares: ReadonlySignal<string[]>;
-  readonly premoveLabels: ReadonlySignal<string[]>;
 
-  // Conditional premoves (spec, Mini App: Server state vs draft). These sit beside the blind-chain
-  // signals above until GameView switches over to them.
+  // Conditional premoves (spec, Mini App: Server state vs draft).
   /** The viewer's tree as the server last sent it. */
   readonly serverTree: ReadonlySignal<PremoveNode[]>;
   /** The player's move waiting for Confirm move; GameView sets it from the move machine. */
@@ -269,49 +243,10 @@ export class GameStore {
       return this.flipped.value ? (own === 'white' ? 'black' : 'white') : own;
     });
     this.sideToMove = computed(() => sideToMove(this.position.value.fen));
-    this.premoves = computed(() => this.optimisticPremoves.value ?? this.dto.value.premoves);
-    this.premoveOpen = computed(() => {
-      const dto = this.dto.value;
-      return (
-        dto.status === 'active' &&
-        (dto.viewerRole === 'white' || dto.viewerRole === 'black') &&
-        sideToMove(dto.fen) !== dto.viewerRole &&
-        !this.moveBusy.value
-      );
-    });
-    this.premoveMode = computed(() => this.premoveOpen.value && this.isLatest.value);
-    this.shownStep = computed(() =>
-      Math.min(this.premoveStep.value ?? Number.POSITIVE_INFINITY, this.premoves.value.length),
-    );
-    this.atChainEnd = computed(() => this.shownStep.value === this.premoves.value.length);
-    this.timelineEnd = computed(
-      () => this.dto.value.plyCount + (this.premoveOpen.value ? this.premoves.value.length : 0),
-    );
-    this.timelineAt = computed(() =>
-      this.premoveMode.value
-        ? this.dto.value.plyCount + this.shownStep.value
-        : this.position.value.ply,
-    );
-    // The queue belongs to the viewer; an entry that would move the other side's piece (one that
-    // captured the piece it was queued for) is skipped, as the server's check skips it.
-    const owner = (): Colour | undefined => {
-      const role = this.dto.value.viewerRole;
-      return role === 'white' || role === 'black' ? role : undefined;
-    };
-    const imagined = (count: number) =>
-      imaginedBoard(this.dto.value.fen, this.premoves.value.slice(0, count), owner());
     // The board shows what buildView shows: the real position, an earlier one, or a position in
     // the premove tree while building (conditional premoves spec, Mini App: Board).
     this.boardView = computed(() => this.buildView.value.position);
     this.boardTurn = computed(() => this.buildView.value.turn);
-    this.premoveSquares = computed(() => {
-      const step = this.shownStep.value;
-      const uci = this.premoveMode.value && step > 0 ? this.premoves.value[step - 1] : undefined;
-      return uci ? [uci.slice(0, 2), uci.slice(2, 4)] : [];
-    });
-    this.premoveLabels = computed(() =>
-      this.premoves.value.map((uci, index) => premoveLabel(imagined(index), uci, owner())),
-    );
     this.canMove = computed(() => this.buildView.value.canMove);
     this.dests = computed(() => this.buildView.value.dests);
     this.highlights = computed(() => {
@@ -427,7 +362,6 @@ export class GameStore {
       next.version === current.version &&
       next.plyCount === current.plyCount &&
       next.status === current.status &&
-      sameList(next.premoves, current.premoves) &&
       next.premoveTree === current.premoveTree
     ) {
       return false;
@@ -444,15 +378,6 @@ export class GameStore {
     // A new ply or a game end voids the draft (conditional premoves spec, Sending it); a same-ply
     // state only replaces the server tree.
     if (!samePly) this.resetDraft();
-    if (!(this.premoveSending.value && samePly)) this.optimisticPremoves.value = null;
-    // The step clamps to the end when the game moves on, or when the chain shrinks to at or
-    // below it — otherwise a later append would jump the view back to a stale step (fix round 1).
-    if (
-      next.plyCount !== current.plyCount ||
-      next.premoves.length <= (this.premoveStep.value ?? Number.POSITIVE_INFINITY)
-    ) {
-      this.premoveStep.value = null;
-    }
     // A player reading an old position is brought back when the game moves on; spectators stay.
     if (viewing !== null && next.plyCount > current.plyCount && next.viewerRole !== 'spectator') {
       this.viewingPly.value = null;
@@ -465,13 +390,10 @@ export class GameStore {
   }
 
   /**
-   * Shows index `index` on the slider. While a blind chain is shown the old chain slider rules
-   * apply; otherwise the conditional premove timeline does: an earlier ply (the one before the
-   * waiting move included) or a position along the line being viewed. Returns whether the view
-   * changed.
+   * Shows index `index` on the slider: an earlier ply (the one before the waiting move included)
+   * or a position along the line being viewed. Returns whether the view changed.
    */
   viewTimeline(index: number): boolean {
-    if (this.premoves.value.length > 0) return this.viewChainTimeline(index);
     const timeline = this.timeline.value;
     const target = timelineTarget(timeline, index);
     if (
@@ -576,33 +498,7 @@ export class GameStore {
     if (length < path.length) this.selected.value = path.slice(0, length);
   }
 
-  /**
-   * The blind chain's slider: a ply up to the last real move, a premove step past it. The last
-   * real move with a chain queued is step 0, the real position.
-   */
-  private viewChainTimeline(at: number): boolean {
-    const plies = this.dto.value.plyCount;
-    const k = Math.max(0, Math.min(this.timelineEnd.value, at));
-    if (k === this.timelineAt.value) return false;
-    if (k < plies) {
-      this.viewPly(k);
-      return true;
-    }
-    this.viewPly(null);
-    if (this.premoveOpen.value) this.viewPremove(k - plies);
-    return true;
-  }
-
   flip(): void {
     this.flipped.value = !this.flipped.value;
-  }
-
-  /** Views premove `step` (0 = the current position); returns whether the view changed. */
-  viewPremove(step: number): boolean {
-    const length = this.premoves.value.length;
-    const k = Math.max(0, Math.min(length, step));
-    if (k === this.shownStep.value) return false;
-    this.premoveStep.value = k === length ? null : k;
-    return true;
   }
 }

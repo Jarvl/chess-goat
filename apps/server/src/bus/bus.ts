@@ -1,4 +1,4 @@
-/** Who a publish is meant for; without one, everyone watching the game (premoves spec, Several devices). */
+/** Who a publish is meant for; without one, everyone watching the game (conditional premoves spec, Privacy and several devices). */
 export type Audience = { userId: number };
 
 /** In-process publish/subscribe of game changes to SSE streams (spec §4.2). Keys are public game ids. */

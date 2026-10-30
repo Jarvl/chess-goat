@@ -137,7 +137,6 @@ export async function finishGame(
       reminderAt: null,
       drawOfferBy: null,
       drawOfferPly: null,
-      premoves: [],
       premoveTree: Buffer.alloc(0),
       lichessImportStatus: importable ? 'pending' : null,
       version: sql`${games.version} + 1`,
