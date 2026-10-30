@@ -1,4 +1,5 @@
 import { render, type ComponentChildren } from 'preact';
+import { act } from 'preact/test-utils';
 import { createApiClient, type ApiClient } from '../../src/api/client';
 import { Router } from '../../src/router';
 import { prefs, session } from '../../src/state/session';
@@ -59,7 +60,9 @@ export function renderApp(
   };
   const router = new Router(tg, { closeFromRoot: options.closeFromRoot ?? false });
   const app: AppContextValue = { tg, client, router, prefetched: {} };
-  if (lastRoot) render(null, lastRoot); // unmount the previous tree: its streams and timers stop
+  // Unmount the previous tree: its streams and timers stop. `act` runs its effect cleanups now,
+  // which Preact otherwise defers until after the next paint.
+  if (lastRoot) act(() => render(null, lastRoot!));
   document.body.innerHTML = '';
   resetToasts(); // a toast from a previous test's fixture must not bleed into this fresh mount
   const root = document.createElement('div');

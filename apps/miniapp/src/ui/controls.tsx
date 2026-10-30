@@ -1,4 +1,4 @@
-import type { ComponentChildren, JSX } from 'preact';
+import type { ComponentChildren, TargetedEvent } from 'preact';
 import { useApp } from './context';
 
 export type DataAttributes = Record<`data-${string}`, string | number | boolean | undefined>;
@@ -68,7 +68,7 @@ export function Select<V extends string>(
   } & DataAttributes,
 ) {
   const { options, value, onChange, ...rest } = props;
-  const handle = (event: JSX.TargetedEvent<HTMLSelectElement>) =>
+  const handle = (event: TargetedEvent<HTMLSelectElement>) =>
     onChange(event.currentTarget.value as V);
   return (
     <select value={value} onChange={handle} {...rest}>

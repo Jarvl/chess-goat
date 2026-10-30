@@ -2142,6 +2142,7 @@ describe('Game leaving with an unconfirmed draft', () => {
     await dropAll(r, [['e2', 'e4']]);
     expect(r.app.router.leaveGuard).not.toBeNull();
     render(null, r.root);
+    await r.flush();
     expect(r.app.router.leaveGuard).toBeNull();
     expect(window.__tg!.closingConfirmation).toBe(false);
   });
