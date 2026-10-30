@@ -77,6 +77,16 @@ describe('the game switcher strip', () => {
     expect(r.root.querySelector('.game')!.classList.contains('with-switcher')).toBe(true);
   });
 
+  it('sits at the bottom, under the game buttons, within reach of a thumb', async () => {
+    const r = mountWith([CURRENT, CAROL, DAVE]);
+    await r.flush();
+    const game = r.root.querySelector('.game')!;
+    expect(game.lastElementChild!.classList.contains('switcher')).toBe(true);
+    expect(game.lastElementChild!.previousElementSibling!.classList.contains('icon-bar')).toBe(
+      true,
+    );
+  });
+
   it('is hidden when there is no other game', async () => {
     const r = mountWith([CURRENT]);
     await r.flush();

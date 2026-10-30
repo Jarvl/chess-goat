@@ -952,23 +952,23 @@ button {
   padding: 8px 0 24px;
 }
 
-/* The switcher strip above the meta line (game switcher spec): 56px boards, the 11px name under
-   them and the strip's padding and border. The board gives the whole row back, so a short phone
-   keeps the slider above the tab bar. */
+/* The switcher strip under the icon bar, just above the tab bar where a thumb reaches it (game
+   switcher spec): 56px boards, the 11px name under them, the strip's padding and its gap above.
+   The board gives the whole row back, so a short phone keeps the strip above the tab bar. */
 .game.with-switcher {
-  --switcher-row: 86px;
+  --switcher-row: 98px;
 }
 
 .switcher {
   display: flex;
   gap: 10px;
-  margin-top: -8px;
-  padding: 10px 12px 8px;
+  margin: 8px 12px 0;
+  padding: 8px 10px;
+  border-radius: 18px;
   overflow-x: auto;
   overscroll-behavior-x: contain;
   scrollbar-width: none;
   background: var(--card);
-  border-bottom: 1px solid var(--sep);
 }
 
 .switcher::-webkit-scrollbar {

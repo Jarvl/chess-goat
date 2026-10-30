@@ -887,7 +887,6 @@ export function GameView(props: {
 
   return (
     <div class={strip ? 'game with-switcher' : 'game'}>
-      {strip ? <GameSwitcher games={strip} current={dto} /> : null}
       <div class="game-meta">
         {t('app.game.meta', {
           group: dto.group.title,
@@ -1110,6 +1109,8 @@ export function GameView(props: {
           </button>
         </div>
       )}
+      {/* Last, just above the tab bar, where a thumb reaches it (game switcher spec). */}
+      {strip ? <GameSwitcher games={strip} current={dto} /> : null}
     </div>
   );
 }
