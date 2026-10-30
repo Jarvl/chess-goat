@@ -15,7 +15,6 @@ describe('Avatar', () => {
       ),
       () => ({ status: 200, body: {} }),
     );
-    await r.flush();
     const [person, bot, group] = [...r.root.querySelectorAll('.avatar')] as HTMLElement[];
     expect(person!.textContent).toBe('M');
     // happy-dom may keep the hex or serialise it as rgb(); either is the palette's red.
@@ -31,7 +30,6 @@ describe('Avatar', () => {
 
   it('lays the photo over the initial', async () => {
     const r = renderApp(() => <Avatar player={maya('/api/avatars/x.jpg')} size={40} />, noFetch);
-    await r.flush();
     const photo = r.root.querySelector('span.avatar img.photo') as HTMLImageElement;
     expect(photo.getAttribute('src')).toBe('/api/avatars/x.jpg');
     expect(photo.getAttribute('alt')).toBe('');
@@ -40,7 +38,6 @@ describe('Avatar', () => {
 
   it('falls back to the initial when the photo fails', async () => {
     const r = renderApp(() => <Avatar player={maya('/api/avatars/x.jpg')} size={40} />, noFetch);
-    await r.flush();
     r.root.querySelector('img.photo')!.dispatchEvent(new Event('error'));
     await r.flush();
     expect(r.root.querySelector('img.photo')).toBeNull();
@@ -52,7 +49,6 @@ describe('Avatar', () => {
     // Read inside a component, so the signal re-renders it; renderApp calls `ui` outside one.
     const Host = () => <Avatar player={maya(url.value)} size={40} />;
     const r = renderApp(() => <Host />, noFetch);
-    await r.flush();
     r.root.querySelector('img.photo')!.dispatchEvent(new Event('error'));
     await r.flush();
     url.value = '/b.jpg';
@@ -62,7 +58,6 @@ describe('Avatar', () => {
 
   it("draws exactly today's avatar without a photo", async () => {
     const r = renderApp(() => <Avatar player={maya(null)} size={40} />, noFetch);
-    await r.flush();
     const avatar = r.root.querySelector('span.avatar')!;
     expect(avatar.querySelector('img')).toBeNull();
     expect(avatar.textContent).toBe('M');
@@ -79,7 +74,6 @@ describe('Avatar', () => {
       ),
       noFetch,
     );
-    await r.flush();
     expect(r.root.querySelector('img.avatar.bot')?.getAttribute('src')).toMatch(/goat-mark/);
     expect(r.root.querySelector('img.photo')).toBeNull();
   });

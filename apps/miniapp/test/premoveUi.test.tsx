@@ -48,7 +48,6 @@ describe('MoveList strip', () => {
   it('shows the real moves, then the premove line: opponent moves plain, replies as chips', async () => {
     const store = opponentsTurn();
     const r = renderApp(() => <MoveList store={store} />, ok);
-    await r.flush();
     expect(strip(r).textContent).toBe('1.f3e52.Nh3d53.Ng5');
     expect(strip(r).querySelectorAll('[data-ply]')).toHaveLength(1);
     expect(strip(r).querySelector('[data-waiting]')).toBeNull();
@@ -75,7 +74,6 @@ describe('MoveList strip', () => {
   it('puts the waiting move between the real moves and the line, outlined', async () => {
     const store = withWaiting();
     const r = renderApp(() => <MoveList store={store} />, ok);
-    await r.flush();
     expect(strip(r).textContent).toBe('1.f3e52.Nh3d53.Ng5Bc54.Nc3');
     const waiting = strip(r).querySelector('[data-waiting]')!;
     expect(waiting.textContent).toBe('Nh3');
@@ -93,7 +91,6 @@ describe('MoveList strip', () => {
   it('tapping a line move selects it: aria-current and the store follow', async () => {
     const store = opponentsTurn();
     const r = renderApp(() => <MoveList store={store} />, ok);
-    await r.flush();
     await r.click('[data-line="2"]');
     expect(store.selected.value).toEqual(['e7e5', 'g1h3', 'd7d5']);
     expect(store.timeline.value.at).toBe(4);
@@ -109,7 +106,6 @@ describe('MoveList strip', () => {
   it('tapping the waiting move and the real moves moves the timeline', async () => {
     const store = withWaiting();
     const r = renderApp(() => <MoveList store={store} />, ok);
-    await r.flush();
     await r.click('[data-line="1"]');
     expect(current(r)?.getAttribute('data-line')).toBe('1');
     await r.click('[data-waiting]');
@@ -127,7 +123,6 @@ describe('MoveList strip', () => {
   it('still says there are no moves when there is nothing at all', async () => {
     const store = new GameStore(afterPlies(0, { viewerRole: 'spectator' }));
     const r = renderApp(() => <MoveList store={store} />, ok);
-    await r.flush();
     expect(r.text()).toContain('No moves yet');
   });
 
@@ -136,7 +131,6 @@ describe('MoveList strip', () => {
       afterPlies(0, { viewerRole: 'black', premoveTree: treeText(pair('e2e4', 'e7e5')) }),
     );
     const r = renderApp(() => <MoveList store={store} />, ok);
-    await r.flush();
     expect(strip(r).textContent).toBe('1.e4e5');
     expect(r.text()).not.toContain('No moves yet');
   });
@@ -147,7 +141,6 @@ describe('MoveList remove button', () => {
     const store = opponentsTurn();
     const removed: number[] = [];
     const r = renderApp(() => <MoveList store={store} onRemove={() => removed.push(1)} />, ok);
-    await r.flush();
     const buttons = () => r.root.querySelectorAll('[data-action="premove-remove"]');
     // Resting on the real position: nothing selected, no ✕.
     expect(buttons()).toHaveLength(0);
@@ -164,7 +157,6 @@ describe('MoveList remove button', () => {
   it('is never on a real move or the waiting move, nor while an earlier move is shown', async () => {
     const store = withWaiting();
     const r = renderApp(() => <MoveList store={store} onRemove={() => {}} />, ok);
-    await r.flush();
     const buttons = () => r.root.querySelectorAll('[data-action="premove-remove"]');
     expect(buttons()).toHaveLength(0); // the waiting move is current
     await r.click('[data-line="0"]');
@@ -182,7 +174,6 @@ describe('MoveList remove button', () => {
   it('is not offered without an onRemove handler', async () => {
     const store = opponentsTurn();
     const r = renderApp(() => <MoveList store={store} />, ok);
-    await r.flush();
     await r.click('[data-line="1"]');
     expect(r.root.querySelector('[data-action="premove-remove"]')).toBeNull();
   });
@@ -207,7 +198,6 @@ describe('MoveList scrolling', () => {
   it('scrolls so the selected line move and its ✕ are in view', async () => {
     const store = opponentsTurn();
     const r = renderApp(() => <MoveList store={store} onRemove={() => {}} />, ok);
-    await r.flush();
     await r.click('[data-line="3"]');
     await r.flush();
     const element = strip(r) as HTMLElement;
@@ -221,7 +211,6 @@ describe('MoveList scrolling', () => {
   it('scrolls back to an earlier move that is out of view', async () => {
     const store = opponentsTurn();
     const r = renderApp(() => <MoveList store={store} onRemove={() => {}} />, ok);
-    await r.flush();
     await r.click('[data-line="3"]');
     await r.flush();
     await r.click('[data-ply="1"]');
@@ -248,7 +237,6 @@ describe('Replay slider', () => {
 
   it('runs from the start through the real plies to the end of the premove line', async () => {
     const r = mount(afterPlies(1, { viewerRole: 'white', premoveTree: TREE }));
-    await r.flush();
     expect(slider(r).max).toBe('5');
     expect(slider(r).value).toBe('1');
     expect(slider(r).classList.contains('premove')).toBe(false);
@@ -275,7 +263,6 @@ describe('Replay slider', () => {
 
   it('dragging the slider onto the line selects that move in the strip', async () => {
     const r = mount(afterPlies(1, { viewerRole: 'white', premoveTree: TREE }));
-    await r.flush();
     const input = slider(r);
     input.value = '3';
     input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -287,7 +274,6 @@ describe('Replay slider', () => {
 
   it('is disabled when the game has no moves and no line', async () => {
     const r = mount(afterPlies(0, { viewerRole: 'spectator' }));
-    await r.flush();
     expect(slider(r).disabled).toBe(true);
   });
 });

@@ -127,7 +127,6 @@ describe('NewGame', () => {
       () => <NewGame groupId="GrOuPiDxYz" opponentId="9" />,
       () => ({ status: 200, body: players }),
     );
-    await r.flush();
     expect(pressedOpponentRows(r.root)).toHaveLength(0);
   });
 
@@ -139,7 +138,6 @@ describe('NewGame', () => {
         body: { ...players, settings: { ...settings, allowOpenChallenges: false } },
       }),
     );
-    await r.flush();
     expect(r.root.querySelector('[data-opponent="open"]')).toBeNull();
   });
 
@@ -160,7 +158,6 @@ describe('NewGame', () => {
       () => <NewGame groupId="GrOuPiDxYz" />,
       () => ({ status: 200, body: players }),
     );
-    await r.flush();
     expect(r.text()).not.toContain('Play the bot');
   });
 

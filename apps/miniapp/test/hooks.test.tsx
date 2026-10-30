@@ -20,7 +20,6 @@ describe('useMainButton', () => {
       () => <Screen />,
       () => ({ status: 200, body: {} }),
     );
-    await r.flush();
     const shows = () => window.__tg!.calls.filter((c) => c === 'MainButton.show').length;
     const hides = () => window.__tg!.calls.filter((c) => c === 'MainButton.hide').length;
     expect(shows()).toBe(1);

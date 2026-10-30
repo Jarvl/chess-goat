@@ -51,7 +51,6 @@ function mount(
 describe('LinesPanel', () => {
   it('renders the root chip and one block per line', async () => {
     const r = mount([]);
-    await r.flush();
     const chip = r.root.querySelector('[data-path=""]')!;
     expect(chip.textContent).toContain('3.Bc4');
     expect(chip.textContent).toContain('your move');
@@ -64,7 +63,6 @@ describe('LinesPanel', () => {
 
   it('shows the ✕ only beside the selected token, inside its nowrap unit', async () => {
     const r = mount(['c6b4', 'd2d3', 'b4d3']);
-    await r.flush();
     const buttons = r.root.querySelectorAll('[data-action="premove-remove"]');
     expect(buttons).toHaveLength(1);
     const remove = buttons[0]!;
@@ -77,7 +75,6 @@ describe('LinesPanel', () => {
 
   it('shows no ✕ when the root chip is selected, and marks it current', async () => {
     const r = mount([]);
-    await r.flush();
     expect(r.root.querySelector('[data-action="premove-remove"]')).toBeNull();
     expect(r.root.querySelector('[data-path=""]')!.getAttribute('aria-current')).toBe('true');
   });
@@ -85,7 +82,6 @@ describe('LinesPanel', () => {
   it('calls onSelect with the token path and the root chip with []', async () => {
     const onSelect = vi.fn();
     const r = mount(['c6b4'], { onSelect });
-    await r.flush();
     await r.click('[data-path="c6b4,d2d3,b4d3,c4d3,d8e7"]');
     expect(onSelect).toHaveBeenLastCalledWith(['c6b4', 'd2d3', 'b4d3', 'c4d3', 'd8e7']);
     await r.click('[data-path=""]');
@@ -96,7 +92,6 @@ describe('LinesPanel', () => {
     const onSelect = vi.fn();
     const onRemove = vi.fn();
     const r = mount(['c6b4'], { onSelect, onRemove });
-    await r.flush();
     await r.click('[data-action="premove-remove"]');
     expect(onRemove).toHaveBeenCalledTimes(1);
     expect(onSelect).not.toHaveBeenCalled();
@@ -104,7 +99,6 @@ describe('LinesPanel', () => {
 
   it('labels opponent moves and the owner replies apart', async () => {
     const r = mount([]);
-    await r.flush();
     const mine = [...r.root.querySelectorAll('.lines-token.mine')].map((e) => e.textContent);
     const theirs = [...r.root.querySelectorAll('.lines-token:not(.mine)')].map(
       (e) => e.textContent,

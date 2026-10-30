@@ -99,7 +99,6 @@ afterEach(async () => {
 describe('Game', () => {
   it('renders the players, clocks and moves from the launch data and opens the stream', async () => {
     const r = mount(afterPlies(2, { viewerRole: 'black' }));
-    await r.flush();
     expect(r.calls).toHaveLength(0);
     expect(FakeEventSource.instances[0]?.url).toBe(`/api/games/${GAME}/events?token=jwt`);
     expect(r.text()).toContain('Alice');
@@ -116,7 +115,6 @@ describe('Game', () => {
 
   it('sends a move as soon as it is dropped and applies the response', async () => {
     const r = mount(gameDto());
-    await r.flush();
     expect(adapter.movables.at(-1)?.colour).toBe('white');
     adapter.drop('e2', 'e4');
     await r.flush();
@@ -157,7 +155,6 @@ describe('Game', () => {
     // Black rook a2, white king e1: no check with Black to move …
     const quiet = gameDto({ fen: '4k3/8/8/8/8/8/r7/4K3 b - - 0 1', plyCount: 9, version: 9 });
     const r = mount(quiet);
-    await r.flush();
     // … then the rook slides to e2 and White is in check.
     FakeEventSource.instances[0]!.send(
       'state',
@@ -177,7 +174,6 @@ describe('Game', () => {
         body: { error: { code: 'stale_state', message: 'the position has changed' } },
       })),
     );
-    await r.flush();
     const before = adapter.positions.length;
     adapter.drop('e2', 'e4');
     await r.flush();
@@ -228,7 +224,6 @@ describe('Game', () => {
 
   it('shows the promotion chooser and sends the chosen piece', async () => {
     const r = mount(gameDto({ fen: '4k3/4P3/8/8/8/8/8/4K3 w - - 0 1', plyCount: 6, version: 6 }));
-    await r.flush();
     adapter.drop('e7', 'e8');
     await r.flush();
     expect(r.calls.filter((c) => c.method === 'POST')).toHaveLength(0);
@@ -242,7 +237,6 @@ describe('Game', () => {
 
   it('offers, accepts and declines draws and shows the opponent’s offer', async () => {
     const r = mount(afterPlies(2, { viewerRole: 'white' }));
-    await r.flush();
     await r.click('[data-action="offer-draw"]');
     expect(window.__tg!.popups.at(-1)?.message).toBe('Offer a draw?');
     window.__tg!.answerPopup('confirm');
@@ -271,7 +265,6 @@ describe('Game', () => {
       black: { ...gameDto().black, ratingAfter: 1662, provisionalAfter: true },
     });
     const r = mount(finished, okRoute(finished), '7.0');
-    await r.flush();
     const labels = [...r.root.querySelectorAll('.icon-bar button')].map((b) => [
       b.getAttribute('data-action'),
       b.textContent,
@@ -311,7 +304,6 @@ describe('Game', () => {
       black: { ...gameDto().black, ratingAfter: 1662, provisionalAfter: true },
     });
     const r = mount(finished, okRoute(finished), '7.0');
-    await r.flush();
     const white = r.root.querySelector('.player-bar[data-colour="white"]')!;
     const black = r.root.querySelector('.player-bar[data-colour="black"]')!;
     expect(r.root.querySelector('.result-card')).toBeNull();
@@ -333,7 +325,6 @@ describe('Game', () => {
       endReason: 'draw_agreement',
     });
     const r = mount(finished, okRoute(finished), '7.0');
-    await r.flush();
     for (const bar of r.root.querySelectorAll('.player-bar')) {
       expect(bar.querySelector('.result-tag')?.textContent).toBe('Draw');
       expect(bar.querySelector('.sub')?.textContent).toBe('Draw agreed');
@@ -349,7 +340,6 @@ describe('Game', () => {
       voided: true,
     });
     const r = mount(finished, okRoute(finished), '7.0');
-    await r.flush();
     const tags = [...r.root.querySelectorAll('.result-tag')].map((tag) => tag.textContent);
     expect(tags).toEqual(['Voided', 'Voided']);
     expect(r.root.querySelector('[data-action="rematch"]')).toBeNull();
@@ -363,7 +353,6 @@ describe('Game', () => {
       endReason: 'checkmate',
     });
     const r = mount(finished, okRoute(finished), '7.0');
-    await r.flush();
     const actions = [...r.root.querySelectorAll('.icon-bar button')].map((b) =>
       b.getAttribute('data-action'),
     );
@@ -373,7 +362,6 @@ describe('Game', () => {
 
   it('shows the replay slider in a game still being played, and holds moves while it looks back', async () => {
     const r = mount(afterPlies(2, { viewerRole: 'white' }));
-    await r.flush();
     const slider = r.root.querySelector<HTMLInputElement>('.replay-controls input[type="range"]')!;
     expect(slider).not.toBeNull();
     expect(slider.max).toBe('2');
@@ -388,7 +376,6 @@ describe('Game', () => {
 
   it('shows the slider before the first move, with nothing to step through', async () => {
     const r = mount(gameDto({ viewerRole: 'white' }));
-    await r.flush();
     const slider = r.root.querySelector<HTMLInputElement>('.replay-controls input[type="range"]')!;
     expect(slider.max).toBe('0');
     expect(slider.disabled).toBe(true);
@@ -409,7 +396,6 @@ describe('Game', () => {
       return okRoute(finished)(call);
     };
     const r = mount(finished, route, '7.0');
-    await r.flush();
     await r.click('[data-action="rematch"]');
     const post = r.calls.at(-1);
     expect(post?.path).toBe(`/api/groups/${finished.group.id}/engine-games`);
@@ -419,7 +405,6 @@ describe('Game', () => {
 
   it('lets spectators flip and share the viewed position', async () => {
     const r = mount(afterPlies(3, { viewerRole: 'spectator' }));
-    await r.flush();
     expect(adapter.viewOnly).toBe(true);
     await r.click('[data-action="flip"]');
     expect(adapter.positions.at(-1)?.orientation).toBe('black');
@@ -445,7 +430,6 @@ describe('Game', () => {
 
   it('gives a player four fixed slots: share to group, flip, draw and resign', async () => {
     const r = mount(afterPlies(2, { viewerRole: 'white' }));
-    await r.flush();
     const labels = [...r.root.querySelectorAll('.icon-bar button')].map((b) => [
       b.getAttribute('data-action'),
       b.textContent,
@@ -464,7 +448,6 @@ describe('Game', () => {
 
   it('dims Draw to Offered after your offer, leaving the slots in place', async () => {
     const r = mount(afterPlies(2, { viewerRole: 'white', drawOffer: { by: 'white', atPly: 2 } }));
-    await r.flush();
     const draw = r.root.querySelector<HTMLButtonElement>('[data-action="offer-draw"]')!;
     expect(draw.textContent).toBe('½Offered');
     expect(draw.disabled).toBe(true);
@@ -473,7 +456,6 @@ describe('Game', () => {
 
   it('dims Draw against the bot', async () => {
     const r = mount(afterPlies(2, { viewerRole: 'white', engineLevel: 'club' }));
-    await r.flush();
     expect(r.root.querySelector<HTMLButtonElement>('[data-action="offer-draw"]')?.disabled).toBe(
       true,
     );
@@ -481,7 +463,6 @@ describe('Game', () => {
 
   it('reads Abort in the last slot before the second move, with Draw dimmed', async () => {
     const r = mount(gameDto({ viewerRole: 'white' }));
-    await r.flush();
     expect(r.root.querySelector('[data-action="resign"]')).toBeNull();
     expect(r.root.querySelector<HTMLButtonElement>('[data-action="offer-draw"]')?.disabled).toBe(
       true,
@@ -495,7 +476,6 @@ describe('Game', () => {
 
   it('marks your bar and clock gold on your move, and leaves the waiting side plain', async () => {
     const r = mount(afterPlies(2, { viewerRole: 'white' }));
-    await r.flush();
     const mine = r.root.querySelector('.player-bar[data-colour="white"]')!;
     const theirs = r.root.querySelector('.player-bar[data-colour="black"]')!;
     expect(mine.className).toContain('yours');
@@ -508,7 +488,6 @@ describe('Game', () => {
 
   it('names the group and terms once, above the top bar', async () => {
     const r = mount(afterPlies(2, { viewerRole: 'white' }));
-    await r.flush();
     const meta = r.root.querySelector('.game > .game-meta');
     expect(meta?.textContent).toBe('Chess Club · 1 day per move · Rated');
     expect(meta?.nextElementSibling?.classList.contains('player-bar')).toBe(true);
@@ -518,7 +497,6 @@ describe('Game', () => {
     // Black has taken a knight and a pawn; white has taken the queen.
     const fen = 'rnb1kbnr/pppppppp/8/8/8/8/PPPPPPP1/RNBQKB1R w KQkq - 0 5';
     const r = mount(gameDto({ fen, plyCount: 8, version: 8 }));
-    await r.flush();
     const white = r.root.querySelector('.player-bar[data-colour="white"]')!;
     const black = r.root.querySelector('.player-bar[data-colour="black"]')!;
     const taken = (bar: Element) =>
@@ -541,7 +519,6 @@ describe('Game', () => {
         version: 8,
       }),
     );
-    await r.flush();
     const white = () => r.root.querySelector('.player-bar[data-colour="white"]')!;
     expect(white().querySelector('.lead')?.textContent).toBe('+9');
     slider(r).value = '0';
@@ -556,7 +533,6 @@ describe('Game', () => {
     const r = mount(
       gameDto({ black: bot, engineLevel: 'club', timePerMove: null, deadlineAt: null }),
     );
-    await r.flush();
     const bar = r.root.querySelector('.player-bar[data-colour="black"]')!;
     expect(bar.querySelector('img.avatar.bot')).not.toBeNull();
     expect(bar.querySelector('.rating')?.textContent).toBe('Club');
@@ -572,7 +548,6 @@ describe('Game with move confirmations', () => {
 
   it('holds a move against a person for Confirm move, then sends it once', async () => {
     const r = mount(gameDto());
-    await r.flush();
     adapter.drop('e2', 'e4');
     await r.flush();
     expect(posts(r)).toHaveLength(0);
@@ -595,7 +570,6 @@ describe('Game with move confirmations', () => {
       gameDto(),
       okRoute(gameDto(), () => new Promise<FakeResponse>((resolve) => (answer = resolve))),
     );
-    await r.flush();
     adapter.drop('e2', 'e4');
     await r.flush();
     window.__tg!.clickMain();
@@ -613,7 +587,6 @@ describe('Game with move confirmations', () => {
 
   it('puts the piece back on Cancel and sends nothing', async () => {
     const r = mount(gameDto());
-    await r.flush();
     adapter.drop('e2', 'e4');
     await r.flush();
     const restored = adapter.restored;
@@ -628,7 +601,6 @@ describe('Game with move confirmations', () => {
 
   it('holds the waiting move on the board and in the strip through a snapshot', async () => {
     const r = mount(afterPlies(2));
-    await r.flush();
     adapter.drop('b1', 'c3');
     await r.flush();
     const before = adapter.positions.length;
@@ -648,7 +620,6 @@ describe('Game with move confirmations', () => {
   it('holds a promotion for Confirm move once the piece is picked', async () => {
     const initial = gameDto({ fen: '8/4P3/8/8/8/8/k7/4K3 w - - 0 1', plyCount: 6, version: 6 });
     const r = mount(initial);
-    await r.flush();
     adapter.drop('e7', 'e8');
     await r.flush();
     await r.click('[data-promote="q"]');
@@ -662,7 +633,6 @@ describe('Game with move confirmations', () => {
   it('shows the promoted piece, not chessground’s own pawn, while the promotion waits for Confirm', async () => {
     const initial = gameDto({ fen: '8/4P3/8/8/8/8/k7/4K3 w - - 0 1', plyCount: 6, version: 6 });
     const r = mount(initial);
-    await r.flush();
     adapter.drop('e7', 'e8');
     await r.flush();
     await r.click('[data-promote="q"]');
@@ -677,7 +647,6 @@ describe('Game with move confirmations', () => {
 
   it('shows check on the board while a checking move waits for Confirm', async () => {
     const r = mount(gameDto({ fen: '4k3/8/8/8/8/8/8/R3K3 w - - 0 1', plyCount: 6, version: 6 }));
-    await r.flush();
     adapter.drop('a1', 'a8');
     await r.flush();
     expect(posts(r)).toHaveLength(0);
@@ -686,7 +655,6 @@ describe('Game with move confirmations', () => {
 
   it('sends on drop against the bot under the default', async () => {
     const r = mount(gameDto({ engineLevel: 'casual' }));
-    await r.flush();
     adapter.drop('e2', 'e4');
     await r.flush();
     expect(posts(r)).toHaveLength(1);
@@ -696,7 +664,6 @@ describe('Game with move confirmations', () => {
   it('holds a move against the bot when the setting is Always', async () => {
     wantPrefs.moveConfirmations = 'always';
     const r = mount(gameDto({ engineLevel: 'casual' }));
-    await r.flush();
     adapter.drop('e2', 'e4');
     await r.flush();
     expect(posts(r)).toHaveLength(0);
@@ -706,7 +673,6 @@ describe('Game with move confirmations', () => {
   it('reads the setting at each drop, so a change mid-game applies to the next move', async () => {
     // The preference changes to 'never' after mount, before this drop.
     const r = mount(gameDto());
-    await r.flush();
     prefs.value = { ...prefs.value, moveConfirmations: 'never' };
     adapter.drop('e2', 'e4');
     await r.flush();
@@ -715,7 +681,6 @@ describe('Game with move confirmations', () => {
 
   it('puts Cancel in the action row below 7.10', async () => {
     const r = mount(gameDto(), okRoute(gameDto()), '7.0');
-    await r.flush();
     adapter.drop('e2', 'e4');
     await r.flush();
     expect(window.__tg!.mainButton).toMatchObject({ text: 'Confirm move', visible: true });
@@ -750,7 +715,6 @@ describe('Game with move confirmations', () => {
 
   it('hides the tab bar while a move waits and brings it back once the move is sent', async () => {
     const r = mount(gameDto());
-    await r.flush();
     expect(r.app.router.suppressTabs.value).toBe(false);
     adapter.drop('e2', 'e4');
     await r.flush();
@@ -762,7 +726,6 @@ describe('Game with move confirmations', () => {
 
   it('brings the tab bar back on Cancel', async () => {
     const r = mount(gameDto());
-    await r.flush();
     adapter.drop('e2', 'e4');
     await r.flush();
     window.__tg!.clickSecondary();
@@ -795,7 +758,6 @@ describe('Game with move confirmations', () => {
 
   it('drops a waiting move when the screen goes away, without asking and without sending', async () => {
     const r = mount(gameDto());
-    await r.flush();
     adapter.drop('e2', 'e4');
     await r.flush();
     // Telegram's own prompt guards closing while the move waits (this replaced the no-prompt rule).
@@ -820,7 +782,6 @@ describe('Game with move confirmations', () => {
       gameDto(),
       okRoute(gameDto(), () => new Promise<FakeResponse>((resolve) => (answer = resolve))),
     );
-    await r.flush();
     adapter.drop('e2', 'e4');
     await r.flush();
     window.__tg!.clickMain();
@@ -836,7 +797,6 @@ describe('Game with move confirmations', () => {
   it('keeps a waiting move through a draw offer, and drops it when the game ends under it', async () => {
     // Only a new ply or status cancels.
     const r = mount(gameDto());
-    await r.flush();
     adapter.drop('e2', 'e4');
     await r.flush();
     const before = adapter.positions.length;
@@ -880,7 +840,6 @@ describe('Game with move confirmations', () => {
         body: { error: { code: 'stale_state', message: 'the position has changed' } },
       })),
     );
-    await r.flush();
     adapter.drop('e2', 'e4');
     await r.flush();
     const restored = adapter.restored;
@@ -897,7 +856,6 @@ describe('Game with move confirmations', () => {
 
   it('cancels a waiting move when a new ply arrives from another device', async () => {
     const r = mount(gameDto());
-    await r.flush();
     adapter.drop('e2', 'e4');
     await r.flush();
     const before = adapter.positions.length;
@@ -984,7 +942,6 @@ describe('Game premoves with move confirmations on', () => {
       initial,
       okRoute(initial, () => ({ status: 200, body: played(['e2e4']) })),
     );
-    await r.flush();
     adapter.drop('e2', 'e4');
     await r.flush();
     expect(placement()).toBe('rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR');
@@ -1019,7 +976,6 @@ describe('Game premoves with move confirmations on', () => {
 
   it('counts every pair in the button', async () => {
     const r = mount(played(['e2e4', 'e7e5']));
-    await r.flush();
     adapter.drop('g1', 'f3');
     await r.flush();
     for (const [orig, dest] of [
@@ -1043,7 +999,6 @@ describe('Game premoves with move confirmations on', () => {
   it('confirms premoves on the opponent’s turn with one PUT against the server tree', async () => {
     const initial = played(['e2e4'], { premoveTree: treeText(pair('d7d5', 'e4d5')) });
     const r = mount(initial, savesTree(initial));
-    await r.flush();
     expect(window.__tg!.mainButton.visible).toBe(false);
     await r.click('.lines-panel [data-path=""]');
     adapter.drop('e7', 'e5');
@@ -1070,7 +1025,6 @@ describe('Game premoves with move confirmations on', () => {
 
   it('discards the draft on Cancel and sends nothing', async () => {
     const r = mount(played(['e2e4']));
-    await r.flush();
     adapter.drop('e7', 'e5');
     await r.flush();
     adapter.drop('g1', 'f3');
@@ -1086,7 +1040,6 @@ describe('Game premoves with move confirmations on', () => {
 
   it('labels the in-page buttons as Telegram’s below 7.10', async () => {
     const r = mount(played(['e2e4']), okRoute(played(['e2e4'])), '7.0');
-    await r.flush();
     adapter.drop('e7', 'e5');
     await r.flush();
     adapter.drop('g1', 'f3');
@@ -1100,7 +1053,6 @@ describe('Game premoves with move confirmations on', () => {
   it('asks before replacing a reply, previews it, and Cancel puts everything back', async () => {
     const initial = played(ITALIAN, { premoveTree: treeText(TWO_KNIGHTS()) });
     const r = mount(initial);
-    await r.flush();
     await r.click('.lines-panel [data-path="g8f6"]');
     const afterNf6 = 'r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R';
     expect(placement()).toBe(afterNf6);
@@ -1133,7 +1085,6 @@ describe('Game premoves with move confirmations on', () => {
 
   it('asks before replacing the waiting move when premoves hang off it', async () => {
     const r = mount(played(BEFORE_BC4));
-    await r.flush();
     adapter.drop('f1', 'c4');
     await r.flush();
     adapter.drop('g8', 'f6');
@@ -1171,7 +1122,6 @@ describe('Game premoves with move confirmations on', () => {
 
   it('replaces a waiting move without premoves at once', async () => {
     const r = mount(played(BEFORE_BC4));
-    await r.flush();
     adapter.drop('f1', 'c4');
     await r.flush();
     await r.click('[data-action="prev"]');
@@ -1187,7 +1137,6 @@ describe('Game premoves with move confirmations on', () => {
 
   it('steps back from the tree to the position before the waiting move, then into history', async () => {
     const r = mount(played(BEFORE_BC4));
-    await r.flush();
     adapter.drop('f1', 'c4');
     await r.flush();
     expect(slider(r)).toMatchObject({ value: '5', max: '5' });
@@ -1209,7 +1158,6 @@ describe('Game premoves with move confirmations on', () => {
 
   it('asks before removing a premove and the moves after it, and says what went', async () => {
     const r = mount(played(ITALIAN, { premoveTree: treeText(TWO_KNIGHTS()) }));
-    await r.flush();
     await r.click('.lines-panel [data-path="g8f6,f3g5,d7d5,e4d5"]');
     adapter.drop('c6', 'a5');
     await r.flush();
@@ -1236,7 +1184,6 @@ describe('Game premoves with move confirmations on', () => {
 
   it('names a removed move alone, or with the move after it', async () => {
     const r = mount(played(ITALIAN, { premoveTree: treeText(TWO_KNIGHTS()) }));
-    await r.flush();
     await r.click('.lines-panel [data-path="g8f6,f3g5,d7d5,e4d5"]');
     await r.click('.lines-panel [data-action="premove-remove"]');
     expect(window.__tg!.popups.at(-1)?.message).toBe('Remove 5.exd5?');
@@ -1252,7 +1199,6 @@ describe('Game premoves with move confirmations on', () => {
 
   it('discards an open draft when the opponent moves', async () => {
     const r = mount(played(['e2e4']));
-    await r.flush();
     adapter.drop('e7', 'e5');
     await r.flush();
     adapter.drop('g1', 'f3');
@@ -1266,7 +1212,6 @@ describe('Game premoves with move confirmations on', () => {
 
     // Without premove changes there is nothing to say.
     const again = mount(played(['e2e4']));
-    await again.flush();
     FakeEventSource.instances.at(-1)!.send('state', played(['e2e4', 'c7c5']), '2');
     await again.flush();
     expect(toastText()).toBeUndefined();
@@ -1274,7 +1219,6 @@ describe('Game premoves with move confirmations on', () => {
 
   it('keeps the waiting move and the draft when Telegram minimises the app', async () => {
     const r = mount(played([]));
-    await r.flush();
     adapter.drop('e2', 'e4');
     await r.flush();
     adapter.drop('e7', 'e5');
@@ -1297,7 +1241,6 @@ describe('Game premoves with move confirmations on', () => {
   it('opens the picker for promotions in the tree, for either side, and keeps the piece', async () => {
     const initial = gameDto({ fen: '7k/4P3/8/8/8/8/3p4/K7 b - - 0 1', plyCount: 9, version: 9 });
     const r = mount(initial, savesTree(initial));
-    await r.flush();
     adapter.drop('d2', 'd1');
     await r.flush();
     expect(r.root.querySelector('.promotion [data-promote="n"]')?.classList.contains('black')).toBe(
@@ -1320,7 +1263,6 @@ describe('Game premoves with move confirmations on', () => {
   it('discards a promotion pick if the game moved on while the picker was open', async () => {
     const initial = gameDto({ fen: '7k/4P3/8/8/8/8/3p4/K7 b - - 0 1', plyCount: 9, version: 9 });
     const r = mount(initial, savesTree(initial));
-    await r.flush();
     adapter.drop('d2', 'd1');
     await r.flush();
     FakeEventSource.instances[0]!.send(
@@ -1338,7 +1280,6 @@ describe('Game premoves with move confirmations on', () => {
     const fen = '7k/4P3/8/8/8/8/3p4/K7 b - - 0 1';
     const initial = gameDto({ fen, plyCount: 9, version: 9 });
     const r = mount(initial, savesTree(initial));
-    await r.flush();
     adapter.drop('d2', 'd1');
     await r.flush();
     FakeEventSource.instances[0]!.send(
@@ -1424,7 +1365,6 @@ describe('Game premoves with move confirmations on', () => {
   it('keeps an oversize draft on screen and sends nothing', async () => {
     limits.maxChars = 4;
     const r = mount(played([]));
-    await r.flush();
     adapter.drop('e2', 'e4');
     await r.flush();
     adapter.drop('e7', 'e5');
@@ -1478,7 +1418,6 @@ describe('Game premoves while the draft is on its way', () => {
       initial,
       savesTree(initial, () => new Promise<FakeResponse>((resolve) => (answer = resolve))),
     );
-    await r.flush();
     adapter.drop('e7', 'e5');
     await r.flush();
     adapter.drop('g1', 'f3');
@@ -1504,7 +1443,6 @@ describe('Game premoves with move confirmations on, too big for the server', () 
       initial,
       okRoute(initial, () => ({ status: 413, body: undefined })),
     );
-    await r.flush();
     adapter.drop('e2', 'e4');
     await r.flush();
     adapter.drop('e7', 'e5');
@@ -1533,7 +1471,6 @@ describe('Game premoves with move confirmations off', () => {
       initial,
       savesTree(initial, () => new Promise<FakeResponse>((resolve) => answers.push(resolve))),
     );
-    await r.flush();
     adapter.drop('e7', 'e5');
     await r.flush();
     expect(putsOf(r)).toHaveLength(0);
@@ -1634,7 +1571,6 @@ describe('Game premoves with move confirmations off', () => {
       initial,
       savesTree(initial, () => new Promise<FakeResponse>((resolve) => answers.push(resolve))),
     );
-    await r.flush();
     adapter.drop('e7', 'e5');
     await r.flush();
     adapter.drop('g1', 'f3');
@@ -1698,7 +1634,6 @@ describe('Game premoves with move confirmations off', () => {
   it('keeps an unanswered opponent move on the device through a save', async () => {
     const initial = played(['e2e4']);
     const r = mount(initial, savesTree(initial));
-    await r.flush();
     adapter.drop('e7', 'e5');
     await r.flush();
     adapter.drop('g1', 'f3');
@@ -1713,7 +1648,6 @@ describe('Game premoves with move confirmations off', () => {
   it('saves a confirmed replacement and a confirmed removal', async () => {
     const initial = played(ITALIAN, { premoveTree: treeText(TWO_KNIGHTS()) });
     const r = mount(initial, savesTree(initial));
-    await r.flush();
     await r.click('.lines-panel [data-path="g8f6"]');
     adapter.drop('b1', 'c3');
     await r.flush();
@@ -1796,7 +1730,6 @@ describe('Game premoves with move confirmations off', () => {
   it('drops a confirmed removal when the tree changed while the popup was open', async () => {
     const initial = played(ITALIAN, { premoveTree: treeText(TWO_KNIGHTS()) });
     const r = mount(initial, savesTree(initial));
-    await r.flush();
     await r.click('.lines-panel [data-path="g8f6"]');
     await r.click('.lines-panel [data-action="premove-remove"]');
     FakeEventSource.instances[0]!.send(
@@ -1815,7 +1748,6 @@ describe('Game premoves with move confirmations off', () => {
     limits.maxChars = 4;
     const initial = played(['e2e4']);
     const r = mount(initial, savesTree(initial));
-    await r.flush();
     adapter.drop('e7', 'e5');
     await r.flush();
     adapter.drop('g1', 'f3');
@@ -1831,7 +1763,6 @@ describe('Game premoves with move confirmations off', () => {
       initial,
       savesTree(initial, () => ({ status: 413, body: undefined })),
     );
-    await r.flush();
     adapter.drop('e7', 'e5');
     await r.flush();
     adapter.drop('g1', 'f3');
@@ -1848,7 +1779,6 @@ describe('Game premoves with move confirmations off', () => {
       played([]),
       okRoute(played([]), () => new Promise<FakeResponse>((resolve) => (answer = resolve))),
     );
-    await r.flush();
     adapter.drop('e2', 'e4');
     await r.flush();
     // The stream shows the move before its POST answers: it is now Dana's turn.
@@ -1866,15 +1796,12 @@ describe('Game premove board and status line', () => {
   it('shows a pill and a hint for each case', async () => {
     wantPrefs.moveConfirmations = 'people';
     const own = mount(played(BEFORE_BC4));
-    await own.flush();
     expect([pill(own), hint(own)]).toEqual(['Your move', 'Play your move']);
 
     const waiting = mount(played(['e2e4']));
-    await waiting.flush();
     expect([pill(waiting), hint(waiting)]).toEqual(['Dana to move', 'Play a move Dana might make']);
 
     const drafting = mount(played(ITALIAN));
-    await drafting.flush();
     adapter.drop('g8', 'f6');
     await drafting.flush();
     expect([pill(drafting), hint(drafting)]).toEqual(['Draft', 'Your reply to 3…Nf6']);
@@ -1884,7 +1811,6 @@ describe('Game premove board and status line', () => {
         premoveTree: treeText(TWO_KNIGHTS(), pair('f8c5', 'c2c3')),
       }),
     );
-    await saved.flush();
     expect([pill(saved), hint(saved)]).toEqual([
       '3 premoves saved',
       'Play another of Dana’s moves to branch',
@@ -1893,27 +1819,23 @@ describe('Game premove board and status line', () => {
     expect(hint(saved)).toBe('Play another move to replace 4.Ng5');
 
     const one = mount(played(ITALIAN, { premoveTree: treeText(pair('g8f6', 'f3g5')) }));
-    await one.flush();
     expect(pill(one)).toBe('1 premove saved');
   });
 
   it('roots the Lines panel at Now, or at the waiting move', async () => {
     wantPrefs.moveConfirmations = 'people';
     const r = mount(played(BEFORE_BC4));
-    await r.flush();
     expect(r.root.querySelector('.lines-panel')).toBeNull();
     adapter.drop('f1', 'c4');
     await r.flush();
     expect(r.root.querySelector('.lines-root')?.textContent).toBe('3.Bc4your move');
 
     const now = mount(played(['e2e4']));
-    await now.flush();
     expect(now.root.querySelector('.lines-root')?.textContent).toBe('Nowcurrent position');
   });
 
   it('tells the player to move first when they touch the opponent’s pieces', async () => {
     const r = mount(played([]));
-    await r.flush();
     adapter.select('e2');
     await r.flush();
     expect(toastText()).toBeUndefined();
@@ -1926,7 +1848,6 @@ describe('Game premove board and status line', () => {
 
   it('says nothing when a tap captures an opponent piece with the selected piece', async () => {
     const r = mount(played(['e2e4', 'd7d5']));
-    await r.flush();
     // Chessground reports both taps of a click-click move before the move itself.
     adapter.select('e4');
     adapter.select('d5');
@@ -1938,7 +1859,6 @@ describe('Game premove board and status line', () => {
 
   it('still nudges when the selected piece cannot take the tapped one', async () => {
     const r = mount(played(['e2e4', 'd7d5']));
-    await r.flush();
     adapter.select('g1');
     adapter.select('d5');
     await r.flush();
@@ -1949,7 +1869,6 @@ describe('Game premove board and status line', () => {
 
   it('fills the slider green up to the real position and blue on through the shown premove', async () => {
     const r = mount(played(ITALIAN, { premoveTree: treeText(pair('g8f6', 'f3g5')) }));
-    await r.flush();
     // 5 real plies of 7: the knob stands on the real position.
     expect(slider(r)).toMatchObject({ value: '5', max: '7' });
     expect(slider(r).style.getPropertyValue('--real')).toBe('71.429%');
@@ -1964,7 +1883,6 @@ describe('Game premove board and status line', () => {
 
   it('slides from an earlier move straight back into the tree', async () => {
     const r = mount(played(ITALIAN, { premoveTree: treeText(pair('g8f6', 'f3g5')) }));
-    await r.flush();
     const input = slider(r);
     input.value = '0';
     input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -1981,7 +1899,6 @@ describe('Game premove board and status line', () => {
 
   it('shows the tree from another device when it arrives over the stream', async () => {
     const r = mount(played(ITALIAN));
-    await r.flush();
     FakeEventSource.instances[0]!.send(
       'state',
       played(ITALIAN, { premoveTree: treeText(pair('g8f6', 'f3g5')) }),
@@ -1993,7 +1910,6 @@ describe('Game premove board and status line', () => {
 
   it('shares the real position, never a premove one', async () => {
     const r = mount(played(ITALIAN, { premoveTree: treeText(pair('g8f6', 'f3g5')) }));
-    await r.flush();
     await r.click('[data-action="share"]');
     await r.click('.lines-panel [data-path="g8f6,f3g5"]');
     await r.click('[data-action="share"]');
@@ -2004,14 +1920,12 @@ describe('Game premove board and status line', () => {
   it('toasts and buzzes when the tree was cancelled, and buzzes lightly when a premove played', async () => {
     const withTree = (premoveTree: string) => afterPlies(1, { viewerRole: 'white', premoveTree });
     const r = mount(withTree(treeText(pair('e7e5', 'g2g4'))));
-    await r.flush();
     FakeEventSource.instances[0]!.send('state', afterPlies(3, { viewerRole: 'white' }), '3');
     await r.flush();
     expect(window.__tg!.haptics).toContain('impact:light');
     expect(document.querySelector('.toast')).toBeNull();
 
     const again = mount(withTree(treeText(pair('d7d5', 'e2e4'))));
-    await again.flush();
     FakeEventSource.instances.at(-1)!.send('state', afterPlies(2, { viewerRole: 'white' }), '2');
     await again.flush();
     expect(document.querySelector('.toast')?.textContent).toContain('Premoves cancelled');
@@ -2048,7 +1962,6 @@ describe('Game leaving with an unconfirmed draft', () => {
 
   it('asks about a waiting move alone, and Stay keeps the game and the draft', async () => {
     const r = mountInGame(played([]));
-    await r.flush();
     await dropAll(r, [['e2', 'e4']]);
     const popup = await leaveByBack(r, 'cancel');
     expect(popup).toEqual({
@@ -2065,7 +1978,6 @@ describe('Game leaving with an unconfirmed draft', () => {
 
   it('leaves on Leave', async () => {
     const r = mountInGame(played([]));
-    await r.flush();
     await dropAll(r, [['e2', 'e4']]);
     await leaveByBack(r, 'confirm');
     expect(r.app.router.current.value).toEqual({ name: 'games' });
@@ -2073,7 +1985,6 @@ describe('Game leaving with an unconfirmed draft', () => {
 
   it('asks about the move and its premoves together', async () => {
     const r = mountInGame(played([]));
-    await r.flush();
     await dropAll(r, [
       ['e2', 'e4'],
       ['e7', 'e5'],
@@ -2085,7 +1996,6 @@ describe('Game leaving with an unconfirmed draft', () => {
 
   it('asks about premove changes alone', async () => {
     const r = mountInGame(played(['e2e4']));
-    await r.flush();
     await dropAll(r, [
       ['e7', 'e5'],
       ['g1', 'f3'],
@@ -2099,7 +2009,6 @@ describe('Game leaving with an unconfirmed draft', () => {
 
   it('guards a tab change, which is also what Telegram’s Settings item does', async () => {
     const r = mountInGame(played(['e2e4']));
-    await r.flush();
     await dropAll(r, [
       ['e7', 'e5'],
       ['g1', 'f3'],
@@ -2119,7 +2028,6 @@ describe('Game leaving with an unconfirmed draft', () => {
 
   it('asks the client before closing while a draft is open, and not otherwise', async () => {
     const r = mountInGame(played([]));
-    await r.flush();
     expect(r.app.router.leaveGuard).toBeNull();
     expect(window.__tg!.closingConfirmation).toBe(false);
     await dropAll(r, [['e2', 'e4']]);
@@ -2138,7 +2046,6 @@ describe('Game leaving with an unconfirmed draft', () => {
 
   it('lets go of the guard and the closing confirmation when the screen goes', async () => {
     const r = mountInGame(played([]));
-    await r.flush();
     await dropAll(r, [['e2', 'e4']]);
     expect(r.app.router.leaveGuard).not.toBeNull();
     render(null, r.root);
@@ -2201,7 +2108,6 @@ describe('Game leaving with an unconfirmed draft', () => {
   it('never asks with move confirmations off', async () => {
     wantPrefs.moveConfirmations = 'never';
     const r = mountInGame(played(['e2e4']));
-    await r.flush();
     await dropAll(r, [
       ['e7', 'e5'],
       ['g1', 'f3'],

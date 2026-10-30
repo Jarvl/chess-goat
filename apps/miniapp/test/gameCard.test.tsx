@@ -35,7 +35,6 @@ const mount = (
 describe('GameCard', () => {
   it('shows the opponent, the group, the terms and a gold pill on your move', async () => {
     const { r, opened } = mount(gameSummary({ fen: AFTER_E4, lastMove: 'e2e4' }), 'Chess Club');
-    await r.flush();
     const card = r.root.querySelector<HTMLElement>('[data-game="GameAaaaaa"]')!;
     expect(card.className).not.toContain('dim');
     expect(card.querySelector('.name')!.textContent).toBe('Bob');
@@ -50,7 +49,6 @@ describe('GameCard', () => {
 
   it('dims a game that is waiting on someone else', async () => {
     const { r } = mount(gameSummary({ yourTurn: false, sideToMove: 'black' }));
-    await r.flush();
     expect(r.root.querySelector('.game-card')!.className).toContain('dim');
   });
 
@@ -60,7 +58,6 @@ describe('GameCard', () => {
       undefined,
       'finished',
     );
-    await waiting.r.flush();
     expect(waiting.r.root.querySelector('.game-card')!.className).not.toContain('dim');
     const done = mount(
       gameSummary({
@@ -73,7 +70,6 @@ describe('GameCard', () => {
       undefined,
       'finished',
     );
-    await done.r.flush();
     expect(done.r.root.querySelector('.game-card')!.className).toContain('dim');
   });
 
@@ -81,7 +77,6 @@ describe('GameCard', () => {
     const asBlack = mount(
       gameSummary({ white: playerRef('2', 'Bob'), black: playerRef('1', 'Alice') }),
     );
-    await asBlack.r.flush();
     expect(asBlack.r.root.querySelector('[data-square]')!.getAttribute('data-square')).toBe('h1');
 
     const watching = mount(
@@ -91,7 +86,6 @@ describe('GameCard', () => {
         yourTurn: false,
       }),
     );
-    await watching.r.flush();
     expect(watching.r.root.querySelector('.name')!.textContent).toBe('Carol vs Dan');
     expect(watching.r.root.querySelector('.tag')!.textContent).toBe('Watching');
   });
@@ -100,7 +94,6 @@ describe('GameCard', () => {
     const { r } = mount(
       gameSummary({ black: playerRef('9', 'Stockfish', { isBot: true }), engineLevel: 'club' }),
     );
-    await r.flush();
     expect(r.root.querySelector('.rating')!.textContent).toBe('Club');
     expect(r.root.querySelector('img.avatar.bot')).not.toBeNull();
   });
@@ -125,7 +118,6 @@ describe('GameCard', () => {
         ),
         () => ({ status: 200, body: {} }),
       );
-      await r.flush();
       expect(vi.getTimerCount()).toBe(1);
 
       const before = Array.from(r.root.querySelectorAll('.pill')).map((el) => el.textContent);
@@ -138,7 +130,6 @@ describe('GameCard', () => {
         () => null,
         () => ({ status: 200, body: {} }),
       );
-      await r.flush();
       expect(vi.getTimerCount()).toBe(0);
     } finally {
       vi.useRealTimers();
@@ -171,7 +162,6 @@ describe('GameCard', () => {
         ),
         () => ({ status: 200, body: {} }),
       );
-      await r.flush();
       expect(readCalls.filter((fen) => fen === AFTER_E4)).toHaveLength(1);
 
       vi.advanceTimersByTime(1_000);
@@ -197,16 +187,14 @@ describe('GameCard', () => {
 
       // Mount once so the shared ticker starts, then unmount everything so it stops (0
       // subscribers) and leaves the shared `now` signal stale at this moment.
-      const first = renderApp(
+      renderApp(
         () => <GameCard game={game} onOpen={() => {}} />,
         () => ({ status: 200, body: {} }),
       );
-      await first.flush();
       renderApp(
         () => null,
         () => ({ status: 200, body: {} }),
       );
-      await first.flush();
       expect(vi.getTimerCount()).toBe(0);
 
       // Time passes with nobody subscribed.
@@ -217,6 +205,7 @@ describe('GameCard', () => {
       const r = renderApp(
         () => <GameCard game={game} onOpen={() => {}} />,
         () => ({ status: 200, body: {} }),
+        { deferEffects: true },
       );
       expect(r.root.querySelector('.pill')!.textContent).toBe('Your move · 4:59:50');
     } finally {

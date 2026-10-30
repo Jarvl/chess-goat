@@ -17,8 +17,7 @@ const ask = () =>
 
 describe('choiceDialog', () => {
   it("asks through Telegram's popup, marking the current choice", async () => {
-    const r = renderApp(() => null, ok);
-    await r.flush();
+    renderApp(() => null, ok);
     const answer = ask();
     expect(window.__tg!.popups.at(-1)).toEqual({
       title: 'Move confirmations',
@@ -34,8 +33,7 @@ describe('choiceDialog', () => {
   });
 
   it('reads a dismissed popup as no choice', async () => {
-    const r = renderApp(() => null, ok);
-    await r.flush();
+    renderApp(() => null, ok);
     const answer = ask();
     window.__tg!.answerPopup('');
     expect(await answer).toBeNull();
@@ -43,7 +41,6 @@ describe('choiceDialog', () => {
 
   it('offers the choices in the page on clients without popups', async () => {
     const r = renderApp(() => null, ok, { version: '6.1' });
-    await r.flush();
     const answer = ask();
     await r.flush();
     expect(document.querySelector('[data-choice="people"]')?.getAttribute('aria-checked')).toBe(
@@ -59,7 +56,6 @@ describe('choiceDialog', () => {
 
   it('falls back to the page when the client rejects the popup, and Cancel dismisses', async () => {
     const r = renderApp(() => null, ok, { popupError: 'WebAppPopupParamInvalid' });
-    await r.flush();
     const answer = ask();
     await r.flush();
     expect(document.querySelector('[data-choice="never"]')).not.toBeNull();

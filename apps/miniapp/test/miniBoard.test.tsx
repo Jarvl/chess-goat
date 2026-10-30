@@ -13,7 +13,6 @@ const mount = (fen: string, lastMove: string | null, orientation: 'white' | 'bla
 describe('MiniBoard', () => {
   it('draws 64 squares from a8 with the pieces of the position', async () => {
     const r = mount(AFTER_E4, 'e2e4', 'white');
-    await r.flush();
     const squares = [...r.root.querySelectorAll('[data-square]')];
     expect(squares).toHaveLength(64);
     expect(squares[0]!.getAttribute('data-square')).toBe('a8');
@@ -28,7 +27,6 @@ describe('MiniBoard', () => {
 
   it("tints the last move's two squares", async () => {
     const r = mount(AFTER_E4, 'e2e4', 'white');
-    await r.flush();
     expect([...r.root.querySelectorAll('.lm')].map((el) => el.getAttribute('data-square'))).toEqual(
       ['e4', 'e2'],
     );
@@ -36,13 +34,11 @@ describe('MiniBoard', () => {
 
   it('tints nothing before the first move', async () => {
     const r = mount(INITIAL_FEN, null, 'white');
-    await r.flush();
     expect(r.root.querySelectorAll('.lm')).toHaveLength(0);
   });
 
   it('turns the board for black', async () => {
     const r = mount(INITIAL_FEN, null, 'black');
-    await r.flush();
     expect(r.root.querySelector('[data-square]')!.getAttribute('data-square')).toBe('h1');
   });
 });
