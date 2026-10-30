@@ -491,7 +491,12 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
   // An unconfirmed draft (the waiting move alone counts) is asked about before any way out of the
   // game, and Telegram asks before closing the app. With confirmations off there is never a draft
   // to lose. Both are put back when the draft goes or the screen does.
-  const guarded = confirmOn && store.draftDirty.value;
+  // Not once Confirm was tapped: the request is on its way (or retrying) and leaving does not
+  // withdraw it, so there is nothing left to lose.
+  const confirmedAway =
+    ((moveState.kind === 'sending' || moveState.kind === 'retry') && confirming) ||
+    confirmingPremoves;
+  const guarded = confirmOn && store.draftDirty.value && !confirmedAway;
   useEffect(() => {
     if (!guarded) return undefined;
     router.leaveGuard = () => {
