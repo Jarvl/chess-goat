@@ -423,7 +423,7 @@ For each deletion below, run the mutation check on the surviving copy first (Rev
 - Merge: `packages/shared/test/enums.test.ts` → `packages/shared/test/protocol/enums.test.ts`; `apps/miniapp/test/choiceDialog.test.tsx` → `dialog.test.tsx`
 - Create: `apps/miniapp/test/result.test.ts` (the `sideResult` tests, moved from `board.test.ts:84-120`)
 - Modify:
-  - `apps/miniapp/test/{game.test.tsx,premoveUi.test.tsx,gameStore.test.ts,router.test.ts,avatar.test.tsx,lobby.test.tsx,groups.test.tsx,flairScreen.test.tsx,linesPanel.test.tsx,games.test.tsx,lobby.test.tsx}`
+  - `apps/miniapp/test/{game.test.tsx,premoveUi.test.tsx,gameStore.test.ts,router.test.ts,avatar.test.tsx,lobby.test.tsx,groups.test.tsx,flairScreen.test.tsx,linesPanel.test.tsx,games.test.tsx}`
   - `packages/shared/test/protocol/{dto,requests,callbackData}.test.ts`, `packages/shared/test/chess/premoveTree.test.ts`
 
 - [ ] **Step 1: Delete the Mini App duplicates**
