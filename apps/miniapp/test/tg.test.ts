@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { themeVariables } from '../src/tg/theme';
 import type { TelegramWebApp } from '../src/tg/types';
 import { createTg, FEATURE_MIN_VERSION, versionAtLeast, type Tg } from '../src/tg/webapp';
+import { allowUnsupported } from './support/setup';
 import { installFakeWebApp, type FakeWebAppOptions } from './support/fakeWebApp';
 
 const raw = () => (window as unknown as { Telegram: { WebApp: TelegramWebApp } }).Telegram.WebApp;
@@ -9,6 +10,16 @@ const tgFor = (options: Partial<FakeWebAppOptions> & { version: string }) => {
   installFakeWebApp({ initData: 'user=%7B%22id%22%3A1%7D&hash=x', ...options });
   return createTg(raw());
 };
+
+describe('the fake Telegram client', () => {
+  it('keeps an unsupported use recorded before the fake is installed again', () => {
+    allowUnsupported('HapticFeedback');
+    tgFor({ version: '6.0' });
+    raw().HapticFeedback!.impactOccurred('light');
+    tgFor({ version: '8.0' });
+    expect(window.__tg!.unsupported).toEqual(['HapticFeedback']);
+  });
+});
 
 describe('versionAtLeast', () => {
   it('compares numerically, so 7.10 is newer than 7.9', () => {

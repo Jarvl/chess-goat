@@ -75,6 +75,20 @@ test('confirms a move with two branches in one request', async ({ browser }) => 
   await expect(strip(bob, 1)).toHaveText('Nf6');
   await expect(bob.locator('.lines-panel [data-path="g1f3,b8c6"]')).toHaveText('Nc6');
   await expect(bob.locator('.lines-panel [data-path="f1c4,g8f6"]')).toHaveText('Nf6');
+  // The panel scrolls on its own, at most a third of the screen tall, and does not trap the
+  // page's scrolling when it reaches its end.
+  const panel = await bob.locator('.lines-panel').evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      overflowY: style.overflowY,
+      maxHeight: Number.parseFloat(style.maxHeight),
+      overscroll: style.overscrollBehaviorY,
+      viewport: window.innerHeight,
+    };
+  });
+  expect(panel.overflowY).toBe('auto');
+  expect(panel.maxHeight).toBeCloseTo(panel.viewport * 0.34, 0);
+  expect(panel.overscroll).toBe('auto');
   await expect
     .poll(async () => (await tgState(bob)).mainButton)
     .toMatchObject({ text: 'Confirm move + 2 premoves', visible: true });

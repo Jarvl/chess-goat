@@ -88,7 +88,8 @@ export function installFakeWebApp(options: FakeWebAppOptions): void {
   let pendingInvoice: ((status: string) => void) | null = null;
   const record: FakeWebAppRecord = {
     calls: [],
-    unsupported: [],
+    // A test may install the fake again; what an earlier install recorded still counts.
+    unsupported: [...(window.__tg?.unsupported ?? [])],
     mainButton: { text: '', visible: false, progress: false, enabled: true },
     secondaryButton: { text: '', visible: false, progress: false, enabled: true },
     backButton: { visible: false },
