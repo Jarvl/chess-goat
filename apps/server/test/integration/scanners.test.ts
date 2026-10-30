@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import {
   forfeitOverdueGames,
   runScannersOnce,
@@ -40,8 +40,11 @@ describe('forfeitOverdueGames', () => {
     const overdue = await insertGame(db, group.id, alice.id, bob.id, { deadlineInSeconds: -1 });
     const fresh = await insertGame(db, group.id, alice.id, bob.id, { deadlineInSeconds: 3600 });
     const published: string[] = [];
-    deps.bus.subscribe(overdue.publicId, () => published.push(overdue.publicId));
-    deps.bus.subscribe(fresh.publicId, () => published.push(fresh.publicId));
+    const stops = [
+      deps.bus.subscribe(overdue.publicId, () => published.push(overdue.publicId)),
+      deps.bus.subscribe(fresh.publicId, () => published.push(fresh.publicId)),
+    ];
+    onTestFinished(() => stops.forEach((stop) => stop()));
 
     expect(await forfeitOverdueGames(deps)).toBe(1);
 

@@ -36,7 +36,7 @@ const deps = testDeps(db);
 let fake: FakeTelegram;
 let bot: Bot;
 let app: Hono;
-const metrics = new Metrics();
+let metrics: Metrics;
 const config = testConfig();
 
 const chat = supergroup(-1001000000001);
@@ -46,11 +46,13 @@ const carol = tgUser(33, 'Carol', 'carol');
 
 beforeAll(async () => {
   fake = await FakeTelegram.start();
-  bot = await createBot(deps, { ...config, TELEGRAM_API_ROOT: fake.url });
-  app = new Hono().route('/', webhookRoutes(bot, deps, config, metrics));
 });
+// A bot per test: its link rate limiter and its metrics start empty every time.
 beforeEach(async () => {
   await truncateAll(db);
+  metrics = new Metrics();
+  bot = await createBot(deps, { ...config, TELEGRAM_API_ROOT: fake.url });
+  app = new Hono().route('/', webhookRoutes(bot, deps, config, metrics));
   fake.reset();
 });
 afterAll(async () => {
@@ -94,7 +96,8 @@ describe('webhook', () => {
       update.update_id,
     ]);
     expect((await db.select().from(telegramUpdates))[0]?.processedAt).not.toBeNull();
-    expect(await metrics.render()).toMatch(/webhook_updates_total\{type="message"\} \d+/);
+    // Both deliveries are counted; only the first had effects.
+    expect(await metrics.render()).toContain('webhook_updates_total{type="message"} 2');
   });
 
   it('reprocesses an update whose earlier attempt never finished, but not one still in flight', async () => {
@@ -302,18 +305,14 @@ describe('/chess, /settings and /start', () => {
   });
 
   it('answers an anonymous admin without recording the anonymous bot as a member', async () => {
-    const other = supergroup(-1001000000078);
     const anonymousBot = { ...tgUser(1087968824, 'Group', 'GroupAnonymousBot'), is_bot: true };
-    await post(
-      commandUpdate({ chat: other, from: anonymousBot, text: '/chess', senderChat: true }),
-    );
+    await post(commandUpdate({ chat, from: anonymousBot, text: '/chess', senderChat: true }));
     expect(await messagesSent()).toHaveLength(1);
     expect(await db.select().from(users).where(eq(users.isEngine, false))).toHaveLength(0);
   });
 
   it('posts an Open settings button', async () => {
-    const other = supergroup(-1001000000077);
-    await post(commandUpdate({ chat: other, from: alice, text: '/settings' }));
+    await post(commandUpdate({ chat, from: alice, text: '/settings' }));
     const [group] = await db.select().from(groups);
     expect((await messagesSent())[0]).toMatchObject({
       buttons: [

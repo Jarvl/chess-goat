@@ -52,6 +52,8 @@ const dto = (version: number): GameDto => ({
 });
 
 let visibility: 'visible' | 'hidden' = 'visible';
+/** Every stream a test made: each listens on the real document and window until stopped. */
+const streams: GameStream[] = [];
 
 function streamWith(overrides: Partial<ConstructorParameters<typeof GameStream>[0]> = {}) {
   const states: number[] = [];
@@ -65,6 +67,7 @@ function streamWith(overrides: Partial<ConstructorParameters<typeof GameStream>[
     createEventSource: (url) => new FakeEventSource(url),
     ...overrides,
   });
+  streams.push(stream);
   return { stream, states, refresh, failures };
 }
 
@@ -75,6 +78,8 @@ beforeEach(() => {
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility });
 });
 afterEach(() => {
+  for (const stream of streams.splice(0)) stream.stop();
+  Reflect.deleteProperty(document, 'visibilityState');
   vi.useRealTimers();
 });
 
@@ -99,7 +104,6 @@ describe('GameStream', () => {
     const first = FakeEventSource.instances[0]!;
     first.open();
     first.close();
-    visibility = 'visible';
     document.dispatchEvent(new Event('visibilitychange'));
     await vi.advanceTimersByTimeAsync(0);
     expect(refresh).toHaveBeenCalledTimes(1);

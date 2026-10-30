@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { FLAIR, flairBackfillVersion } from '@group-chess/shared';
@@ -14,11 +14,12 @@ const { db, close } = openTestDb();
 let fake: FakeTelegram;
 let server: RunningServer;
 let base: string;
+let dir: string;
 
 beforeAll(async () => {
   await truncateAll(db);
   fake = await FakeTelegram.start();
-  const dir = await mkdtemp(join(tmpdir(), 'miniapp-'));
+  dir = await mkdtemp(join(tmpdir(), 'miniapp-'));
   await mkdir(join(dir, 'assets'));
   await writeFile(join(dir, 'index.html'), '<!doctype html><title>Group Chess</title>');
   await writeFile(join(dir, 'assets', 'app-1a2b3c.js'), 'console.log(1)');
@@ -33,6 +34,7 @@ afterAll(async () => {
   await server.stop();
   await fake.stop();
   await close();
+  await rm(dir, { recursive: true, force: true });
 });
 
 describe('startServer', () => {
@@ -73,16 +75,22 @@ describe('startServer', () => {
   });
 
   it('still starts when Telegram refuses the webhook, the commands or the menu button', async () => {
-    fake.failNext('setWebhook', { error_code: 429, description: 'Too Many Requests' });
-    fake.failNext('setMyCommands', { error_code: 500, description: 'Internal Server Error' });
-    fake.failNext('setChatMenuButton', { error_code: 500, description: 'Internal Server Error' });
+    // Its own Telegram, so the boot calls the other tests read stay the first server's.
+    const refusing = await FakeTelegram.start();
+    refusing.failNext('setWebhook', { error_code: 429, description: 'Too Many Requests' });
+    refusing.failNext('setMyCommands', { error_code: 500, description: 'Internal Server Error' });
+    refusing.failNext('setChatMenuButton', {
+      error_code: 500,
+      description: 'Internal Server Error',
+    });
     const second = await startServer(
-      testConfig({ TELEGRAM_API_ROOT: fake.url, PORT: 0, ENGINE_ENABLED: false }),
+      testConfig({ TELEGRAM_API_ROOT: refusing.url, PORT: 0, ENGINE_ENABLED: false }),
     );
     try {
       expect(await (await fetch(`http://127.0.0.1:${second.port}/healthz`)).text()).toBe('ok');
     } finally {
       await second.stop();
+      await refusing.stop();
     }
   });
 

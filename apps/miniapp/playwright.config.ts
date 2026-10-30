@@ -9,7 +9,8 @@ export default defineConfig({
   timeout: 30_000,
   fullyParallel: false,
   workers: 1,
-  retries: process.env.CI ? 1 : 0,
+  // docs/testing.md: a failing test is never a flake until proven, so a retry hides nothing.
+  retries: 0,
   reporter: 'line',
   use: {
     baseURL: APP,

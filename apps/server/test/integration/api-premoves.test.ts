@@ -10,7 +10,7 @@ import {
 } from '@group-chess/shared';
 import { Chess, type Move } from 'chess.js';
 import { eq } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { games } from '../../src/db/schema';
 import { touchMember } from '../../src/domain/members';
 import { startTestApi, type TestApi } from '../helpers/api';
@@ -315,7 +315,7 @@ describe('PUT /api/games/:id/premoves', () => {
   it('pushes an edit to the owner’s streams only, and publishes nothing for a no-op', async () => {
     const { game, bob, tokens } = await world();
     const heard: unknown[] = [];
-    api.deps.bus.subscribe(game.publicId, (audience) => heard.push(audience));
+    onTestFinished(api.deps.bus.subscribe(game.publicId, (audience) => heard.push(audience)));
     await put(tokens.bob, game.publicId, await body([], e4e5));
     expect((await put(tokens.bob, game.publicId, await body(e4e5, e4e5))).status).toBe(200);
     expect(heard).toEqual([{ userId: bob.id }]);
