@@ -127,6 +127,7 @@ came after that, with the `ended` and `against` rule kinds and streaks made alwa
 | dubious | 🗑️ | U+1F5D1 U+FE0F | `loss_streak_10` | `streak('loss', 10)` | Lose ten rated games in a row |
 | dubious | 😈 | U+1F608 | `nemesis_5` | `against(5, 'loss')` | Lose five games to the same person |
 | dubious | 🐔 | U+1F414 | `resigned` | `ended('loss', 'resignation')` | Resign a game |
+| dubious | 💤 | U+1F4A4 | `timed_out` | `ended('loss', 'timeout')` | Lose a game on time |
 
 The ranges use an en dash (U+2013) and "scholar’s" a right single quotation mark (U+2019), as in
 the prototype. Category titles: `flair.category.rank` "Rank ladder", `flair.category.feat` "Feats",

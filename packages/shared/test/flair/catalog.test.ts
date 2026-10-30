@@ -187,7 +187,7 @@ describe('the flair catalog', () => {
     ).toEqual(third);
     const ids = (category: string) => FLAIR.filter((f) => f.category === category).map((f) => f.id);
     expect(ids('feat').slice(-4)).toEqual(['draws_10', 'marathon_win', 'pacifist_mate', 'rival_5']);
-    expect(ids('dubious')).toEqual([
+    expect(ids('dubious').slice(0, 7)).toEqual([
       'scholars_mate_loss',
       'bongcloud_win',
       'loss_streak_3',
@@ -196,6 +196,20 @@ describe('the flair catalog', () => {
       'nemesis_5',
       'resigned',
     ]);
+  });
+
+  it('holds 💤 after 🐔, with its rule and description', () => {
+    const flair = flairById('timed_out');
+    expect(
+      flair && [
+        flair.category,
+        codePoints(flair.emoji),
+        flair.rule,
+        t(flairDescriptionKey(flair.id)),
+      ],
+    ).toEqual(['dubious', '1F4A4', ended('loss', 'timeout'), 'Lose a game on time']);
+    const ids = FLAIR.filter((f) => f.category === 'dubious').map((f) => f.id);
+    expect(ids.indexOf('timed_out')).toBe(ids.indexOf('resigned') + 1);
   });
 
   it('backfills ♟️ again for its loosened rule', () =>
