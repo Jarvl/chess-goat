@@ -32,7 +32,18 @@ export function noteTurnChange(previous: GameDto, next: GameDto): void {
   const before = waitsOnViewer(previous);
   const after = waitsOnViewer(next);
   if (before === after) return;
+  turnChanges += 1;
   yourMoveCount.value = Math.max(0, yourMoveCount.value + (after ? 1 : -1));
+}
+
+let turnChanges = 0;
+
+/**
+ * How many turn changes `noteTurnChange` has applied. A list asked for before the latest one was
+ * counted from the server before it, so it must not overwrite the adjusted badge.
+ */
+export function turnChangesSeen(): number {
+  return turnChanges;
 }
 
 function waitsOnViewer(dto: GameDto): boolean {

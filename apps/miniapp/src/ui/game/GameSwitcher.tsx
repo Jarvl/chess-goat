@@ -12,6 +12,9 @@ import { useApp } from '../context';
 import { MiniBoard } from '../MiniBoard';
 import { roleOf } from '../pill';
 
+/** The strip's id, for the chevron that opens and closes it to point at. */
+const STRIP_ID = 'switcher-games';
+
 /** Room left beside the game on screen when the strip scrolls it into view: the strip's padding. */
 const SCROLL_MARGIN = 12;
 
@@ -21,7 +24,12 @@ const SCROLL_MARGIN = 12;
  * chevron on its top edge minimizes it, for every game, until it is opened again. It leaves with
  * the tab bar, so a move or premoves waiting for Confirm are never left by a tap.
  */
-export function GameSwitcher(props: { games: StripGame[]; current: GameDto }) {
+export function GameSwitcher(props: {
+  games: StripGame[];
+  currentId: string;
+  /** The game on screen, once loaded: its thumbnail is drawn from the live board. */
+  live?: GameDto;
+}) {
   const { router } = useApp();
   const minimized = stripMinimized.value;
   const shown = router.showTabs.value;
@@ -33,12 +41,13 @@ export function GameSwitcher(props: { games: StripGame[]; current: GameDto }) {
   }, [shown, minimized]);
   if (!shown) return null;
   // Another game waiting on the viewer, said by a dot on the chevron while the strip is hidden.
-  const waiting = props.games.some((game) => game.id !== props.current.id && game.yourTurn);
+  const waiting = props.games.some((game) => game.id !== props.currentId && game.yourTurn);
   return (
     <div class={minimized ? 'switcher-dock minimized' : 'switcher-dock'}>
       <button
         class="switcher-toggle"
         aria-expanded={minimized ? 'false' : 'true'}
+        aria-controls={minimized ? undefined : STRIP_ID}
         aria-label={t(minimized ? 'app.switcher.show' : 'app.switcher.hide')}
         onClick={() => setStripMinimized(!minimized)}
       >
@@ -47,7 +56,9 @@ export function GameSwitcher(props: { games: StripGame[]; current: GameDto }) {
         </svg>
         {minimized && waiting ? <span class="dot" aria-hidden="true" /> : null}
       </button>
-      {minimized ? null : <Strip games={props.games} current={props.current} />}
+      {minimized ? null : (
+        <Strip games={props.games} currentId={props.currentId} live={props.live} />
+      )}
     </div>
   );
 }
@@ -56,10 +67,10 @@ export function GameSwitcher(props: { games: StripGame[]; current: GameDto }) {
  * The thumbnails themselves. The game on screen is drawn from the board, so its thumbnail follows a
  * move the list has not seen yet.
  */
-function Strip(props: { games: StripGame[]; current: GameDto }) {
+function Strip(props: { games: StripGame[]; currentId: string; live?: GameDto }) {
   const { router } = useApp();
   const stripRef = useRef<HTMLElement>(null);
-  const { current } = props;
+  const { currentId, live } = props;
   const viewerId = session.value?.user.id ?? null;
 
   // A hop finds the strip where it was left, so nothing moves under the thumb, nudged only if the
@@ -83,6 +94,7 @@ function Strip(props: { games: StripGame[]; current: GameDto }) {
 
   return (
     <nav
+      id={STRIP_ID}
       class="switcher"
       ref={stripRef}
       aria-label={t('app.switcher.label')}
@@ -91,11 +103,12 @@ function Strip(props: { games: StripGame[]; current: GameDto }) {
       {props.games.map((game) => {
         const role = roleOf(game, viewerId) ?? 'white';
         const opponent = game[role === 'white' ? 'black' : 'white'];
-        const isCurrent = game.id === current.id;
-        const fen = isCurrent ? current.fen : game.fen;
-        const lastMove = isCurrent ? (current.moves.at(-1)?.uci ?? null) : game.lastMove;
-        const yours = isCurrent
-          ? current.status === 'active' && sideToMove(current.fen) === role
+        const isCurrent = game.id === currentId;
+        const fromBoard = isCurrent ? live : undefined;
+        const fen = fromBoard ? fromBoard.fen : game.fen;
+        const lastMove = fromBoard ? (fromBoard.moves.at(-1)?.uci ?? null) : game.lastMove;
+        const yours = fromBoard
+          ? fromBoard.status === 'active' && sideToMove(fromBoard.fen) === role
           : game.status === 'active' && game.yourTurn;
         const classes = ['switcher-game', isCurrent ? 'current' : yours ? '' : 'dim'].filter(
           Boolean,

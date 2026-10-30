@@ -822,7 +822,8 @@ export function GameView(props: {
           body,
           GameDtoSchema,
         );
-        router.replace({ name: 'game', gameId: next.id });
+        // In place like a hop: the switcher strip keeps its order and takes the new game on.
+        router.replace({ name: 'game', gameId: next.id, hop: true });
         return;
       }
       await client.post(`/api/games/${gameId}/rematch`, {});
@@ -1119,7 +1120,7 @@ export function GameView(props: {
         </div>
       )}
       {/* Docked just above the tab bar, where a thumb reaches it (game switcher spec). */}
-      {strip ? <GameSwitcher games={strip} current={dto} /> : null}
+      {strip ? <GameSwitcher games={strip} currentId={dto.id} live={dto} /> : null}
     </div>
   );
 }

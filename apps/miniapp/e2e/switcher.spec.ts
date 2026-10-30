@@ -44,13 +44,11 @@ for (const height of [667, 844]) {
     await page.setViewportSize({ width: 375, height });
     await openFirstGame(page);
     const box = async (selector: string) => (await page.locator(selector).boundingBox())!;
-    // No gap above the tab bar: the bottom edge meets it, or tucks a pixel or two under it (the
-    // tab bar is drawn on top, and stands a little taller than --tabbar-h).
+    // Flush on the tab bar: no gap, and nothing tucked under it.
     const restsOnTabBar = async (selector: string) => {
       const bottom = (await box(selector)).y + (await box(selector)).height;
       const top = (await box('.tabbar')).y;
-      expect(bottom).toBeGreaterThanOrEqual(top);
-      expect(bottom - top).toBeLessThanOrEqual(4);
+      expect(Math.abs(bottom - top)).toBeLessThanOrEqual(1);
     };
     // Flush on the tab bar, whatever has scrolled behind it.
     await restsOnTabBar('.switcher-dock');
@@ -86,7 +84,8 @@ test('keeps the strip where it was when you hop, so nothing moves under your thu
   const id = await target.getAttribute('data-switch');
   const before = (await target.boundingBox())!;
   await target.click();
-  const after = page.locator(`.switcher [data-switch="${id}"]`);
+  // Inside the loaded game, not the strip that stands in while it loads.
+  const after = page.locator(`.game .switcher [data-switch="${id}"]`);
   await expect(after).toHaveClass(/\bcurrent\b/);
   expect(Math.abs((await after.boundingBox())!.x - before.x)).toBeLessThanOrEqual(1);
 });
@@ -105,4 +104,52 @@ test('raises toasts above the strip, open or minimized', async ({ page }) => {
   await expect(page.locator('.switcher')).toHaveCount(0);
   await expect(page.locator('.toast')).toHaveCount(0, { timeout: 10_000 });
   await clearOfStrip();
+});
+
+test('gives the tab bar the height every layout reserves for it', async ({ page }) => {
+  await openFirstGame(page);
+  const reserved = await page.evaluate(() => {
+    const probe = document.createElement('div');
+    probe.style.height = 'var(--tabbar-h)';
+    document.body.appendChild(probe);
+    const height = probe.getBoundingClientRect().height;
+    probe.remove();
+    return height;
+  });
+  expect((await page.locator('.tabbar').boundingBox())!.height).toBeCloseTo(reserved, 0);
+});
+
+test('takes a finger-sized tap on the chevron, just above its tab', async ({ page }) => {
+  await openFirstGame(page);
+  const tab = (await page.locator('.switcher-toggle').boundingBox())!;
+  // 44 px tall in all: the tab, and the hit area reaching above it.
+  const hit = await page.evaluate(
+    ([x, y]) => document.elementFromPoint(x!, y!)?.closest('.switcher-toggle') !== null,
+    [tab.x + tab.width / 2, tab.y + tab.height - 43],
+  );
+  expect(hit).toBe(true);
+});
+
+test('keeps the board under the strip on a very short screen', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 500 });
+  await openFirstGame(page);
+  const dockTop = (await page.locator('.switcher-toggle').boundingBox())!.y;
+  // Coordinates ignore pointers, which would hide them from the hit test; let them take part, so
+  // the hit test follows what is painted on top.
+  await page.addStyleTag({ content: '.board-wrap coord { pointer-events: auto !important; }' });
+  // Every board coordinate the strip covers is behind it.
+  const covered = await page.evaluate((top) => {
+    return [...document.querySelectorAll('.board-wrap coord')]
+      .map((coord) => coord.getBoundingClientRect())
+      .filter((box) => box.top + box.height / 2 > top)
+      .map((box) =>
+        Boolean(
+          document
+            .elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)
+            ?.closest('.switcher-dock'),
+        ),
+      );
+  }, dockTop);
+  expect(covered.length).toBeGreaterThan(0);
+  expect(covered.every(Boolean)).toBe(true);
 });

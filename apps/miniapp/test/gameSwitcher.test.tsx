@@ -10,9 +10,10 @@ import {
   stripMinimized,
   type StripGame,
 } from '../src/state/switcher';
-import { setYourMoveCount, yourMoveCount } from '../src/state/yourMove';
+import { noteTurnChange, setYourMoveCount, yourMoveCount } from '../src/state/yourMove';
+import { Game } from '../src/ui/screens/Game';
 import { STRIP_REFRESH_MS } from '../src/ui/game/useStrip';
-import { gameDto } from './support/gameFixtures';
+import { AFTER_E4, gameDto } from './support/gameFixtures';
 import {
   cleanupGameScreen,
   GAME,
@@ -23,7 +24,7 @@ import {
   useConfirmations,
 } from './support/gameScreen';
 import type { FakeResponse } from './support/fakeFetch';
-import type { Rendered } from './support/render';
+import { renderApp, type Rendered } from './support/render';
 import { type StubAdapter } from './support/stubAdapter';
 import { gameSummary, playerRef } from './support/summaryFixtures';
 
@@ -120,6 +121,38 @@ describe('the game switcher strip', () => {
     await r.flush();
     expect(thumbs(r)).toEqual(['OtherAaaaa', 'OtherBbbbb']);
     expect(r.root.querySelector('.switcher .current')).toBeNull();
+  });
+
+  it('loads no list for a spectator, who never sees the strip', async () => {
+    const r = mountWith([CURRENT, CAROL, DAVE], gameDto({ viewerRole: 'spectator' }));
+    await r.flush();
+    expect(r.allCalls.filter((call) => call.path === '/api/me/games')).toHaveLength(0);
+  });
+
+  it('stays on screen while a game it opened loads', async () => {
+    stripGames.value = [CURRENT, CAROL, DAVE];
+    const r = renderApp(
+      () => <Game gameId="OtherAaaaa" hop />,
+      () => new Promise<FakeResponse>(() => undefined), // the game never arrives
+    );
+    r.app.router.land('games', { name: 'game', gameId: 'OtherAaaaa', hop: true }, [
+      { name: 'games' },
+    ]);
+    await r.flush();
+    expect(r.text()).toContain('Loading');
+    expect(thumbs(r)).toEqual([GAME, 'OtherAaaaa', 'OtherBbbbb']);
+    expect(thumb(r, 'OtherAaaaa').classList.contains('current')).toBe(true);
+  });
+
+  it('shows no strip while a game loads that was not opened from it', async () => {
+    stripGames.value = [CURRENT, CAROL, DAVE];
+    const r = renderApp(
+      () => <Game gameId="OtherAaaaa" />,
+      () => new Promise<FakeResponse>(() => undefined),
+    );
+    r.app.router.land('games', { name: 'game', gameId: 'OtherAaaaa' }, [{ name: 'games' }]);
+    await r.flush();
+    expect(r.root.querySelector('.switcher-dock')).toBeNull();
   });
 
   it('is hidden when watching', async () => {
@@ -220,6 +253,16 @@ describe('minimizing the strip', () => {
     const quiet = mountWith([CURRENT, DAVE]);
     await quiet.flush();
     expect(toggle(quiet).querySelector('.dot')).toBeNull();
+  });
+
+  it('points the chevron at the strip it opens and closes', async () => {
+    const r = mountWith([CURRENT, CAROL, DAVE]);
+    await r.flush();
+    const id = toggle(r).getAttribute('aria-controls');
+    expect(id).toBeTruthy();
+    expect(r.root.querySelector('.switcher')!.id).toBe(id);
+    await r.click('.switcher-toggle');
+    expect(toggle(r).hasAttribute('aria-controls')).toBe(false);
   });
 
   it('shows no dot on the chevron while the strip is open', async () => {
@@ -325,6 +368,36 @@ describe('refreshing the strip', () => {
     expect(gets(r)).toBe(2);
     expect(thumbs(r)).toEqual([GAME, 'OtherAaaaa', 'OtherBbbbb']);
     expect(document.querySelector('.toast')).toBeNull();
+  });
+
+  it('keeps the newer list when an older one lands late', async () => {
+    let answerFirst: (response: FakeResponse) => void = () => undefined;
+    const daveToMove = { ...DAVE, yourTurn: true };
+    const r = mountAnswering([
+      new Promise<FakeResponse>((resolve) => (answerFirst = resolve)),
+      list(CURRENT, CAROL, daveToMove),
+    ]);
+    await settle();
+    visibility = 'visible';
+    document.dispatchEvent(new Event('visibilitychange')); // a second load, answered at once
+    await settle();
+    answerFirst(list(CURRENT, CAROL, DAVE)); // the first, older load lands last
+    await settle();
+    expect(gets(r)).toBe(2);
+    expect(thumb(r, 'OtherBbbbb').classList.contains('dim')).toBe(false);
+  });
+
+  it('leaves the badge alone when the list was asked for before a turn changed', async () => {
+    let answer: (response: FakeResponse) => void = () => undefined;
+    mountAnswering([new Promise<FakeResponse>((resolve) => (answer = resolve))]);
+    await settle();
+    setYourMoveCount(3);
+    // The viewer moves while the list is on its way: three games waiting become two.
+    noteTurnChange(gameDto(), gameDto({ fen: AFTER_E4, plyCount: 1 }));
+    expect(yourMoveCount.value).toBe(2);
+    answer(list(CURRENT, CAROL, { ...DAVE, yourTurn: true })); // still counts the moved game
+    await settle();
+    expect(yourMoveCount.value).toBe(2);
   });
 
   it('reconciles the Games badge', async () => {

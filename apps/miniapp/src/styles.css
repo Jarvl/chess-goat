@@ -50,7 +50,7 @@
   --pm-soft: #e6f1fa;
   --stable-height: 100vh;
   --radius: 12px;
-  --tabbar-h: calc(56px + env(safe-area-inset-bottom, 0px));
+  --tabbar-h: calc(58px + env(safe-area-inset-bottom, 0px));
   /** Vertical space the board must leave for chrome below it; the tab bar adds itself here. */
   --board-reserve: 0px;
   color-scheme: light dark;
@@ -106,6 +106,9 @@ button {
   right: 0;
   bottom: 0;
   z-index: 10;
+  /* Exactly the height every layout reserves for it, so whatever sits on it sits flush. */
+  box-sizing: border-box;
+  height: var(--tabbar-h);
   display: flex;
   background: var(--card);
   border-top: 1px solid var(--sep);
@@ -1023,11 +1026,11 @@ button {
   box-shadow: 0 -4px 10px rgb(0 0 0 / 5%);
 }
 
-/* A 28px tab is short for a finger: the hit area reaches 10px further up. */
+/* A 28px tab is short for a finger: the hit area reaches 16px further up, 44px in all. */
 .switcher-toggle::before {
   content: '';
   position: absolute;
-  inset: -10px -4px 0;
+  inset: -16px -4px 0;
 }
 
 .switcher-toggle svg {
@@ -1123,6 +1126,10 @@ button {
 
 .board-wrap {
   position: relative;
+  /* Keeps chessground's raised layers (coordinates at z 20, a dragged piece) inside the board, so
+     on a screen short enough to slide the board under the docked switcher strip, they stay under
+     it too. */
+  isolation: isolate;
   width: min(
     100vw,
     calc(

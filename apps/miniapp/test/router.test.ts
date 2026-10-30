@@ -92,6 +92,17 @@ describe('Router', () => {
     expect(router.current.value).toEqual({ name: 'lobby', groupId: 'GrOuPiDxYz' });
   });
 
+  it('resumes a game reached from the switcher strip as a fresh arrival', () => {
+    const { router } = setup();
+    router.land('games', { name: 'games' });
+    router.push({ name: 'game', gameId: 'AbCdEfGhIj' });
+    router.replace({ name: 'game', gameId: 'OtherAaaaa', hop: true });
+    router.select('groups');
+    router.select('games');
+    // Coming back from another section is not a hop: the strip takes a fresh order.
+    expect(router.current.value).toEqual({ name: 'game', gameId: 'OtherAaaaa' });
+  });
+
   it('seeds a tab at its root the first time it is selected', () => {
     const { router } = setup();
     router.select('settings');
