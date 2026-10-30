@@ -12,7 +12,8 @@ export type Feature =
   | 'closingConfirmation'
   | 'settingsButton'
   | 'activation'
-  | 'invoice';
+  | 'invoice'
+  | 'backButton';
 
 /** Spec §6.6: the first Bot API version that has each capability. */
 export const FEATURE_MIN_VERSION: Record<Feature, string> = {
@@ -28,6 +29,7 @@ export const FEATURE_MIN_VERSION: Record<Feature, string> = {
   settingsButton: '7.0',
   activation: '8.0',
   invoice: '6.1',
+  backButton: '6.1',
 };
 
 export function versionAtLeast(version: string, minimum: string): boolean {
@@ -240,6 +242,7 @@ export function createTg(
     setMainButton: (spec) => main.set(spec),
     setSecondaryButton: (spec) => secondary.set(spec),
     setBackButton(visible, onClick) {
+      if (!supports('backButton')) return;
       if (backHandler) raw.BackButton.offClick(backHandler);
       backHandler = onClick;
       raw.BackButton.onClick(onClick);

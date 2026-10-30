@@ -1,10 +1,16 @@
 import { FlairDtoSchema } from '@group-chess/shared';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { userFlair, users, type UserRow } from '../../src/db/schema';
 import { setWornFlair } from '../../src/flair/profile';
 import { startTestApi, type TestApi } from '../helpers/api';
-import { holdOpen, openTestDb, truncateAll, withoutWaiting } from '../helpers/db';
+import {
+  holdOpen,
+  openTestDb,
+  truncateAll,
+  waitForLockWaiters,
+  withoutWaiting,
+} from '../helpers/db';
 import { insertGame, insertGroup, insertUser } from '../helpers/fixtures';
 
 const { db, close } = openTestDb();
@@ -51,23 +57,6 @@ const wornOf = async (user: Pick<UserRow, 'id'>) =>
   (await db.select({ worn: users.flairWorn }).from(users).where(eq(users.id, user.id)))[0]!.worn;
 
 /**
- * Resolves once exactly `count` sessions of this database are waiting for a lock.
- * (`pg_stat_activity` covers the whole server, and other test databases share it.) It mirrors the
- * helper in `flair-award.test.ts` without its filter on the award's `for no key update`, because
- * `DELETE /api/me` waits in an `update`.
- */
-async function waitForLockWaiters(count: number): Promise<void> {
-  for (let attempt = 0; attempt < 250; attempt += 1) {
-    const [row] = await db.execute(sql`
-      select count(*)::int as waiting from pg_stat_activity
-      where datname = current_database() and state = 'active' and wait_event_type = 'Lock'`);
-    if (row?.waiting === count) return;
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-  throw new Error(`${count} session(s) never came to wait for a lock`);
-}
-
-/**
  * An award in flight (flair spec §3.2). Like `awardFlairForGame` it takes the player's row lock
  * (`for no key update`) first and holds it until `commit()` is called, then stores `flairId` as
  * earned in `gameId`, appends it to the worn list it read under the lock, and commits.
@@ -109,7 +98,7 @@ async function requestBehindAward(
   let pending: Promise<Response> | undefined;
   try {
     pending = send();
-    await waitForLockWaiters(1);
+    await waitForLockWaiters(db, 1);
   } finally {
     inFlight.commit();
     await Promise.allSettled([inFlight.done, pending]);

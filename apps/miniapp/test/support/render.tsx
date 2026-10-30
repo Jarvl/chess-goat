@@ -34,6 +34,8 @@ export function renderApp(
     popupError?: string;
     tg?: Tg;
     invoiceError?: string;
+    /** Leaves the first render's effects pending, for a test of what the very first paint shows. */
+    deferEffects?: boolean;
   } = {},
 ): Rendered {
   installFakeWebApp({
@@ -68,14 +70,17 @@ export function renderApp(
   const root = document.createElement('div');
   lastRoot = root;
   document.body.appendChild(root);
-  render(
+  const tree = (
     <AppProvider value={app}>
       {ui(app)}
       <Toasts />
       <Dialogs />
-    </AppProvider>,
-    root,
+    </AppProvider>
   );
+  // Inside `act`, so the first render's effects (the popup host, streams, button wiring) have run
+  // by the time a test looks.
+  if (options.deferEffects) render(tree, root);
+  else act(() => render(tree, root));
   const flush = async (): Promise<void> => {
     for (let i = 0; i < 4; i += 1) await new Promise((resolve) => setTimeout(resolve, 0));
   };

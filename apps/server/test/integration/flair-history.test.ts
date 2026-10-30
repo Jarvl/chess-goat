@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { games, users } from '../../src/db/schema';
-import { isCountedGame, loadCountedGames } from '../../src/flair/history';
+import { loadCountedGames } from '../../src/flair/history';
 import { openTestDb, truncateAll } from '../helpers/db';
 import { insertGame, insertGroup, insertUser, type GameOverrides } from '../helpers/fixtures';
 
@@ -11,20 +11,6 @@ beforeEach(() => truncateAll(db));
 afterAll(() => close());
 
 const day = (n: number) => new Date(Date.UTC(2026, 1, n, 12));
-
-describe('isCountedGame', () => {
-  const decided = { status: 'finished', voidedAt: null, result: '1-0', engineLevel: null } as const;
-  it('counts a finished, decided game against a person', () => {
-    expect(isCountedGame(decided)).toBe(true);
-    expect(isCountedGame({ ...decided, result: '1/2-1/2' })).toBe(true);
-  });
-  it('leaves out aborts, voids, bot games and running games', () => {
-    expect(isCountedGame({ ...decided, result: '*' })).toBe(false);
-    expect(isCountedGame({ ...decided, voidedAt: day(2) })).toBe(false);
-    expect(isCountedGame({ ...decided, engineLevel: 'beginner' })).toBe(false);
-    expect(isCountedGame({ ...decided, status: 'active', result: null })).toBe(false);
-  });
-});
 
 describe('loadCountedGames', () => {
   it('lists a player’s counted games through a game, oldest first, from their side', async () => {

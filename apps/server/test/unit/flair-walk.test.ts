@@ -3,24 +3,12 @@ import { describe, expect, it, vi } from 'vitest';
 import type { StoredMove } from '../../src/flair/patterns';
 import type { CountedGame } from '../../src/flair/rules';
 import { earliestQualifying } from '../../src/flair/walk';
-import { LINES, play } from '../helpers/chess';
+import { countedGame, LINES, play } from '../helpers/chess';
 
-const game = (id: number, result: PlayerResult, over: Partial<CountedGame> = {}): CountedGame => ({
-  id,
-  startedAt: new Date(Date.UTC(2026, 1, id, 11)),
-  finishedAt: new Date(Date.UTC(2026, 1, id, 12)),
-  rated: true,
-  result,
-  ratingAfter: null,
-  side: 'white',
-  endReason: 'checkmate',
-  opponentId: 100,
-  ...over,
-});
 const flair = (...ids: string[]): FlairEntry[] => ids.map((id) => flairById(id)!);
 /** A history of `results`, ids from 1 in order. */
 const games = (...results: PlayerResult[]): CountedGame[] =>
-  results.map((result, i) => game(i + 1, result));
+  results.map((result, i) => countedGame(i + 1, result));
 /** A `movesOf` that finds no moves, so every pattern is absent, and records which games it read. */
 const movesSpy = () => vi.fn<(gameId: number) => Promise<readonly StoredMove[]>>(async () => []);
 const noMoves = movesSpy();
@@ -102,7 +90,7 @@ describe('earliestQualifying', () => {
   it('scores each game from the side the player had in it', async () => {
     // Black was mated in game 2, so the player, as Black, earns 🪤 there.
     const mated = play(INITIAL_FEN, ...LINES.scholarsMateQh5);
-    const history = [game(1, 'loss'), game(2, 'loss', { side: 'black' })];
+    const history = [countedGame(1, 'loss'), countedGame(2, 'loss', { side: 'black' })];
     const movesOf = async (id: number) => (id === 2 ? mated : []);
     expect(found(await earliestQualifying(history, flair('scholars_mate_loss'), movesOf))).toEqual({
       scholars_mate_loss: 2,

@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { themeVariables } from '../src/tg/theme';
 import type { TelegramWebApp } from '../src/tg/types';
-import { createTg, FEATURE_MIN_VERSION, versionAtLeast } from '../src/tg/webapp';
+import { createTg, FEATURE_MIN_VERSION, versionAtLeast, type Tg } from '../src/tg/webapp';
+import { allowUnsupported } from './support/setup';
 import { installFakeWebApp, type FakeWebAppOptions } from './support/fakeWebApp';
 
 const raw = () => (window as unknown as { Telegram: { WebApp: TelegramWebApp } }).Telegram.WebApp;
@@ -10,8 +11,14 @@ const tgFor = (options: Partial<FakeWebAppOptions> & { version: string }) => {
   return createTg(raw());
 };
 
-beforeEach(() => {
-  delete window.__tg;
+describe('the fake Telegram client', () => {
+  it('keeps an unsupported use recorded before the fake is installed again', () => {
+    allowUnsupported('HapticFeedback');
+    tgFor({ version: '6.0' });
+    raw().HapticFeedback!.impactOccurred('light');
+    tgFor({ version: '8.0' });
+    expect(window.__tg!.unsupported).toEqual(['HapticFeedback']);
+  });
 });
 
 describe('versionAtLeast', () => {
@@ -35,9 +42,90 @@ describe('createTg', () => {
     }
   });
 
-  it('disables vertical swipes only from 7.7', () => {
-    expect(tgFor({ version: '7.6' }).disableVerticalSwipes()).toBe(false);
-    expect(window.__tg!.calls).not.toContain('disableVerticalSwipes');
+  // Each call below its minimum must not reach the client: the global check in support/setup.ts
+  // fails the test if the fake recorded an unsupported call.
+  it.each<{ feature: string; below: string; call: (tg: Tg) => unknown; returns: unknown }>([
+    { feature: 'haptics', below: '6.0', call: (tg) => tg.haptic('light'), returns: undefined },
+    {
+      feature: 'the back button',
+      below: '6.0',
+      call: (tg) => tg.setBackButton(true, () => undefined),
+      returns: undefined,
+    },
+    {
+      feature: 'header and background colours',
+      below: '6.0',
+      call: (tg) => tg.setChromeColor('secondary_bg_color'),
+      returns: undefined,
+    },
+    {
+      feature: 'the bottom bar colour',
+      below: '7.9',
+      call: (tg) => tg.setChromeColor('secondary_bg_color'),
+      returns: undefined,
+    },
+    {
+      feature: 'closing confirmation',
+      below: '6.1',
+      call: (tg) => tg.setClosingConfirmation(true),
+      returns: undefined,
+    },
+    {
+      feature: 'the vertical swipe lock',
+      below: '7.6',
+      call: (tg) => tg.disableVerticalSwipes(),
+      returns: false,
+    },
+    {
+      feature: 'the secondary button',
+      below: '7.9',
+      call: (tg) => tg.setSecondaryButton({ text: 'Cancel', onClick: () => undefined }),
+      returns: false,
+    },
+    {
+      feature: 'the popup',
+      below: '6.1',
+      call: (tg) => tg.showPopup({ message: 'x', buttons: [] }),
+      returns: null,
+    },
+    {
+      feature: 'the invoice',
+      below: '6.0',
+      call: (tg) => tg.openInvoice('https://t.me/$x'),
+      returns: null,
+    },
+    {
+      feature: 'write access',
+      below: '6.8',
+      call: (tg) => tg.requestWriteAccess(),
+      returns: null,
+    },
+    {
+      feature: 'file downloads',
+      below: '7.11',
+      call: (tg) => tg.downloadFile('https://x/g.pgn', 'g.pgn'),
+      returns: false,
+    },
+  ])('does not call $feature below its minimum version', async ({ below, call, returns }) => {
+    const tg = tgFor({ version: below, writeAccess: true });
+    expect(await call(tg)).toBe(returns);
+  });
+
+  it('keeps the settings button hidden on 6.10, where the SDK has it but the app does not', () => {
+    let taps = 0;
+    tgFor({ version: '6.10' }).onSettingsButton(() => (taps += 1));
+    window.__tg!.clickSettings();
+    expect(taps).toBe(0);
+    expect(window.__tg!.settingsButton.visible).toBe(false);
+    expect(window.__tg!.unsupported).toEqual([]);
+  });
+
+  it('shows the back button from 6.1', () => {
+    tgFor({ version: '6.1' }).setBackButton(true, () => undefined);
+    expect(window.__tg!.backButton.visible).toBe(true);
+  });
+
+  it('disables vertical swipes from 7.7', () => {
     expect(tgFor({ version: '7.7' }).disableVerticalSwipes()).toBe(true);
     expect(window.__tg!.calls).toContain('disableVerticalSwipes');
   });
@@ -55,10 +143,7 @@ describe('createTg', () => {
     expect(window.__tg!.mainButton.visible).toBe(false);
   });
 
-  it('offers the secondary button only from 7.10', () => {
-    expect(
-      tgFor({ version: '7.9' }).setSecondaryButton({ text: 'Cancel', onClick: () => {} }),
-    ).toBe(false);
+  it('offers the secondary button from 7.10', () => {
     const tg = tgFor({ version: '7.10' });
     let clicks = 0;
     expect(tg.setSecondaryButton({ text: 'Cancel', onClick: () => (clicks += 1) })).toBe(true);
@@ -67,24 +152,19 @@ describe('createTg', () => {
     expect(window.__tg!.secondaryButton).toMatchObject({ text: 'Cancel', visible: true });
   });
 
-  it('skips haptics below 6.1 and forwards them from 6.1', () => {
-    tgFor({ version: '6.0' }).haptic('light');
-    expect(window.__tg!.haptics).toEqual([]);
+  it('forwards haptics from 6.1', () => {
     const tg = tgFor({ version: '6.1' });
     tg.haptic('medium');
     tg.hapticNotify('warning');
     expect(window.__tg!.haptics).toEqual(['impact:medium', 'notification:warning']);
   });
 
-  it('answers null for write access below 6.9 and the client answer from 6.9', async () => {
-    expect(await tgFor({ version: '6.8', writeAccess: true }).requestWriteAccess()).toBeNull();
+  it('answers write access with the client answer from 6.9', async () => {
     expect(await tgFor({ version: '6.9', writeAccess: true }).requestWriteAccess()).toBe(true);
     expect(await tgFor({ version: '6.9', writeAccess: false }).requestWriteAccess()).toBe(false);
   });
 
-  it('downloads files only from 8.0', () => {
-    expect(tgFor({ version: '7.11' }).downloadFile('https://x/g.pgn', 'g.pgn')).toBe(false);
-    expect(window.__tg!.downloads).toEqual([]);
+  it('downloads files from 8.0', () => {
     expect(tgFor({ version: '8.0' }).downloadFile('https://x/g.pgn', 'g.pgn')).toBe(true);
     expect(window.__tg!.downloads).toEqual([{ url: 'https://x/g.pgn', file_name: 'g.pgn' }]);
   });
@@ -111,8 +191,6 @@ describe('createTg', () => {
   });
 
   it('colours the header and background from 6.1 and the bottom bar from 7.10', () => {
-    tgFor({ version: '6.0' }).setChromeColor('secondary_bg_color');
-    expect(window.__tg!.chrome).toEqual({});
     tgFor({ version: '7.9' }).setChromeColor('secondary_bg_color');
     expect(window.__tg!.chrome).toEqual({
       header: 'secondary_bg_color',
@@ -127,9 +205,7 @@ describe('createTg', () => {
     expect(window.__tg!.mainButton).toMatchObject({ color: '#2e7d4f', textColor: '#ffffff' });
   });
 
-  it('confirms closing only from 6.2', () => {
-    tgFor({ version: '6.1' }).setClosingConfirmation(true);
-    expect(window.__tg!.calls).not.toContain('enableClosingConfirmation');
+  it('confirms closing from 6.2', () => {
     const tg = tgFor({ version: '6.2' });
     tg.setClosingConfirmation(true);
     expect(window.__tg!.closingConfirmation).toBe(true);
@@ -137,14 +213,8 @@ describe('createTg', () => {
     expect(window.__tg!.closingConfirmation).toBe(false);
   });
 
-  it('offers no popup below 6.2', () => {
-    expect(tgFor({ version: '6.1' }).showPopup({ message: 'x', buttons: [] })).toBeNull();
-  });
-
   it('shows the settings button from 7.0 and routes its taps until unsubscribed', () => {
     let taps = 0;
-    tgFor({ version: '6.9' }).onSettingsButton(() => (taps += 1));
-    expect(window.__tg!.settingsButton).toBeNull();
     const off = tgFor({ version: '7.0' }).onSettingsButton(() => (taps += 1));
     expect(window.__tg!.settingsButton?.visible).toBe(true);
     window.__tg!.clickSettings();
@@ -154,12 +224,14 @@ describe('createTg', () => {
     expect(window.__tg!.settingsButton?.visible).toBe(false);
   });
 
-  it('forwards selection haptics from 6.1 and opens Telegram links', () => {
+  it('forwards selection haptics from 6.1 and opens Telegram and web links each their own way', () => {
     const tg = tgFor({ version: '6.1' });
     tg.hapticSelection();
     tg.openTelegramLink('https://t.me/Jarvl');
+    tg.openLink('https://github.com/Jarvl');
     expect(window.__tg!.haptics).toEqual(['selection']);
-    expect(window.__tg!.links).toEqual(['https://t.me/Jarvl']);
+    expect(window.__tg!.telegramLinks).toEqual(['https://t.me/Jarvl']);
+    expect(window.__tg!.links).toEqual(['https://github.com/Jarvl']);
   });
 
   it('is a null client outside Telegram', () => {
@@ -180,11 +252,6 @@ describe('createTg', () => {
     off();
     window.__tg!.emit('deactivated');
     expect(seen).toBe(1);
-  });
-
-  it('offers no invoice below 6.1', () => {
-    expect(tgFor({ version: '6.0' }).openInvoice('https://t.me/$x')).toBeNull();
-    expect(tgFor({ version: '6.0' }).supports('invoice')).toBe(false);
   });
 
   it('opens an invoice and resolves its final status', async () => {

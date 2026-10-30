@@ -6,13 +6,13 @@
  * stubbed here; everything else is the real composed path on real PostgreSQL.
  */
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createEngineGame } from '../../src/domain/engineGames';
-import { playMove, requireGameByPublicId } from '../../src/domain/games';
+
+import { requireGameByPublicId } from '../../src/domain/games';
 import { touchMember } from '../../src/domain/members';
 import { Metrics } from '../../src/metrics';
 import { testConfig } from '../helpers/config';
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
-import { createEngineJobRunner } from '../helpers/engineJob';
+import { createEngineJobRunner, gameAwaitingEngine } from '../helpers/engineJob';
 import { fakeEngine } from '../helpers/fakeEngine';
 import { insertGroup, insertUser } from '../helpers/fixtures';
 
@@ -56,26 +56,9 @@ beforeEach(async () => {
 afterAll(() => close());
 
 /** An engine game with the human to move having just played, so the engine owes a reply. */
-async function gameAwaitingTheEngine() {
-  const game = await createEngineGame(deps, {
-    groupId: group.id,
-    userId: alice.id,
-    level: 'club',
-    colour: 'white',
-  });
-  await playMove(deps, {
-    gameId: game.publicId,
-    userId: alice.id,
-    uci: 'e2e4',
-    expectedPly: 0,
-    clientMoveId: 'c1',
-  });
-  return game;
-}
-
 describe('every escape from the engine_move handler', () => {
   it('routes a throw through the retry ladder instead of past it', async () => {
-    const game = await gameAwaitingTheEngine();
+    const game = await gameAwaitingEngine(deps, { groupId: group.id, userId: alice.id });
     stub.mode = 'broken';
     const result = await runEngineJob(fakeEngine({ replies: [{ uci: 'e7e5' }] }), game.id);
     expect(result).toMatchObject({ outcome: 'retry_attempt' });
@@ -84,7 +67,7 @@ describe('every escape from the engine_move handler', () => {
   });
 
   it('aborts on a throw once the attempts are exhausted, rather than stranding the game', async () => {
-    const game = await gameAwaitingTheEngine();
+    const game = await gameAwaitingEngine(deps, { groupId: group.id, userId: alice.id });
     stub.mode = 'broken';
     const result = await runEngineJob(fakeEngine({ replies: [{ uci: 'e7e5' }] }), game.id, {
       attempts: 7,
@@ -97,7 +80,7 @@ describe('every escape from the engine_move handler', () => {
   });
 
   it('routes a failed illegal-move recovery through the retry ladder', async () => {
-    const game = await gameAwaitingTheEngine();
+    const game = await gameAwaitingEngine(deps, { groupId: group.id, userId: alice.id });
     stub.mode = 'break-recovery';
     // An illegal reply, so the recovery of spec §9's E7 row really runs — and then fails.
     const result = await runEngineJob(fakeEngine({ replies: [{ uci: 'a1a8' }] }), game.id);
@@ -109,7 +92,7 @@ describe('every escape from the engine_move handler', () => {
   });
 
   it('aborts on a failed illegal-move recovery once the attempts are exhausted', async () => {
-    const game = await gameAwaitingTheEngine();
+    const game = await gameAwaitingEngine(deps, { groupId: group.id, userId: alice.id });
     stub.mode = 'break-recovery';
     const result = await runEngineJob(fakeEngine({ replies: [{ uci: 'a1a8' }] }), game.id, {
       attempts: 7,

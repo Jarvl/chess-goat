@@ -49,7 +49,8 @@ describe('Flair screen', () => {
     ]);
     expect(r.root.querySelector('[data-slot="0"]')?.getAttribute('aria-pressed')).toBe('true');
   });
-  it('lists each category in order with every flair’s state', async () => {
+  // Which slot a tap fills, frees or swaps is wearFlair's, tested in flairState.test.ts.
+  it('titles each category and shows every flair’s state', async () => {
     const r = await open();
     expect([...r.root.querySelectorAll('.section')].map((s) => s.textContent)).toEqual([
       'Rank ladder',
@@ -57,14 +58,11 @@ describe('Flair screen', () => {
       'Dubious honours',
     ]);
     expect(r.root.querySelectorAll('[data-flair]')).toHaveLength(FLAIR.length);
-    expect(row(r, 'rank_1500').textContent).toContain('Earned Apr 2026');
     expect(row(r, 'rank_1500').querySelector('.flair-check')).not.toBeNull();
-    expect(row(r, 'en_passant_win').textContent).toContain('Earned vs @tom_rook · Aug 12');
     expect(row(r, 'en_passant_win').querySelector('.tag')?.textContent).toBe('Slot 2');
     expect(row(r, 'scholars_mate_loss').querySelector('.flair-free')).not.toBeNull();
     expect(row(r, 'rank_1800').matches('.locked')).toBe(true);
     expect(row(r, 'rank_1800').querySelector('.tag')?.textContent).toBe('Locked');
-    expect(row(r, 'rank_1800').textContent).not.toContain('Earned');
   });
   it('puts a tapped flair in the selected slot and saves the slots', async () => {
     const r = await open();
@@ -121,7 +119,6 @@ describe('Flair screen', () => {
       'false',
       'true',
     ]);
-    expect([first!.matches('.on'), second!.matches('.on')]).toEqual([false, true]);
   });
   it('moves the check, the highlight and the chips with the selected slot', async () => {
     const r = await open();
@@ -135,23 +132,6 @@ describe('Flair screen', () => {
     expect(tile('en_passant_win').matches('.here')).toBe(true);
     expect(row(r, 'en_passant_win').querySelector('.flair-check')).not.toBeNull();
     expect(row(r, 'en_passant_win').querySelector('.tag')).toBeNull();
-  });
-  it('takes a flair out of the selected slot when it is tapped again', async () => {
-    const r = await open();
-    await r.click('[data-flair="rank_1500"]');
-    expect(window.__tg!.haptics).toEqual(['selection']);
-    expect(r.calls.at(-1)).toMatchObject({ method: 'PUT', body: { worn: ['en_passant_win'] } });
-    expect(preview(r)).toBe('👑');
-    expect(row(r, 'rank_1500').querySelector('.flair-free')).not.toBeNull();
-  });
-  it('swaps two flair when the tapped one is worn in another slot', async () => {
-    const r = await open();
-    await r.click('[data-flair="en_passant_win"]');
-    expect(r.calls.at(-1)).toMatchObject({
-      method: 'PUT',
-      body: { worn: ['en_passant_win', 'rank_1500'] },
-    });
-    expect(preview(r)).toBe('👑🚶');
   });
   it('disables the locked rows and no others', async () => {
     const r = await open();

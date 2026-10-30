@@ -2,21 +2,16 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import postgres from 'postgres';
+import type postgres from 'postgres';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { runMigrations } from '../../src/db/migrate';
+import { scratchDatabase, type ScratchDatabase } from '../helpers/db';
 
 const REAL_FOLDER = fileURLToPath(new URL('../../drizzle', import.meta.url));
-const baseUrl = process.env.TEST_DATABASE_URL!;
-const admin = postgres(baseUrl, { max: 1, onnotice: () => undefined });
-const scratchName = `group_chess_migrate_${process.pid}`;
-const scratchUrl = (() => {
-  const url = new URL(baseUrl);
-  url.pathname = `/${scratchName}`;
-  return url.toString();
-})();
 
+let database: ScratchDatabase;
 let scratch: postgres.Sql;
+let scratchUrl: string;
 let tempDir: string;
 
 type Journal = {
@@ -64,21 +59,14 @@ beforeAll(() => {
   tempDir = mkdtempSync(join(tmpdir(), 'group-chess-migrations-'));
 });
 
-afterAll(async () => {
-  rmSync(tempDir, { recursive: true, force: true });
-  await admin.end({ timeout: 5 });
-});
+afterAll(() => rmSync(tempDir, { recursive: true, force: true }));
 
 beforeEach(async () => {
-  await admin.unsafe(`drop database if exists ${scratchName} with (force)`);
-  await admin.unsafe(`create database ${scratchName}`);
-  scratch = postgres(scratchUrl, { max: 1, onnotice: () => undefined });
+  database = await scratchDatabase('migrate');
+  ({ sql: scratch, url: scratchUrl } = database);
 });
 
-afterEach(async () => {
-  await scratch.end({ timeout: 5 });
-  await admin.unsafe(`drop database if exists ${scratchName} with (force)`);
-});
+afterEach(() => database.drop());
 
 /** Migrates with `folder`, then leaves a table that only survives if the next boot keeps the data. */
 async function deploy(folder: string): Promise<void> {
@@ -170,5 +158,16 @@ describe('runMigrations with resetOnMismatch', () => {
     expect(result).toEqual({ reset: false });
     expect(await markerSurvives()).toBe(true);
     expect(await tables()).toContain(branchA.tag);
+  });
+});
+
+describe('the migrations', () => {
+  it('create exactly one engine user, Stockfish, with no Telegram id and no DMs', async () => {
+    await runMigrations(scratchUrl, { migrationsFolder: migrationsFolder('main') });
+    const rows = await scratch<
+      { first_name: string; telegram_user_id: number | null; dm_allowed: boolean }[]
+    >`
+      select first_name, telegram_user_id, dm_allowed from users where is_engine`;
+    expect(rows).toEqual([{ first_name: 'Stockfish', telegram_user_id: null, dm_allowed: false }]);
   });
 });

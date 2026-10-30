@@ -162,12 +162,10 @@ describe('SupportCard', () => {
     expect(submit().disabled).toBe(true);
 
     await typeAmount(r, '0');
-    expect(hint().classList.contains('bad')).toBe(true);
     expect(hint().textContent).toBe('Enter between 1 and 10,000 Stars');
     expect(submit().disabled).toBe(true);
 
     await typeAmount(r, '123');
-    expect(hint().classList.contains('ok')).toBe(true);
     expect(hint().textContent).toBe('Telegram shows the exact total before you pay');
     await r.click('[data-action="tip-submit"]');
     expect(r.calls[0]).toMatchObject({ path: '/api/tips', body: { stars: 123 } });
@@ -191,16 +189,17 @@ describe('SupportCard', () => {
   it('keeps only digits from pasted text, at most five of them', async () => {
     const r = renderApp(() => <SupportCard />, mints);
     await r.click('[data-action="tip-custom"]');
-    expect((await typeAmount(r, '1,000')).value).toBe('1000');
-    expect(r.root.querySelector('.tip-hint')?.classList.contains('ok')).toBe(true);
+    const input = await typeAmount(r, '1,000');
+    expect(input.value).toBe('1000');
+    expect(input.getAttribute('aria-invalid')).toBeNull();
     expect((await typeAmount(r, ' 250 ')).value).toBe('250');
     expect((await typeAmount(r, '1234567')).value).toBe('12345');
-    expect(r.root.querySelector('.tip-hint')?.classList.contains('bad')).toBe(true);
+    expect(input.getAttribute('aria-invalid')).toBe('true');
   });
 
   it('opens the author chat from the card body', async () => {
     const r = renderApp(() => <SupportCard />, mints);
     await r.click('[data-action="support-author"]');
-    expect(window.__tg!.links).toEqual(['https://t.me/Jarvl']);
+    expect(window.__tg!.telegramLinks).toEqual(['https://t.me/Jarvl']);
   });
 });

@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { UserRow } from '../../src/db/schema';
-import { nameWithFlair } from '../../src/domain/users';
+
 import {
   challengeStub,
   deletedStub,
@@ -131,15 +130,8 @@ describe('waiting line and stubs', () => {
     expect(challengeStub('@alice', 'accepted')).toBe('Challenge from @alice accepted');
   });
 
-  it('names a deleted opponent without flair', () => {
-    const deleted = {
-      firstName: 'Tom',
-      username: 'tom',
-      deletedAt: new Date(),
-      isEngine: false,
-      flairWorn: ['rank_under_1200'],
-    } as UserRow;
-    expect(gameEndedStub(nameWithFlair(deleted))).toBe('Game vs Deleted player ended');
+  it('names the opponent in a finished game’s stub', () => {
+    expect(gameEndedStub('@tom')).toBe('Game vs @tom ended');
   });
 
   it('has a nameless stub for a deleted account', () => {

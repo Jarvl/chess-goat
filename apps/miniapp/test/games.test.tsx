@@ -97,7 +97,6 @@ describe('TabBar', () => {
     await r.click('[data-nav="settings"]');
     expect(r.app.router.tab.value).toBe('settings');
     expect(r.app.router.stack.value).toHaveLength(1);
-    expect(r.tg.available).toBe(true);
     expect(window.__tg!.backButton.visible).toBe(false);
     expect(window.__tg!.haptics).toContain('selection');
 

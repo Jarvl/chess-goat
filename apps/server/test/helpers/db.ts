@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import postgres from 'postgres';
 import { LocalBus } from '../../src/bus/bus';
 import { createDb, type Db, type Tx } from '../../src/db/client';
 import type { Deps } from '../../src/domain/deps';
@@ -62,4 +63,45 @@ export function withoutWaiting(db: Db, work: (tx: Tx) => Promise<unknown>): Prom
     await tx.execute(sql`set local lock_timeout = '1s'`);
     await work(tx);
   });
+}
+
+/**
+ * Resolves once exactly `count` sessions of this database are waiting for a lock, optionally only
+ * those running a statement like `queryLike`. (`pg_stat_activity` covers the whole server, and
+ * other test databases share it.)
+ */
+export async function waitForLockWaiters(db: Db, count: number, queryLike?: string): Promise<void> {
+  for (let attempt = 0; attempt < 250; attempt += 1) {
+    const [row] = await db.execute(sql`
+      select count(*)::int as waiting from pg_stat_activity
+      where datname = current_database() and state = 'active' and wait_event_type = 'Lock'
+        and (${queryLike ?? null}::text is null or query ilike ${queryLike ?? null})`);
+    if (row?.waiting === count) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(`${count} session(s) never came to wait for a lock`);
+}
+
+export type ScratchDatabase = { url: string; sql: postgres.Sql; drop(): Promise<void> };
+
+/** A new, empty database beside the test one, for a test that migrates from nothing. */
+export async function scratchDatabase(name: string): Promise<ScratchDatabase> {
+  const base = process.env.TEST_DATABASE_URL;
+  if (!base) throw new Error('TEST_DATABASE_URL must be set for integration tests');
+  const admin = postgres(base, { max: 1, onnotice: () => undefined });
+  const database = `group_chess_${name}_${process.pid}`;
+  await admin.unsafe(`drop database if exists ${database} with (force)`);
+  await admin.unsafe(`create database ${database}`);
+  const url = new URL(base);
+  url.pathname = `/${database}`;
+  const scratch = postgres(url.toString(), { max: 1, onnotice: () => undefined });
+  return {
+    url: url.toString(),
+    sql: scratch,
+    drop: async () => {
+      await scratch.end({ timeout: 5 });
+      await admin.unsafe(`drop database if exists ${database} with (force)`);
+      await admin.end({ timeout: 5 });
+    },
+  };
 }

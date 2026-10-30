@@ -7,7 +7,7 @@ import { enqueue } from '../../src/jobs/queue';
 import { JobWorker } from '../../src/jobs/worker';
 import { testConfig } from '../helpers/config';
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
-import { insertGame, insertGroup, insertMove, insertUser } from '../helpers/fixtures';
+import { insertGame, insertGroup, insertUser, played } from '../helpers/fixtures';
 
 class FakeLichess {
   requests: { headers: IncomingHttpHeaders; body: string }[] = [];
@@ -58,8 +58,6 @@ class FakeLichess {
 const { db, close } = openTestDb();
 const deps = testDeps(db);
 let lichess: FakeLichess;
-const AFTER_E4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
-const AFTER_E4_C5 = 'rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2';
 
 const workerWith = (options: { spacingMs?: number; pauseMs?: number; token?: string } = {}) =>
   new JobWorker({
@@ -91,17 +89,13 @@ async function finishedGame() {
   const alice = await insertUser(db, { firstName: 'Alice' });
   const bob = await insertUser(db, { firstName: 'Bob' });
   const game = await insertGame(db, group.id, alice.id, bob.id, {
-    fen: AFTER_E4_C5,
-    plyCount: 2,
     status: 'finished',
     result: '1-0',
     endReason: 'resignation',
     finishedAt: new Date(),
     lichessImportStatus: 'pending',
   });
-  await insertMove(db, game.id, 1, 'e2e4', 'e4', AFTER_E4);
-  await insertMove(db, game.id, 2, 'c7c5', 'c5', AFTER_E4_C5);
-  return game;
+  return played(db, game, ['e2e4', 'c7c5']);
 }
 
 const importJob = (gameId: number, publicId: string) =>

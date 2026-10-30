@@ -375,6 +375,7 @@ Enforced by a bundle-size check in CI and a Lighthouse run against the staging U
 | `requestWriteAccess` | 6.9 | Skip the prompt; the user can `/start` the bot |
 | `SecondaryButton` | 7.10 | In-page Cancel button |
 | `HapticFeedback` | 6.1 | Skip |
+| `BackButton` | 6.1 | Skip; the bottom tab bar still reaches the root of every tab |
 | `downloadFile` | 8.0 | `openLink` to the PGN URL |
 | `shareMessage` + `savePreparedInlineMessage` (P1) | 8.0 | Hide the share-to-chat action |
 

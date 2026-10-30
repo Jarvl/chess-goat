@@ -87,12 +87,9 @@ describe('pre_checkout_query', () => {
     expect(call?.body.pre_checkout_query_id).toMatch(/^pcq-/);
   });
 
-  it.each([
-    ['a mismatched amount', { payload: 'tip:v1:250', totalAmount: 100 }],
-    ['a forged payload', { payload: 'tip:v1:0250', totalAmount: 250 }],
-    ['another currency', { payload: 'tip:v1:250', totalAmount: 250, currency: 'USD' }],
-  ])('refuses %s with a short reason', async (_label, fields) => {
-    await post(preCheckoutUpdate({ from: alice, ...fields }));
+  // Which checkouts are refused is tipCheckoutAccepted's, tested in unit/tips; this is the wiring.
+  it('refuses a checkout that does not match its tip with a short reason', async () => {
+    await post(preCheckoutUpdate({ from: alice, payload: 'tip:v1:250', totalAmount: 100 }));
     expect(fake.callsTo('answerPreCheckoutQuery')[0]?.body).toMatchObject({
       ok: false,
       error_message: 'This tip link is no longer valid.',

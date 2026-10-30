@@ -1,13 +1,32 @@
 import { describe, expect, it } from 'vitest';
-import { TimePerMoveSchema, isRatedEndReason, opposite } from '../../src/protocol/enums';
+import {
+  ENGINE_LEVELS,
+  MOVE_CONFIRMATIONS,
+  TIME_PER_MOVE_OPTIONS,
+  TimePerMoveSchema,
+  isRatedEndReason,
+  opposite,
+} from '../../src/protocol/enums';
 
 describe('TimePerMoveSchema', () => {
-  it.each([3600, 28800, 86400, 259200, 604800, null])('accepts %s', (value) => {
+  // Every option the time pickers offer, so the list and the schema cannot drift apart.
+  it.each([...TIME_PER_MOVE_OPTIONS, null])('accepts %s', (value) => {
     expect(TimePerMoveSchema.safeParse(value).success).toBe(true);
   });
 
   it.each([0, 7200, 86400.5, '86400', undefined])('rejects %s', (value) => {
     expect(TimePerMoveSchema.safeParse(value).success).toBe(false);
+  });
+});
+
+// The pickers show these in this order.
+describe('display order', () => {
+  it('lists the four engine levels weakest first', () => {
+    expect(ENGINE_LEVELS).toEqual(['beginner', 'casual', 'club', 'strong']);
+  });
+
+  it('lists the three move confirmation settings, most confirming first', () => {
+    expect(MOVE_CONFIRMATIONS).toEqual(['always', 'people', 'never']);
   });
 });
 

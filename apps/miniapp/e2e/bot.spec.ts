@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test';
-import { clickMain, dragMove, openApp, seed, telegramCalls, tgState } from './support';
+import { expect } from '@playwright/test';
+import { clickMain, dragMove, openApp, seed, telegramCalls, test, tgState } from './support';
 
 /**
  * Spec §11's end-to-end row: one engine game created from the picker and played through the whole

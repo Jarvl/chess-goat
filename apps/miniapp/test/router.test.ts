@@ -110,14 +110,6 @@ describe('Router', () => {
     expect(router.showTabs.value).toBe(true);
   });
 
-  it('pops one level on the Telegram back button', () => {
-    const { router, record } = setup();
-    router.land('groups', { name: 'groups' });
-    router.push({ name: 'settings' });
-    record.clickBack();
-    expect(router.current.value).toEqual({ name: 'groups' });
-  });
-
   it('hides the tab bar on New game, where the MainButton owns the bottom edge', () => {
     const { router } = setup();
     router.land('groups', { name: 'lobby', groupId: 'GrOuPiDxYz' });

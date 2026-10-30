@@ -8,17 +8,17 @@ exit criteria come from PRD §13.
 
 | Layer | Command | Size | Runs on |
 |---|---|---|---|
-| Unit — shared rules and protocol | `pnpm test` | 252 tests, 17 files | every pull request |
-| Unit — server | `pnpm test` | 153 tests, 21 files | every pull request |
-| Integration — server on real PostgreSQL and a fake Bot API | `pnpm test` | 341 tests, 35 files | every pull request |
-| Unit — Mini App on happy-dom | `pnpm test` | 321 tests, 31 files | every pull request |
-| End-to-end — Playwright on Chromium with touch emulation | `pnpm e2e` | 26 specs, 12 files | every pull request, pushes to `main`, manual dispatch |
+| Unit — shared rules and protocol | `pnpm test` | 292 tests, 17 files | every pull request |
+| Unit — server | `pnpm test` | 254 tests, 31 files | every pull request |
+| Integration — server on real PostgreSQL and a fake Bot API | `pnpm test` | 455 tests, 43 files | every pull request |
+| Unit — Mini App on happy-dom | `pnpm test` | 477 tests, 38 files | every pull request |
+| End-to-end — Playwright on Chromium with touch emulation | `pnpm e2e` | 29 specs, 12 files | every pull request, pushes to `main`, manual dispatch |
 | Image smoke — build, boot, probe, stop | `.github/workflows/e2e.yml` `docker` job | 1 scenario | every pull request, pushes to `main`, manual dispatch |
 | Bundle budget | `pnpm build && pnpm check:budget` | 2 budgets | every pull request |
 | Licence allow-list | `pnpm check:licences` | 191 npm packages | every pull request |
 | Dependency advisories | `pnpm audit --prod --audit-level=high` | — | every pull request |
 
-`pnpm test` is 1067 tests in about 70 seconds. Integration tests need `TEST_DATABASE_URL`; without
+`pnpm test` is 1478 tests; with PostgreSQL, a local run takes about four minutes. Integration tests need `TEST_DATABASE_URL`; without
 it only the unit projects run, which is a silent reduction in coverage, so CI always sets it.
 The server's test setup downloads the snapshot card's fonts on first run
 (`scripts/fetch-fonts.mjs`, checksummed), so the first `pnpm test` on a fresh clone needs network
@@ -83,6 +83,38 @@ on a fake Bot API, so they exercise the actual HTTP and SSE paths.
 Bot API's rate limiting, drag reliability on real touch hardware, and whether BotFather is set up
 correctly are all outside the automated suite by construction. That is what the device matrix below
 is for.
+
+## Test helpers
+
+Setup lives in builders, so a test states its starting position in a line or two. Each builder
+returns plain rows or objects and takes explicit overrides; none registers hooks or hides what the
+test depends on.
+
+**Server** (`apps/server/test/helpers`):
+
+- `world(db, { game?, telegramIds?, verified? })`: a group with Alice, Bob and Carol as members, and
+  Alice's game against Bob (White and Black; Carol watches). `game: false` leaves the game out.
+- `played(db, game, ['e2e4', 'e7e5'])`: replays moves onto a game with the shared arbiter, inserting
+  the move rows and moving the position on. Prefer it to a hand-written FEN.
+- `liveDm`, `secondsUntil`, `resultDms`; the common positions (`AFTER_E4`, `BEFORE_SCHOLARS_MATE`…)
+  in `chess.ts`, with `countedGame` and `deepLine`.
+- `gameAwaitingEngine(deps, { groupId, userId })`: an engine game after 1.e4, the engine to move.
+- `jobWorker(deps, handlers)`: a fake Telegram and a job worker whose handlers call it.
+- `flair.ts`: `finishedGame`, `earned`, `worn`, `startWearing`, `day`.
+- `waitForLockWaiters` and `scratchDatabase` in `db.ts`, for the lock and migration tests.
+
+**Mini App** (`apps/miniapp/test/support/gameScreen.tsx`): `mountGame`, `gameRoutes` (the server for
+a game screen; anything it does not route answers 404, so a forgotten route fails loudly),
+`dropAll`, `staleState`, `useConfirmations`, and the premove fixtures. The game screen's tests are
+split by subject: `game`, `gameConfirm` and `gamePremoves`.
+
+Two rules keep the suite small:
+
+- **Each behaviour is tested once, where it lives**, plus one wiring test in the layer above. A
+  rule in `packages/shared` is not re-tested in the server or the Mini App; a pure function is
+  tested in `test/unit`, not through the database.
+- **`it.each` is for cases that differ by data alone**, and its title template still says what
+  the behaviour is.
 
 ## Gaps to close before alpha exit
 
@@ -161,6 +193,17 @@ end-to-end test used network emulation that did not close an already-open stream
 when the browser happened to drop the connection. It was fixed by making the drop deterministic,
 not by adding a retry. If a test fails intermittently, reproduce it with `--repeat-each=6` before
 calling it anything.
+
+**Telegram versions are checked in every Mini App test.** The fake Telegram client
+(`test/support/fakeWebApp.ts`) behaves like the real `telegram-web-app.js`: every method exists on
+every version, and below its minimum version a method warns and does nothing, or throws, as the real
+script does. It records each such use, and a global hook (and the e2e `page` fixture) fails the test
+if the app made one. So a fallback test asserts only the fallback (the in-page sheet, the plain link);
+that nothing unsupported was called is checked for it. Use `allowUnsupported(name)` only when a test
+means to exercise an ungated path, and say why.
+
+**A test that cannot fail is a bug.** When fixing or writing one, break the behaviour in `src` for a
+moment and watch it go red.
 
 **New features arrive with tests in the same commit.** Every plan in this repository was executed
 test-first, and the fix passes after each review added a test alongside each fix. Keeping that

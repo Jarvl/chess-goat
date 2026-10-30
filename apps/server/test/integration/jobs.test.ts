@@ -2,7 +2,7 @@ import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { jobs } from '../../src/db/schema';
 import { enqueue } from '../../src/jobs/queue';
-import { JobWorker, pollBackoffMs } from '../../src/jobs/worker';
+import { JobWorker } from '../../src/jobs/worker';
 import type { JobHandlers } from '../../src/jobs/types';
 import { createLogger } from '../../src/logger';
 import { openTestDb, truncateAll } from '../helpers/db';
@@ -22,14 +22,6 @@ const secondsFromNow = async (column: 'run_at' | 'locked_until' | 'done_at', id:
   );
   return Number(row?.seconds);
 };
-
-describe('pollBackoffMs', () => {
-  it('doubles the poll interval per consecutive failure up to a minute', () => {
-    expect(pollBackoffMs(1_000, 0)).toBe(1_000);
-    expect(pollBackoffMs(1_000, 3)).toBe(8_000);
-    expect(pollBackoffMs(5_000, 10)).toBe(60_000);
-  });
-});
 
 describe('enqueue', () => {
   it('inserts a pending job that is due now', async () => {

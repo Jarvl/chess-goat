@@ -1,9 +1,9 @@
-import { expect, test } from '@playwright/test';
-import { harnessGame, openApp, seed, tapMove, tgState } from './support';
+import { expect } from '@playwright/test';
+import { harnessGame, openApp, seed, tapMove, test, tgState } from './support';
 
-test('a 6.0 client sends moves without haptics, a secondary button or the swipe lock', async ({
-  page,
-}) => {
+// The `test` from ./support also fails this if the app used anything a 6.0 client lacks: haptics,
+// the secondary button, the swipe lock, write access.
+test('a 6.0 client sends moves', async ({ page }) => {
   const world = await seed('fresh', { alice: { moveConfirmations: 'never' } });
   await openApp(page, {
     user: world.users.alice.telegram,
@@ -12,11 +12,6 @@ test('a 6.0 client sends moves without haptics, a secondary button or the swipe 
   });
   await tapMove(page, 'e2', 'e4');
   await expect.poll(async () => (await harnessGame(world.game!.publicId)).plyCount).toBe(1);
-  const state = await tgState(page);
-  expect(state.calls).not.toContain('disableVerticalSwipes');
-  expect(state.calls).not.toContain('requestWriteAccess');
-  expect(state.haptics).toEqual([]);
-  expect(state.secondaryButton).toBeNull();
 });
 
 test('a 7.0 client opens the PGN as a link instead of a download', async ({ page }) => {

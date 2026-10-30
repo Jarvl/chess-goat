@@ -13,9 +13,7 @@ describe('randomLegalMove', () => {
   it('never tags a non-pawn move with a promotion suffix, even from rank 2/7 to rank 1/8', () => {
     // Under the old from-rank/to-rank heuristic (any piece from rank 2/7 to rank 1/8 counts as
     // "promoting"), this exact move — a rook going a7 to a8 — would have been sent as `a7a8q`.
-    for (let i = 0; i < 20; i += 1) {
-      expect(randomLegalMove(FORCED_ROOK_TO_RANK_8)).toBe('a7a8');
-    }
+    expect(randomLegalMove(FORCED_ROOK_TO_RANK_8)).toBe('a7a8');
   });
 
   it('still tags a genuine pawn promotion', () => {

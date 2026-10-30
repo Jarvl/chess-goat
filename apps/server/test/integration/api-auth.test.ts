@@ -13,6 +13,7 @@ import {
   insertUser,
 } from '../helpers/fixtures';
 import { signInitData } from '../helpers/initData';
+import { AFTER_E4 } from '../helpers/chess';
 
 const { db, close } = openTestDb();
 let api: TestApi;
@@ -87,7 +88,6 @@ describe('GET /api/me/games', () => {
   });
 
   it('carries each game’s position, last move and bot flag for the list thumbnails', async () => {
-    const AFTER_E4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
     const viewer = await insertUser(db);
     const [engine] = await db.select().from(users).where(eq(users.isEngine, true));
     const club = await insertGroup(db, { title: 'Club' });
@@ -354,15 +354,5 @@ describe('me routes', () => {
     });
     expect(refused.status).toBe(400);
     expect(await refused.json()).toMatchObject({ error: { code: 'validation' } });
-  });
-});
-
-describe('health', () => {
-  it('serves healthz, readyz and metrics', async () => {
-    expect((await api.request('GET', '/healthz')).status).toBe(200);
-    expect((await api.request('GET', '/readyz')).status).toBe(200);
-    const metrics = await api.request('GET', '/metrics');
-    expect(metrics.status).toBe(200);
-    expect(await metrics.text()).toContain('process_cpu_user_seconds_total');
   });
 });

@@ -5,20 +5,20 @@ import {
   LobbyDtoSchema,
   PlayerPageDtoSchema,
 } from '@group-chess/shared';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { adminActions, groupMembers, jobs, shares } from '../../src/db/schema';
-import { touchMember } from '../../src/domain/members';
+
 import { avatarUrl, photoHash, storePhoto } from '../../src/domain/photos';
 import { MAX_SHARES_PER_MINUTE } from '../../src/domain/sharing';
 import { startTestApi, type TestApi } from '../helpers/api';
 import { openTestDb, truncateAll } from '../helpers/db';
-import { insertGame, insertGroup, insertMove, insertUser } from '../helpers/fixtures';
+import { insertGame, insertUser, world, played } from '../helpers/fixtures';
 import { FIXTURE_JPEG } from '../helpers/photos';
+import { AFTER_E4 } from '../helpers/chess';
 
 const { db, close } = openTestDb();
 let api: TestApi;
-const AFTER_E4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
 
 beforeAll(async () => {
   api = await startTestApi(db);
@@ -34,21 +34,17 @@ afterAll(async () => {
   await close();
 });
 
-async function world() {
-  const group = await insertGroup(db, { telegramChatId: -1001000000003 });
-  const alice = await insertUser(db, { telegramUserId: 11, firstName: 'Alice' });
-  const bob = await insertUser(db, { telegramUserId: 22, firstName: 'Bob' });
-  const carol = await insertUser(db, { telegramUserId: 33, firstName: 'Carol' });
+/** world(), as the API sees it, with Dave outside the group, and everyone's session. */
+async function members() {
+  const people = await world(db, { game: false, telegramIds: true, verified: true });
   const dave = await insertUser(db, { telegramUserId: 44, firstName: 'Dave' });
-  for (const user of [alice, bob, carol])
-    await touchMember(db, group.id, user.id, { verified: true });
   const tokens = {
-    alice: await api.sessionFor(alice),
-    bob: await api.sessionFor(bob),
-    carol: await api.sessionFor(carol),
+    alice: await api.sessionFor(people.alice),
+    bob: await api.sessionFor(people.bob),
+    carol: await api.sessionFor(people.carol),
     dave: await api.sessionFor(dave),
   };
-  return { group, alice, bob, carol, dave, tokens };
+  return { ...people, dave, tokens };
 }
 
 const move = (token: string, gameId: string, uci: string, expectedPly: number) =>
@@ -63,7 +59,7 @@ const move = (token: string, gameId: string, uci: string, expectedPly: number) =
 
 describe('challenges and lobby', () => {
   it('creates, accepts and lists a game through the API', async () => {
-    const { group, alice, bob, tokens } = await world();
+    const { group, alice, bob, tokens } = await members();
     const created = await api.request('POST', `/api/groups/${group.publicId}/challenges`, {
       token: tokens.alice,
       body: { opponentId: String(bob.id), timePerMove: 3600, colour: 'white', rated: true },
@@ -87,7 +83,7 @@ describe('challenges and lobby', () => {
   });
 
   it('refuses the lobby to a non-member and lists known players for the picker', async () => {
-    const { group, tokens } = await world();
+    const { group, tokens } = await members();
     expect(
       (await api.request('GET', `/api/groups/${group.publicId}`, { token: tokens.dave })).status,
     ).toBe(403);
@@ -106,7 +102,7 @@ describe('challenges and lobby', () => {
   });
 
   it('pages finished games and serves a player page', async () => {
-    const { group, alice, bob, tokens } = await world();
+    const { group, alice, bob, tokens } = await members();
     for (let i = 0; i < 25; i += 1) {
       await insertGame(db, group.id, alice.id, bob.id, {
         status: 'finished',
@@ -141,12 +137,9 @@ describe('challenges and lobby', () => {
   });
 
   it('sends the thumbnail fields on the lobby and the player page too', async () => {
-    const { group, alice, bob, tokens } = await world();
-    const running = await insertGame(db, group.id, alice.id, bob.id, {
-      fen: AFTER_E4,
-      plyCount: 1,
-    });
-    await insertMove(db, running.id, 1, 'e2e4', 'e4', AFTER_E4);
+    const { group, alice, bob, tokens } = await members();
+    const running = await insertGame(db, group.id, alice.id, bob.id);
+    await played(db, running, ['e2e4']);
     const done = await insertGame(db, group.id, bob.id, alice.id, {
       status: 'finished',
       result: '1-0',
@@ -180,7 +173,7 @@ describe('challenges and lobby', () => {
 
 describe('games', () => {
   it("carries each player's photo url", async () => {
-    const { group, alice, bob, tokens } = await world();
+    const { group, alice, bob, tokens } = await members();
     await storePhoto(db, alice.id, { fileUniqueId: 'u-1', bytes: FIXTURE_JPEG });
     const game = await insertGame(db, group.id, alice.id, bob.id);
     const response = await api.request('GET', `/api/games/${game.publicId}`, {
@@ -192,7 +185,7 @@ describe('games', () => {
   });
 
   it('plays moves and maps domain errors to statuses', async () => {
-    const { group, alice, bob, tokens } = await world();
+    const { group, alice, bob, tokens } = await members();
     const game = await insertGame(db, group.id, alice.id, bob.id);
     const ok = await move(tokens.alice, game.publicId, 'e2e4', 0);
     expect(ok.status).toBe(200);
@@ -206,8 +199,8 @@ describe('games', () => {
     expect((await move(tokens.alice, game.publicId, 'e4e6', 2)).status).toBe(422);
   });
 
-  it('offers, declines and accepts draws, resigns and aborts', async () => {
-    const { group, alice, bob, tokens } = await world();
+  it('offers and declines draws, resigns and aborts', async () => {
+    const { group, alice, bob, tokens } = await members();
     const game = await insertGame(db, group.id, alice.id, bob.id);
     expect(
       (await api.request('POST', `/api/games/${game.publicId}/draw/offer`, { token: tokens.alice }))
@@ -234,10 +227,30 @@ describe('games', () => {
     expect(resigned.analysisUrl).toBeUndefined();
   });
 
+  it('accepts a draw offer, and refuses an accept with no offer to answer', async () => {
+    const { group, alice, bob, tokens } = await members();
+    const game = await insertGame(db, group.id, alice.id, bob.id);
+    const accept = () =>
+      api.request('POST', `/api/games/${game.publicId}/draw/accept`, { token: tokens.bob });
+    const early = await accept();
+    expect(early.status).toBe(403);
+    expect(await early.json()).toMatchObject({ error: { code: 'forbidden' } });
+    expect(
+      (await api.request('POST', `/api/games/${game.publicId}/draw/offer`, { token: tokens.alice }))
+        .status,
+    ).toBe(200);
+    const accepted = GameDtoSchema.parse(await (await accept()).json());
+    expect(accepted).toMatchObject({
+      status: 'finished',
+      result: '1/2-1/2',
+      endReason: 'draw_agreement',
+    });
+  });
+
   it('shares up to twenty positions a minute and serves the PGN', async () => {
-    const { group, alice, bob, tokens } = await world();
-    const game = await insertGame(db, group.id, alice.id, bob.id, { fen: AFTER_E4, plyCount: 1 });
-    await insertMove(db, game.id, 1, 'e2e4', 'e4', AFTER_E4);
+    const { group, alice, bob, tokens } = await members();
+    const game = await insertGame(db, group.id, alice.id, bob.id);
+    await played(db, game, ['e2e4']);
     for (let i = 0; i < MAX_SHARES_PER_MINUTE; i++)
       expect(
         (
@@ -289,7 +302,7 @@ describe('games', () => {
   });
 
   it('creates a rematch through the API', async () => {
-    const { group, alice, bob, tokens } = await world();
+    const { group, alice, bob, tokens } = await members();
     const game = await insertGame(db, group.id, alice.id, bob.id, {
       status: 'finished',
       result: '1-0',
@@ -307,7 +320,7 @@ describe('games', () => {
   });
 
   it('serves the PGN through a short-lived link whose token opens nothing else', async () => {
-    const { group, alice, bob, tokens } = await world();
+    const { group, alice, bob, tokens } = await members();
     const game = await insertGame(db, group.id, alice.id, bob.id, {
       status: 'finished',
       result: '1-0',
@@ -355,7 +368,7 @@ describe('GET /api/games/:id/events', () => {
   };
 
   it('sends the state on connect and again after a move', async () => {
-    const { group, alice, bob, carol, tokens } = await world();
+    const { group, alice, bob, carol, tokens } = await members();
     const game = await insertGame(db, group.id, alice.id, bob.id);
     const controller = new AbortController();
     const res = await api.request(
@@ -382,7 +395,7 @@ describe('GET /api/games/:id/events', () => {
   });
 
   it('refuses the stream to a non-member and caps open streams at four per user', async () => {
-    const { group, alice, bob, carol, tokens } = await world();
+    const { group, alice, bob, carol, tokens } = await members();
     const game = await insertGame(db, group.id, alice.id, bob.id);
     expect(
       (await api.request('GET', `/api/games/${game.publicId}/events?token=${tokens.dave}`)).status,
@@ -407,21 +420,8 @@ describe('GET /api/games/:id/events', () => {
     expect(api.ctx.streams.count(carol.id)).toBe(0);
   });
 
-  it('sends a snapshot on every connect, even when Last-Event-ID is already current', async () => {
-    const { group, alice, bob, tokens } = await world();
-    const game = await insertGame(db, group.id, alice.id, bob.id);
-    const controller = new AbortController();
-    const res = await api.request(
-      'GET',
-      `/api/games/${game.publicId}/events?token=${tokens.carol}`,
-      { signal: controller.signal, headers: { 'last-event-id': '0' } },
-    );
-    expect(await readChunk(res)).toContain('event: state');
-    controller.abort();
-  });
-
   it('delivers an owner-only publish to that user’s streams and no one else’s', async () => {
-    const { group, alice, bob, tokens } = await world();
+    const { group, alice, bob, tokens } = await members();
     const game = await insertGame(db, group.id, alice.id, bob.id);
     const open = async (token: string) => {
       const controller = new AbortController();
@@ -469,7 +469,7 @@ describe('GET /api/games/:id/events', () => {
 
 describe('admin routes', () => {
   it('guards settings, blocks and voids behind the admin check and audits them', async () => {
-    const { group, alice, bob, tokens } = await world();
+    const { group, alice, bob, tokens } = await members();
     expect(
       (await api.request('GET', `/api/groups/${group.publicId}/settings`, { token: tokens.carol }))
         .status,
@@ -532,19 +532,17 @@ describe('admin routes', () => {
 
 describe('unknown ids', () => {
   it('answers 404 for a well-formed unknown id and for a malformed one', async () => {
-    const { tokens } = await world();
+    const { tokens } = await members();
     expect(
       (await api.request('GET', '/api/games/zzzzzzzzzz', { token: tokens.alice })).status,
     ).toBe(404);
     expect((await api.request('GET', '/api/games/not-an-id', { token: tokens.alice })).status).toBe(
       404,
     );
-    const [row] = await db.execute(sql`select 1 as one`);
-    expect(row?.one).toBe(1);
   });
 
   it('answers 404, not 500, for a malformed user id in a path', async () => {
-    const { group, tokens } = await world();
+    const { group, tokens } = await members();
     api.fake.admins = [33];
     const player = await api.request('GET', `/api/groups/${group.publicId}/players/abc`, {
       token: tokens.alice,

@@ -102,6 +102,31 @@ describe('applyMove', () => {
     });
   });
 
+  it('does not count a position with an en passant right as a repeat of one without', () => {
+    // 2…f5 lets White take en passant on f6. The knights then go out and back to the same
+    // placement, where that capture is no longer possible: a different position (FIDE 9.2.3).
+    let fen = 'rnbqkbnr/ppp1pppp/8/3pP3/8/8/PPPP1PPP/RNBQKBNR b KQkq - 0 2';
+    const keys = [positionKey(fen)];
+    const play = (uci: string) => {
+      const result = applyMove(fen, keys, uci);
+      if (!result.legal) throw new Error(`illegal ${uci} in ${fen}`);
+      fen = result.fenAfter;
+      keys.push(positionKey(fen));
+      return result.outcome;
+    };
+    play('f7f5');
+    expect(fen.split(' ')[3]).toBe('f6');
+    const shuffle = () => ['g1f3', 'g8f6', 'f3g1', 'f6g8'].map(play).at(-1);
+    const claims = (threefold: boolean) => ({
+      kind: 'continue',
+      claims: { threefold, fiftyMove: false },
+    });
+    expect(shuffle()).toEqual(claims(false));
+    // The placement's third time on the board, but only the second without the en passant right.
+    expect(shuffle()).toEqual(claims(false));
+    expect(shuffle()).toEqual(claims(true));
+  });
+
   it('ends the game at 75 moves without a capture or pawn move', () => {
     const result = applyMove('8/8/8/8/8/8/1R6/K6k w - - 149 100', [], 'b2b3');
     expect(result.legal && result.outcome).toEqual({

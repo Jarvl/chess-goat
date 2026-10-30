@@ -76,7 +76,7 @@ const rect = (cls: string | null, x: number, y: number, fill: string): string =>
   `<rect ${cls ? `class="${cls}" ` : ''}x="${x}" y="${y}" width="${SQUARE}" height="${SQUARE}" fill="${fill}"/>`;
 
 /** 0-based file (a = 0) and rank (first rank = 0); a1 is dark. */
-export function isLightSquare(file: number, rank: number): boolean {
+function isLightSquare(file: number, rank: number): boolean {
   return (file + rank) % 2 === 1;
 }
 

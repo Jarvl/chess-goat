@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  AVATAR_PALETTE,
-  avatarColour,
-  groupColour,
-  groupInitials,
-  personInitial,
-} from '../src/avatar';
+import { avatarColour, groupColour, groupInitials, personInitial } from '../src/avatar';
 
 describe('avatar helpers', () => {
   it("picks Telegram's palette by user id modulo 7", () => {
@@ -14,15 +8,13 @@ describe('avatar helpers', () => {
     expect(avatarColour('13')).toBe('#ee7aae');
   });
 
-  it('stays in the palette for ids beyond 2^53', () => {
-    const colour = avatarColour('9223372036854775807');
-    expect(AVATAR_PALETTE).toContain(colour);
-    expect(avatarColour('9223372036854775807')).toBe(colour);
+  it('keeps exact ids beyond 2^53', () => {
+    // 2^63 − 1 is 0 mod 7; read as a double it rounds to 2^63, which is 1.
+    expect(avatarColour('9223372036854775807')).toBe('#e17076');
   });
 
-  it('colours a group by its public id, the same every time', () => {
-    expect(AVATAR_PALETTE).toContain(groupColour('GrOuPiDxYz'));
-    expect(groupColour('GrOuPiDxYz')).toBe(groupColour('GrOuPiDxYz'));
+  it('colours a group by the sum of its public id’s character codes, modulo 7', () => {
+    expect(groupColour('GrOuPiDxYz')).toBe('#ee7aae');
   });
 
   it("takes a person's first character, skipping the @ of a username", () => {

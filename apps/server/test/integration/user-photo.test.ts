@@ -5,14 +5,15 @@ import { getPhotoBytes, getPhotoRow, photoHash, storePhoto } from '../../src/dom
 import { requireUser } from '../../src/domain/users';
 import { userPhotoJobHandlers } from '../../src/jobs/handlers/userPhoto';
 import { enqueue } from '../../src/jobs/queue';
-import { JobWorker } from '../../src/jobs/worker';
+import type { JobWorker } from '../../src/jobs/worker';
 import { createLogger } from '../../src/logger';
-import { createTelegramApi } from '../../src/telegram/client';
+
 import { testConfig } from '../helpers/config';
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
-import { FakeTelegram } from '../helpers/fakeTelegram';
+import type { FakeTelegram } from '../helpers/fakeTelegram';
 import { insertUser } from '../helpers/fixtures';
 import { FIXTURE_JPEG, OTHER_JPEG } from '../helpers/photos';
+import { jobWorker } from '../helpers/worker';
 
 const { db, close } = openTestDb();
 const logLines: string[] = [];
@@ -25,15 +26,7 @@ let fake: FakeTelegram;
 let worker: JobWorker;
 
 beforeAll(async () => {
-  fake = await FakeTelegram.start();
-  const withFake = testConfig({ TELEGRAM_API_ROOT: fake.url });
-  const api = createTelegramApi(withFake, { apiRoot: fake.url, throttle: false });
-  worker = new JobWorker({
-    db,
-    log: deps.log,
-    handlers: userPhotoJobHandlers({ deps, api, config: withFake }),
-    workerId: 'p',
-  });
+  ({ fake, worker } = await jobWorker(deps, userPhotoJobHandlers, { throttle: false }));
 });
 beforeEach(async () => {
   await truncateAll(db);

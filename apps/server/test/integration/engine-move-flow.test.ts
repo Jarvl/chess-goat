@@ -5,12 +5,12 @@ import { createEngineGame, getEngineUser } from '../../src/domain/engineGames';
 import { playMove, requireGameByPublicId, resign, voidGame } from '../../src/domain/games';
 import { buildGamePgn } from '../../src/domain/pgn';
 import { forfeitOverdueGames } from '../../src/clock/scanners';
-import { reminderExpression } from '../../src/domain/limits';
+
 import { touchMember } from '../../src/domain/members';
 import { Metrics } from '../../src/metrics';
 import { testConfig } from '../helpers/config';
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
-import { createEngineJobRunner } from '../helpers/engineJob';
+import { createEngineJobRunner, gameAwaitingEngine } from '../helpers/engineJob';
 import { fakeEngine } from '../helpers/fakeEngine';
 import { insertGame, insertGroup, insertUser } from '../helpers/fixtures';
 
@@ -33,19 +33,7 @@ async function setup(userOverrides: { dmAllowed?: boolean } = {}) {
 describe('playMove and finishGame with an engine opponent', () => {
   it('leaves no deadline for the engine and enqueues its move, with no card or DM job', async () => {
     const { group, alice } = await setup();
-    const game = await createEngineGame(deps, {
-      groupId: group.id,
-      userId: alice.id,
-      level: 'club',
-      colour: 'white',
-    });
-    await playMove(deps, {
-      gameId: game.publicId,
-      userId: alice.id,
-      uci: 'e2e4',
-      expectedPly: 0,
-      clientMoveId: 'c1',
-    });
+    const game = await gameAwaitingEngine(deps, { groupId: group.id, userId: alice.id });
     const after = await requireGameByPublicId(db, game.publicId);
     expect(after.deadlineAt).toBeNull();
     expect(after.reminderAt).toBeNull();
@@ -55,21 +43,9 @@ describe('playMove and finishGame with an engine opponent', () => {
     expect(kinds).not.toContain('send_dm');
   });
 
-  it('announces nothing and grants no clock when the engine has moved', async () => {
-    const { group, alice } = await setup();
-    const game = await createEngineGame(deps, {
-      groupId: group.id,
-      userId: alice.id,
-      level: 'club',
-      colour: 'white',
-    });
-    await playMove(deps, {
-      gameId: game.publicId,
-      userId: alice.id,
-      uci: 'e2e4',
-      expectedPly: 0,
-      clientMoveId: 'c1',
-    });
+  it('announces nothing and grants no clock or reminder when the engine has moved', async () => {
+    const { group, alice } = await setup({ dmAllowed: true });
+    const game = await gameAwaitingEngine(deps, { groupId: group.id, userId: alice.id });
     const engine = await getEngineUser(db);
     await playMove(deps, {
       gameId: game.publicId,
@@ -79,56 +55,20 @@ describe('playMove and finishGame with an engine opponent', () => {
       clientMoveId: 'e1',
     });
     const after = await requireGameByPublicId(db, game.publicId);
-    // Spec §8: a bot game has no clock, so the human gets no deadline back either — the bot answers
-    // immediately, so there is nothing to time.
+    // Spec §8: a bot game has no clock, so the human gets no deadline back, and nothing to be
+    // reminded about.
     expect(after.deadlineAt).toBeNull();
-    // The engine's own move (e7e5) reaches playMove's non-`engineNext` branch, where the game is
-    // still an engine game and must still get no card — and no move notification to the human
-    // either. The turn DM is enqueued regardless of the recipient's DM preference (the handler
-    // filters later), so its absence here is the branch, not a preference.
+    expect(after.reminderAt).toBeNull();
+    // The engine's own move takes playMove's ordinary branch, which must still post no card and
+    // send the human no move DM. The turn DM is enqueued whatever the DM preference (the handler
+    // filters later), so its absence here is the engine rule, not a preference.
     const kinds = await jobKinds();
     expect(kinds).not.toContain('edit_card');
     expect(kinds).not.toContain('send_dm');
   });
 
-  it('leaves the human no reminder to be notified by after the engine moves', async () => {
-    const { group, alice } = await setup({ dmAllowed: true });
-    // Guard against a vacuous pass: the production expression does produce a reminder for these
-    // inputs, so the null below is spec §8's rule rather than a broken reminder path.
-    expect(reminderExpression(86_400, true)).not.toBeNull();
-    const game = await createEngineGame(deps, {
-      groupId: group.id,
-      userId: alice.id,
-      level: 'club',
-      colour: 'white',
-    });
-    await playMove(deps, {
-      gameId: game.publicId,
-      userId: alice.id,
-      uci: 'e2e4',
-      expectedPly: 0,
-      clientMoveId: 'c1',
-    });
-    const engine = await getEngineUser(db);
-    await playMove(deps, {
-      gameId: game.publicId,
-      userId: engine.id,
-      uci: 'e7e5',
-      expectedPly: 1,
-      clientMoveId: 'e1',
-    });
-    const after = await requireGameByPublicId(db, game.publicId);
-    // Nothing to remind about, because there is nothing to be late for.
-    expect(after.deadlineAt).toBeNull();
-    expect(after.reminderAt).toBeNull();
-  });
-
-  // Correction to the brief: the original test forged a past deadline onto an engine game and
-  // expected it to survive. But forfeitOverdueGames has no engine awareness at all (by design —
-  // teaching the scanner to parse side-to-move out of a FEN was rejected). The real mechanism is
-  // that an engine game's deadline is NEVER set in the first place, so the scanner never picks it
-  // up. This test exercises that real mechanism instead, with a human control game proving the
-  // scanner actually ran.
+  // forfeitOverdueGames knows nothing of engines: an engine game is safe because it never gets a
+  // deadline. The human control game proves the scanner ran.
   it('is never forfeited because it is never given a deadline, unlike a human game', async () => {
     const { group, alice } = await setup();
     const engineGame = await createEngineGame(deps, {
@@ -161,9 +101,8 @@ describe('playMove and finishGame with an engine opponent', () => {
       level: 'club',
       colour: 'white',
     });
-    // A move first, so plyCount > 0 and the pre-existing `game.plyCount > 0` term of `importable`
-    // is already satisfied — the `!engineGame` conjunct this task adds is then the only thing
-    // suppressing the import. Resigning immediately (plyCount 0) would make this vacuous.
+    // A move first, so plyCount > 0 and only the game being an engine game stops the import.
+    // Resigning at once (plyCount 0) would make this vacuous.
     await playMove(deps, {
       gameId: game.publicId,
       userId: alice.id,

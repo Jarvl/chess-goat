@@ -3,49 +3,45 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { INITIAL_FEN } from '@group-chess/shared';
-import postgres from 'postgres';
+import type postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { runMigrations } from '../../src/db/migrate';
+import { scratchDatabase, type ScratchDatabase } from '../helpers/db';
 
 const REAL_FOLDER = fileURLToPath(new URL('../../drizzle', import.meta.url));
 const TAG = '0011_conditional_premoves';
-const baseUrl = process.env.TEST_DATABASE_URL!;
-const admin = postgres(baseUrl, { max: 1, onnotice: () => undefined });
-const scratchName = `group_chess_migration_0011_${process.pid}`;
-const scratchUrl = (() => {
-  const url = new URL(baseUrl);
-  url.pathname = `/${scratchName}`;
-  return url.toString();
-})();
 
 let tempDir: string;
+let database: ScratchDatabase;
 let scratch: postgres.Sql;
+let scratchUrl: string;
 
 type Journal = { entries: { tag: string }[] };
 
-/** The real migrations up to, not including, 0011: the database a running release has. */
+/**
+ * The real migrations up to, not including, 0011: the database a release before it has. Later
+ * migrations are cut too, so the test keeps meaning that once they exist.
+ */
 function migrationsBefore0011(): string {
   const folder = join(tempDir, 'before');
   cpSync(REAL_FOLDER, folder, { recursive: true });
-  rmSync(join(folder, `${TAG}.sql`));
   const journalPath = join(folder, 'meta', '_journal.json');
   const journal = JSON.parse(readFileSync(journalPath, 'utf8')) as Journal;
-  journal.entries = journal.entries.filter((entry) => entry.tag !== TAG);
+  const at = journal.entries.findIndex((entry) => entry.tag === TAG);
+  if (at < 0) throw new Error(`no ${TAG} in the journal`);
+  journal.entries = journal.entries.slice(0, at);
   writeFileSync(journalPath, JSON.stringify(journal));
   return folder;
 }
 
 beforeAll(async () => {
   tempDir = mkdtempSync(join(tmpdir(), 'group-chess-0011-'));
-  await admin.unsafe(`drop database if exists ${scratchName} with (force)`);
-  await admin.unsafe(`create database ${scratchName}`);
-  scratch = postgres(scratchUrl, { max: 1, onnotice: () => undefined });
+  database = await scratchDatabase('migration_0011');
+  ({ sql: scratch, url: scratchUrl } = database);
 });
 
 afterAll(async () => {
-  await scratch.end({ timeout: 5 });
-  await admin.unsafe(`drop database if exists ${scratchName} with (force)`);
-  await admin.end({ timeout: 5 });
+  await database.drop();
   rmSync(tempDir, { recursive: true, force: true });
 });
 

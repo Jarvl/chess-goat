@@ -1,5 +1,5 @@
 import { GROUP_SETTINGS_DEFAULTS } from '@group-chess/shared';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createApiClient } from '../src/api/client';
 import { boot } from '../src/boot';
 import { Router } from '../src/router';
@@ -70,7 +70,7 @@ describe('boot', () => {
       bottomBar: 'secondary_bg_color',
     });
     expect(record.mainButton.color).toBe(ACCENTS.light['--acc']);
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await vi.waitFor(() => expect(calls).toHaveLength(2));
     expect(record.calls).toContain('requestWriteAccess');
     expect(calls.map((c) => [c.method, c.path])).toEqual([
       ['POST', '/api/launch'],
@@ -94,7 +94,7 @@ describe('boot', () => {
       false,
     );
     await boot({ tg, client, router, prefetched });
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await vi.waitFor(() => expect(calls).toHaveLength(2));
     expect(calls.map((c) => [c.method, c.path])).toEqual([
       ['POST', '/api/launch'],
       ['PUT', '/api/me/prefs'],
@@ -102,7 +102,7 @@ describe('boot', () => {
     expect(calls[1]?.body).toEqual({ writeAccess: { allowed: false } });
   });
 
-  it('skips the write-access prompt on old clients and lands on the lobby or groups', async () => {
+  it("skips the write-access prompt on old clients and lands on the group's lobby", async () => {
     const lobby = {
       group: { id: 'GrOuPiDxYz', title: 'Club' },
       isAdmin: false,
@@ -112,7 +112,7 @@ describe('boot', () => {
       challenges: [],
       players: [],
     };
-    const { tg, client, router, prefetched, calls, record } = setup('6.0', 'l_GrOuPiDxYz', () => ({
+    const { tg, client, router, prefetched, calls } = setup('6.0', 'l_GrOuPiDxYz', () => ({
       status: 200,
       body: launchBody({ kind: 'lobby', lobby }, true),
     }));
@@ -120,8 +120,8 @@ describe('boot', () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(router.tab.value).toBe('groups');
     expect(router.stack.value).toEqual([{ name: 'lobby', groupId: 'GrOuPiDxYz' }]);
-    expect(record.calls).not.toContain('requestWriteAccess');
-    expect(record.calls).not.toContain('disableVerticalSwipes');
+    // No write-access answer is sent (the wait above gives one the time to arrive); that the
+    // prompt itself never opened is the global check's.
     expect(calls).toHaveLength(1);
   });
 
@@ -222,10 +222,10 @@ describe('boot', () => {
       body: launchBody({ kind: 'home', games: { items: [] } }),
     }));
     await boot({ tg, client, router, prefetched });
-    expect(document.documentElement.style.getPropertyValue('--acc')).toBe('#2e7d4f');
+    expect(document.documentElement.style.getPropertyValue('--acc')).toBe(ACCENTS.light['--acc']);
     (window.Telegram!.WebApp as { colorScheme: string }).colorScheme = 'dark';
     record.emit('themeChanged');
-    expect(document.documentElement.style.getPropertyValue('--acc')).toBe('#4cbb7a');
-    expect(record.mainButton.color).toBe('#4cbb7a');
+    expect(document.documentElement.style.getPropertyValue('--acc')).toBe(ACCENTS.dark['--acc']);
+    expect(record.mainButton.color).toBe(ACCENTS.dark['--acc']);
   });
 });

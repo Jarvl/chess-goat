@@ -1,14 +1,15 @@
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Hono } from 'hono';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { staticAppRoutes } from '../../src/api/staticApp';
 
 let app: Hono;
+let parent: string;
 
 beforeAll(async () => {
-  const parent = await mkdtemp(join(tmpdir(), 'static-'));
+  parent = await mkdtemp(join(tmpdir(), 'static-'));
   const dir = join(parent, 'dist');
   await mkdir(join(dir, 'assets'), { recursive: true });
   await writeFile(join(dir, 'index.html'), '<!doctype html><title>Group Chess</title>');
@@ -18,6 +19,7 @@ beforeAll(async () => {
   app = new Hono();
   app.route('/app', staticAppRoutes(dir));
 });
+afterAll(() => rm(parent, { recursive: true, force: true }));
 
 describe('staticAppRoutes', () => {
   it('serves index.html uncached at the mount root', async () => {

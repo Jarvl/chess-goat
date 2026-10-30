@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { confirmDialog, infoDialog } from '../src/ui/dialog';
+import { choiceDialog, confirmDialog, infoDialog } from '../src/ui/dialog';
 import { renderApp } from './support/render';
 
 const mount = (version: string, options: { popupError?: string } = {}) =>
@@ -11,8 +11,7 @@ const mount = (version: string, options: { popupError?: string } = {}) =>
 
 describe('confirmDialog', () => {
   it('asks through Telegram’s native popup from 6.2', async () => {
-    const r = mount('6.2');
-    await r.flush();
+    mount('6.2');
     const answer = confirmDialog('Resign this game?', { confirmLabel: 'Resign', danger: true });
     expect(window.__tg!.popups.at(-1)).toEqual({
       message: 'Resign this game?',
@@ -27,16 +26,14 @@ describe('confirmDialog', () => {
   });
 
   it('treats a dismissed popup as no', async () => {
-    const r = mount('8.0');
-    await r.flush();
+    mount('8.0');
     const answer = confirmDialog('Abort this game?');
     window.__tg!.answerPopup('');
     expect(await answer).toBe(false);
   });
 
   it('refuses a second popup while one is open, resolving it as no', async () => {
-    const r = mount('8.0');
-    await r.flush();
+    mount('8.0');
     const first = confirmDialog('Resign this game?');
     const second = confirmDialog('Abort this game?');
     expect(await second).toBe(false);
@@ -47,7 +44,6 @@ describe('confirmDialog', () => {
 
   it('falls back to the in-page sheet below 6.2', async () => {
     const r = mount('6.1');
-    await r.flush();
     const answer = confirmDialog('Delete your data?', { confirmLabel: 'Delete', danger: true });
     await r.flush();
     expect(document.querySelector('.dialog p')?.textContent).toBe('Delete your data?');
@@ -59,7 +55,6 @@ describe('confirmDialog', () => {
     // Unlike WebAppPopupOpened (another popup mid-flight, read as "no"), a param rejection is
     // the client refusing the call, not the user answering it.
     const r = mount('8.0', { popupError: 'WebAppPopupParamInvalid' });
-    await r.flush();
     const answer = confirmDialog('Delete your data?', { confirmLabel: 'Delete', danger: true });
     await r.flush();
     expect(window.__tg!.popups).toHaveLength(0);
@@ -71,8 +66,7 @@ describe('confirmDialog', () => {
 
 describe('confirmDialog with a cancel label', () => {
   it('names the cancel button with a native default button, and reads it as no', async () => {
-    const r = mount('8.0');
-    await r.flush();
+    mount('8.0');
     const answer = confirmDialog('Your move hasn’t been sent and will be lost.', {
       title: 'Leave this game?',
       confirmLabel: 'Leave',
@@ -93,7 +87,6 @@ describe('confirmDialog with a cancel label', () => {
 
   it('names the in-page cancel button too', async () => {
     const r = mount('6.1');
-    await r.flush();
     const answer = confirmDialog('Leave?', { confirmLabel: 'Leave', cancelLabel: 'Stay' });
     await r.flush();
     expect(document.querySelector('[data-dialog="cancel"]')?.textContent).toBe('Stay');
@@ -104,8 +97,7 @@ describe('confirmDialog with a cancel label', () => {
 
 describe('infoDialog', () => {
   it('shows a titled message with a single OK', async () => {
-    const r = mount('8.0');
-    await r.flush();
+    mount('8.0');
     const done = infoDialog('Pieces by …', 'About Chess Goat');
     expect(window.__tg!.popups.at(-1)).toEqual({
       title: 'About Chess Goat',
@@ -118,11 +110,72 @@ describe('infoDialog', () => {
 
   it('shows the same in the page below 6.2, without a cancel button', async () => {
     const r = mount('6.1');
-    await r.flush();
     void infoDialog('Pieces by …', 'About Chess Goat');
     await r.flush();
     expect(document.querySelector('.dialog strong')?.textContent).toBe('About Chess Goat');
     expect(document.querySelector('[data-dialog="cancel"]')).toBeNull();
     expect(document.querySelector('[data-dialog="confirm"]')?.textContent).toBe('OK');
+  });
+});
+
+const ok = () => ({ status: 200, body: { ok: true } });
+const ask = () =>
+  choiceDialog({
+    title: 'Move confirmations',
+    message: 'Ask before a move is sent.',
+    choices: [
+      { value: 'always', label: 'Always' },
+      { value: 'people', label: 'Only against people' },
+      { value: 'never', label: 'Never' },
+    ],
+    current: 'people',
+  });
+
+describe('choiceDialog', () => {
+  it("asks through Telegram's popup, marking the current choice", async () => {
+    renderApp(() => null, ok);
+    const answer = ask();
+    expect(window.__tg!.popups.at(-1)).toEqual({
+      title: 'Move confirmations',
+      message: 'Ask before a move is sent.',
+      buttons: [
+        { id: 'always', type: 'default', text: 'Always' },
+        { id: 'people', type: 'default', text: '✓ Only against people' },
+        { id: 'never', type: 'default', text: 'Never' },
+      ],
+    });
+    window.__tg!.answerPopup('never');
+    expect(await answer).toBe('never');
+  });
+
+  it('reads a dismissed popup as no choice', async () => {
+    renderApp(() => null, ok);
+    const answer = ask();
+    window.__tg!.answerPopup('');
+    expect(await answer).toBeNull();
+  });
+
+  it('offers the choices in the page on clients without popups', async () => {
+    const r = renderApp(() => null, ok, { version: '6.1' });
+    const answer = ask();
+    await r.flush();
+    expect(document.querySelector('[data-choice="people"]')?.getAttribute('aria-checked')).toBe(
+      'true',
+    );
+    expect(document.querySelector('[data-choice="always"]')?.getAttribute('aria-checked')).toBe(
+      'false',
+    );
+    await r.click('[data-choice="always"]');
+    expect(await answer).toBe('always');
+    expect(document.querySelector('[data-choice]')).toBeNull();
+  });
+
+  it('falls back to the page when the client rejects the popup, and Cancel dismisses', async () => {
+    const r = renderApp(() => null, ok, { popupError: 'WebAppPopupParamInvalid' });
+    const answer = ask();
+    await r.flush();
+    expect(document.querySelector('[data-choice="never"]')).not.toBeNull();
+    await r.click('[data-dialog="cancel"]');
+    expect(await answer).toBeNull();
   });
 });

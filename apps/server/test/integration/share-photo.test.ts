@@ -6,33 +6,24 @@ import { storePhoto } from '../../src/domain/photos';
 import { loadFonts } from '../../src/images/fonts';
 import { sharePhotoJobHandlers } from '../../src/jobs/handlers/sharePhoto';
 import { enqueue } from '../../src/jobs/queue';
-import { JobWorker } from '../../src/jobs/worker';
-import { createTelegramApi } from '../../src/telegram/client';
-import { testConfig } from '../helpers/config';
+import type { JobWorker } from '../../src/jobs/worker';
+
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
-import { FakeTelegram } from '../helpers/fakeTelegram';
+import type { FakeTelegram } from '../helpers/fakeTelegram';
 import { insertGame, insertGroup, insertMove, insertUser } from '../helpers/fixtures';
 import { FIXTURE_JPEG } from '../helpers/photos';
+import { jobWorker } from '../helpers/worker';
+import { AFTER_E4, AFTER_E4_C5 } from '../helpers/chess';
 
 const { db, close } = openTestDb();
 const deps = testDeps(db);
 let fake: FakeTelegram;
 let worker: JobWorker;
 const CHAT = -1001000000005;
-const AFTER_E4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
-const AFTER_E4_C5 = 'rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2';
 
 beforeAll(async () => {
-  fake = await FakeTelegram.start();
-  const config = testConfig({ TELEGRAM_API_ROOT: fake.url });
-  const api = createTelegramApi(config, { apiRoot: fake.url });
   const fonts = await loadFonts();
-  worker = new JobWorker({
-    db,
-    log: deps.log,
-    handlers: sharePhotoJobHandlers({ deps, api, config }, fonts),
-    workerId: 's',
-  });
+  ({ fake, worker } = await jobWorker(deps, (ctx) => sharePhotoJobHandlers(ctx, fonts)));
 });
 beforeEach(async () => {
   await truncateAll(db);
@@ -221,13 +212,16 @@ describe('send_share_photo', () => {
     ]);
   });
 
-  it('shares the initial position and an earlier ply', async () => {
+  it('draws the position at the shared ply, the initial one included', async () => {
     const { carol, game } = await table();
     await share(game.id, carol.id, 0);
     await share(game.id, carol.id, 1);
+    await share(game.id, carol.id, 2);
     await worker.runOnce();
-    const captions = fake.callsTo('sendPhoto').map((call) => call.body.caption);
-    expect(captions).toEqual([
+    // Plies 0 to 2 are all "move 1", so only the images tell them apart: one card each.
+    expect(await db.select().from(boardImages)).toHaveLength(3);
+    expect(fake.callsTo('sendPhoto').map((call) => call.body.caption)).toEqual([
+      'Carol shared move 1 of Alice vs Bob',
       'Carol shared move 1 of Alice vs Bob',
       'Carol shared move 1 of Alice vs Bob',
     ]);
@@ -249,7 +243,16 @@ describe('send_share_photo', () => {
     expect(await db.select().from(boardImages)).toHaveLength(0);
   });
 
-  it('does nothing once the share was sent or when the bot has left', async () => {
+  it('does nothing once the share was sent', async () => {
+    const { alice, game } = await table();
+    const row = await share(game.id, alice.id, 2);
+    await db.update(shares).set({ messageId: 555 }).where(eq(shares.id, row.id));
+    await worker.runOnce();
+    expect(fake.callsTo('sendPhoto')).toHaveLength(0);
+    expect(await pendingJobs()).toHaveLength(0);
+  });
+
+  it('does nothing when the bot has left', async () => {
     const { alice, game } = await table('left');
     await share(game.id, alice.id, 2);
     await worker.runOnce();

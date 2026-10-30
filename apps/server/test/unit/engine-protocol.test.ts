@@ -1,4 +1,3 @@
-import { ENGINE_LEVELS } from '@group-chess/shared';
 import { describe, expect, it } from 'vitest';
 import {
   optionsForLevel,
@@ -34,8 +33,10 @@ describe('optionsForLevel', () => {
     expect(elo('club')).toBeLessThan(elo('strong'));
   });
 
-  it('gives every level a configuration', () => {
-    for (const level of ENGINE_LEVELS) expect(optionsForLevel(level).length).toBeGreaterThan(0);
+  it('hands out a copy, so one caller cannot re-tune every level in the process', () => {
+    const first = optionsForLevel('casual') as UciOption[];
+    first[0]!.value = 20;
+    expect(optionsForLevel('casual')[0]!.value).not.toBe(20);
   });
 });
 
@@ -63,14 +64,6 @@ describe('parseBestMove', () => {
 
   it('takes the last bestmove when several are present', () => {
     expect(parseBestMove('bestmove a2a3\nbestmove h2h4\n')).toEqual({ uci: 'h2h4' });
-  });
-});
-
-describe('optionsForLevel', () => {
-  it('hands out a copy, so one caller cannot re-tune every level in the process', () => {
-    const first = optionsForLevel('casual') as UciOption[];
-    first[0]!.value = 20;
-    expect(optionsForLevel('casual')[0]!.value).not.toBe(20);
   });
 });
 

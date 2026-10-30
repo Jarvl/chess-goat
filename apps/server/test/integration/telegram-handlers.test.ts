@@ -4,11 +4,10 @@ import { challenges, dmMessages, games, groups, jobs, moves, users } from '../..
 import { recordDm } from '../../src/domain/dms';
 import { enqueue } from '../../src/jobs/queue';
 import { telegramJobHandlers } from '../../src/jobs/handlers/telegram';
-import { JobWorker } from '../../src/jobs/worker';
-import { createTelegramApi } from '../../src/telegram/client';
-import { testConfig } from '../helpers/config';
+import type { JobWorker } from '../../src/jobs/worker';
+
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
-import { FakeTelegram } from '../helpers/fakeTelegram';
+import type { FakeTelegram } from '../helpers/fakeTelegram';
 import {
   insertChallenge,
   insertGame,
@@ -16,25 +15,18 @@ import {
   insertMove,
   insertUser,
 } from '../helpers/fixtures';
+import { AFTER_E4 } from '../helpers/chess';
+import { jobWorker } from '../helpers/worker';
 
 const { db, close } = openTestDb();
 const deps = testDeps(db);
 let fake: FakeTelegram;
 let worker: JobWorker;
 const CHAT = -1001000000002;
-const AFTER_E4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
 const AFTER_E5 = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2';
 
 beforeAll(async () => {
-  fake = await FakeTelegram.start();
-  const config = testConfig({ TELEGRAM_API_ROOT: fake.url });
-  const api = createTelegramApi(config, { apiRoot: fake.url });
-  worker = new JobWorker({
-    db,
-    log: deps.log,
-    handlers: telegramJobHandlers({ deps, api, config }),
-    workerId: 't',
-  });
+  ({ fake, worker } = await jobWorker(deps, telegramJobHandlers));
 });
 beforeEach(async () => {
   await truncateAll(db);
@@ -217,7 +209,7 @@ describe('edit_card', () => {
     expect((await db.select().from(games))[0]?.cardMissing).toBe(true);
   });
 
-  it('renders the challenge card when the challenge is still pending', async () => {
+  it('marks a declined challenge on its card', async () => {
     const { group, alice, bob } = await people();
     const challenge = await insertChallenge(db, group.id, alice.id, bob.id, {
       messageId: 700,
@@ -255,23 +247,19 @@ describe('send_dm', () => {
     expect((await db.select().from(jobs)).every((job) => job.doneAt !== null)).toBe(true);
   });
 
-  it('sends the turn DM with both buttons and skips users who declined DMs', async () => {
+  it('sends the turn DM with both buttons', async () => {
     const { group, alice, bob } = await people();
     await db
       .update(users)
       .set({ flairWorn: ['rank_under_1200'] })
       .where(eq(users.id, bob.id));
-    // Bob is White and has moved; it is Alice's (Black's) turn, and only Alice allows DMs.
+    // Bob is White and has moved; it is Alice's (Black's) turn.
     const game = await insertGame(db, group.id, bob.id, alice.id, {
       cardMessageId: 900,
       fen: AFTER_E4,
       plyCount: 1,
     });
     await insertMove(db, game.id, 1, 'e2e4', 'e4', AFTER_E4);
-    await enqueue(db, {
-      kind: 'send_dm',
-      payload: { userId: bob.id, template: 'turn', gameId: game.id },
-    });
     await enqueue(db, {
       kind: 'send_dm',
       payload: { userId: alice.id, template: 'turn', gameId: game.id },
@@ -294,6 +282,19 @@ describe('send_dm', () => {
         [{ text: 'Go to group', url: 'https://t.me/c/1000000002/900' }],
       ],
     });
+  });
+
+  it('skips a player on move who declined DMs', async () => {
+    const { group, alice, bob } = await people();
+    // Bob (White) is on move and has not allowed DMs.
+    const game = await insertGame(db, group.id, bob.id, alice.id, { cardMessageId: 900 });
+    await enqueue(db, {
+      kind: 'send_dm',
+      payload: { userId: bob.id, template: 'turn', gameId: game.id },
+    });
+    await worker.runOnce();
+    expect(fake.callsTo('sendMessage')).toEqual([]);
+    expect((await jobRows()).map((job) => job.doneAt !== null)).toEqual([true]);
   });
 
   it('sends the challenge DM and turns DMs off when the user blocked the bot', async () => {

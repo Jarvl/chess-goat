@@ -19,6 +19,7 @@ const FONTS = [
   { file: 'YoungSerif-Regular.ttf', name: 'Young Serif', weight: 400 },
 ] as const;
 
+/** Test seam: what the renderer loads, checked against the download manifest. */
 export const FONT_FILES: readonly string[] = FONTS.map((font) => font.file);
 
 /** Spec §2.3: read once at boot; a missing file stops the process with the fix in the message. */

@@ -1,5 +1,14 @@
-import { expect, test } from '@playwright/test';
-import { boardBox, dragMove, harnessGame, openApp, seed, squareCentre, tgState } from './support';
+import { expect } from '@playwright/test';
+import {
+  boardBox,
+  dragMove,
+  harnessGame,
+  openApp,
+  seed,
+  squareCentre,
+  test,
+  tgState,
+} from './support';
 
 test('drags a move as White, the server records it and the app stays on the game', async ({
   page,

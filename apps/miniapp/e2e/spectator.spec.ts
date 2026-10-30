@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test';
-import { dragMove, harnessGame, openApp, seed } from './support';
+import { expect } from '@playwright/test';
+import { dragMove, harnessGame, openApp, seed, test } from './support';
 
 test('a spectator cannot lift a piece, and can flip the board', async ({ page }) => {
   const world = await seed('fresh');

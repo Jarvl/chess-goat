@@ -1,5 +1,16 @@
-import { applyMove, positionKey } from '@group-chess/shared';
+import { applyMove, positionKey, type PlayerResult, type PremoveNode } from '@group-chess/shared';
 import type { StoredMove } from '../../src/flair/patterns';
+import type { CountedGame } from '../../src/flair/rules';
+
+/** After 1.e4. */
+export const AFTER_E4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
+/** After 1.e4 e5, as the older fixtures write it (with an e6 en passant square). */
+export const AFTER_E4_E5 = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2';
+/** After 1.e4 c5. */
+export const AFTER_E4_C5 = 'rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2';
+/** 1.e4 e5 2.Qh5 Nc6 3.Bc4 Nf6, White to play Qxf7#. */
+export const BEFORE_SCHOLARS_MATE =
+  'r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4';
 
 /** White to move, with a pawn on e7 one step from promoting on e8 (flair spec §7). */
 export const PROMOTION_FEN = '3k4/4P3/8/8/8/8/8/4K3 w - - 0 1';
@@ -86,4 +97,37 @@ export function play(start: string, ...ucis: string[]): StoredMove[] {
     keys.push(positionKey(fen));
     return { ply: index + 1, uci: result.uci, san: result.san, fenAfter: result.fenAfter };
   });
+}
+
+/** A knight shuffle `pairs` deep from the initial position, as a premove line, and its last list. */
+export function deepLine(pairs: number): { root: PremoveNode[]; bottom: PremoveNode[] } {
+  const root: PremoveNode[] = [];
+  let bottom = root;
+  for (let index = 0; index < pairs; index += 1) {
+    const [move, reply] = index % 2 === 0 ? ['g1f3', 'g8f6'] : ['f3g1', 'f6g8'];
+    const entry: PremoveNode = { move: move!, reply: reply!, children: [] };
+    bottom.push(entry);
+    bottom = entry.children;
+  }
+  return { root, bottom };
+}
+
+/** A rated game against player 100 on day `id` of February 2026, as the flair rules count it. */
+export function countedGame(
+  id: number,
+  result: PlayerResult,
+  over: Partial<CountedGame> = {},
+): CountedGame {
+  return {
+    id,
+    startedAt: new Date(Date.UTC(2026, 1, id, 11)),
+    finishedAt: new Date(Date.UTC(2026, 1, id, 12)),
+    rated: true,
+    result,
+    ratingAfter: null,
+    side: 'white',
+    endReason: 'checkmate',
+    opponentId: 100,
+    ...over,
+  };
 }

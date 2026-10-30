@@ -58,8 +58,6 @@ describe('Settings', () => {
     expect(row?.textContent).toContain('Only against people');
     expect(r.root.querySelector('.card')?.firstElementChild).toBe(flairRow);
     expect(flairRow?.nextElementSibling).toBe(row);
-    expect(r.root.querySelector('[data-pref="confirmMoves"]')).toBeNull();
-    expect(r.root.querySelector('[data-pref="closeAfterMove"]')).toBeNull();
   });
 
   it("saves a choice picked in Telegram's popup", async () => {
@@ -70,8 +68,6 @@ describe('Settings', () => {
         body: { prefs: { ...prefs.value, ...(body as { prefs: object }).prefs }, dmAllowed: false },
       })),
     );
-    // Lets <Dialogs /> register the native popup host in its effect before choiceDialog runs.
-    await r.flush();
     await r.click('[data-pref="moveConfirmations"]');
     expect(window.__tg!.popups.at(-1)).toMatchObject({
       title: 'Move confirmations',
@@ -100,7 +96,6 @@ describe('Settings', () => {
       () => <Settings />,
       withFlair(() => ({ status: 200, body: { ok: true } })),
     );
-    await r.flush();
     await r.click('[data-pref="moveConfirmations"]');
     window.__tg!.answerPopup('');
     await r.flush();
@@ -117,7 +112,6 @@ describe('Settings', () => {
       () => <Settings />,
       withFlair(() => ({ status: 500, body: { error: { code: 'internal', message: 'boom' } } })),
     );
-    await r.flush();
     await r.click('[data-pref="moveConfirmations"]');
     window.__tg!.answerPopup('always');
     await r.flush();
@@ -134,7 +128,6 @@ describe('Settings', () => {
       })),
       { version: '6.1' },
     );
-    await r.flush();
     await r.click('[data-pref="moveConfirmations"]');
     await r.click('[data-choice="always"]');
     expect(writes(r)[0]).toMatchObject({ body: { prefs: { moveConfirmations: 'always' } } });
@@ -190,14 +183,11 @@ describe('Settings', () => {
       () => <Settings />,
       withFlair(() => ({ status: 200, body: { ok: true } })),
     );
-    await r.flush();
     expect(r.root.querySelector('img.banner-img')?.getAttribute('src')).toMatch(/goat-banner/);
     await r.click('[data-action="author"]');
     await r.click('[data-action="source"]');
-    expect(window.__tg!.links).toEqual([
-      'https://t.me/Jarvl',
-      'https://github.com/Jarvl/telegram-chess-bot',
-    ]);
+    expect(window.__tg!.telegramLinks).toEqual(['https://t.me/Jarvl']);
+    expect(window.__tg!.links).toEqual(['https://github.com/Jarvl/telegram-chess-bot']);
     await r.click('[data-action="about"]');
     expect(window.__tg!.popups.at(-1)).toMatchObject({
       title: 'About Chess Goat',
@@ -232,9 +222,6 @@ describe('Settings', () => {
       () => <Settings />,
       withFlair(() => ({ status: 200, body: { ok: true } })),
     );
-    // Lets the Dialogs' mount effect register its native-popup host before the click,
-    // same as the "links to the author..." test above (a happy-dom/preact effect-timing quirk).
-    await r.flush();
     await r.click('[data-action="delete"]');
     expect(window.__tg!.popups.at(-1)?.message).toContain('kept as payment records');
   });
@@ -263,7 +250,6 @@ describe('Settings', () => {
           ? { status: 500, body: { error: { code: 'internal', message: 'boom' } } }
           : { status: 200, body: { ok: true } },
     );
-    await r.flush();
     expect(r.root.querySelector('[data-action="flair"]')?.textContent).not.toContain('unlocked');
     expect(document.querySelector('.toast')).toBeNull();
     await r.click('[data-action="flair"]');

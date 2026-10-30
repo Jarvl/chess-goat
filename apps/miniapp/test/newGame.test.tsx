@@ -4,19 +4,11 @@ import { App } from '../src/ui/App';
 import { NewGame } from '../src/ui/screens/NewGame';
 import { gameDto } from './support/gameFixtures';
 import { renderApp } from './support/render';
+import { playerRef } from './support/summaryFixtures';
 
 const settings = { defaultTimePerMove: 86400, ratedDefault: true, allowOpenChallenges: true };
 
-const bob = {
-  id: '2',
-  name: 'Bob',
-  username: 'bob',
-  rating: 1520,
-  provisional: false,
-  isBot: false,
-  photoUrl: null,
-  flair: [],
-};
+const bob = playerRef('2', 'Bob', { username: 'bob', rating: 1520, provisional: false });
 
 const players = { players: [bob], settings, bot: null };
 
@@ -34,16 +26,7 @@ function pressedOpponentRows(root: HTMLElement): Element[] {
 }
 const challenge = {
   id: 'ChalAaaaaa',
-  challenger: {
-    id: '1',
-    name: 'Alice',
-    username: 'alice',
-    rating: 1500,
-    provisional: true,
-    isBot: false,
-    photoUrl: null,
-    flair: [],
-  },
+  challenger: playerRef('1', 'Alice', { username: 'alice' }),
   opponent: null,
   timePerMove: 28800,
   challengerColour: 'white',
@@ -127,7 +110,6 @@ describe('NewGame', () => {
       () => <NewGame groupId="GrOuPiDxYz" opponentId="9" />,
       () => ({ status: 200, body: players }),
     );
-    await r.flush();
     expect(pressedOpponentRows(r.root)).toHaveLength(0);
   });
 
@@ -139,7 +121,6 @@ describe('NewGame', () => {
         body: { ...players, settings: { ...settings, allowOpenChallenges: false } },
       }),
     );
-    await r.flush();
     expect(r.root.querySelector('[data-opponent="open"]')).toBeNull();
   });
 
@@ -160,7 +141,6 @@ describe('NewGame', () => {
       () => <NewGame groupId="GrOuPiDxYz" />,
       () => ({ status: 200, body: players }),
     );
-    await r.flush();
     expect(r.text()).not.toContain('Play the bot');
   });
 
@@ -310,7 +290,6 @@ describe('NewGame', () => {
       'Anyone in the group can accept',
     );
     await r.click('[data-opponent="2"]');
-    expect(r.root.querySelector('[data-opponent="2"]')?.className).toContain('on');
-    expect(r.root.querySelector('[data-opponent="2"] .radio.on')).not.toBeNull();
+    expect(r.root.querySelector('[data-opponent="2"]')?.getAttribute('aria-pressed')).toBe('true');
   });
 });

@@ -8,6 +8,7 @@ export class RateLimiter {
     private readonly windowMs: number,
   ) {}
 
+  /** Test seam: how many keys it holds, so a test can show old ones are pruned. */
   get size(): number {
     return this.hits.size;
   }

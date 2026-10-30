@@ -13,8 +13,6 @@ import { colourOf, storedPremoveTree } from './gameDto';
 import { loadGameDto, lockActiveGame, requireGameByPublicId } from './games';
 import { hasUncheckedPairs, parseTree, requireLegalTree } from './premoveCheck';
 
-export { checkTreeYielding } from './premoveCheck';
-
 export type SetPremoveTreeInput = {
   gameId: string;
   userId: number;

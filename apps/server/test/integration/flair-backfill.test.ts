@@ -1,18 +1,10 @@
-import {
-  FLAIR,
-  flairBackfillVersion,
-  flairById,
-  INITIAL_FEN,
-  type FlairEntry,
-  type GameResult,
-} from '@group-chess/shared';
+import { FLAIR, flairBackfillVersion, flairById, type FlairEntry } from '@group-chess/shared';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { flairBackfills, games, jobs, userFlair, users, type GameRow } from '../../src/db/schema';
 import {
   backfillDedupKey,
   backfillPlayer,
-  canRunBackfill,
   enqueueFlairBackfill,
   pendingBackfills,
   runFlairBackfill,
@@ -22,63 +14,26 @@ import { enqueue } from '../../src/jobs/queue';
 import { coreJobHandlers } from '../../src/jobs/handlers';
 import { backfillFlairHandler } from '../../src/jobs/handlers/flair';
 import { JobWorker } from '../../src/jobs/worker';
-import { LINES, play } from '../helpers/chess';
+import { LINES } from '../helpers/chess';
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
-import {
-  insertGame,
-  insertGroup,
-  insertMove,
-  insertUser,
-  type GameOverrides,
-} from '../helpers/fixtures';
+import { insertGroup, insertUser } from '../helpers/fixtures';
+import { day, earned, finishedGame, worn } from '../helpers/flair';
 
 const { db, close } = openTestDb();
 const deps = testDeps(db);
-const day = (n: number) => new Date(Date.UTC(2026, 1, n, 12));
-
 beforeEach(() => truncateAll(db));
 afterAll(() => close());
 
 async function players() {
   return { group: await insertGroup(db), alice: await insertUser(db), bob: await insertUser(db) };
 }
-/** A finished game whose moves are `line` from the start; `result` is White's point of view. */
-async function finished(
-  groupId: number,
-  whiteId: number,
-  blackId: number,
-  d: number,
-  result: Exclude<GameResult, '*'>,
-  options: { line?: readonly string[]; over?: GameOverrides } = {},
-): Promise<GameRow> {
-  const moves = play(INITIAL_FEN, ...(options.line ?? []));
-  const game = await insertGame(db, groupId, whiteId, blackId, {
-    status: 'finished',
-    result,
-    // No flair reads the end reason checkmate (mates are found in the moves), so only a test that
-    // asks for a resignation or a timeout earns 🐔 or 💤.
-    endReason: 'checkmate',
-    // An hour long unless a test says otherwise, well outside 🏎️'s three minutes.
-    startedAt: new Date(day(d).getTime() - 3_600_000),
-    finishedAt: day(d),
-    plyCount: moves.length,
-    ...options.over,
-  });
-  for (const m of moves) await insertMove(db, game.id, m.ply, m.uci, m.san, m.fenAfter);
-  return game;
-}
 /** Ten draws between the two, on days `from` to `from + 9`; returns the tenth. */
 async function tenDraws(groupId: number, a: number, b: number, from: number): Promise<GameRow> {
   let last!: GameRow;
-  for (let d = from; d < from + 10; d += 1) last = await finished(groupId, a, b, d, '1/2-1/2');
+  for (let d = from; d < from + 10; d += 1)
+    last = await finishedGame(db, groupId, a, b, d, '1/2-1/2');
   return last;
 }
-const earned = async (userId: number) =>
-  (
-    await db.select().from(userFlair).where(eq(userFlair.userId, userId)).orderBy(userFlair.flairId)
-  ).map((r) => [r.flairId, r.gameId]);
-const worn = async (userId: number) =>
-  (await db.select({ worn: users.flairWorn }).from(users).where(eq(users.id, userId)))[0]!.worn;
 const flair = (...ids: string[]): FlairEntry[] => ids.map((id) => flairById(id)!);
 const award = (userId: number, flairId: string, game: GameRow) =>
   db.insert(userFlair).values({ userId, flairId, gameId: game.id, earnedAt: game.finishedAt! });
@@ -111,26 +66,27 @@ describe('pendingBackfills', () => {
 describe('backfillPlayer', () => {
   it('awards each rule kind from history at the first game that earned it', async () => {
     const { group, alice, bob } = await players();
-    const enPassant = await finished(group.id, alice.id, bob.id, 2, '1-0', {
+    const enPassant = await finishedGame(db, group.id, alice.id, bob.id, 2, '1-0', {
       line: LINES.enPassant,
     });
     const wins: GameRow[] = [];
-    for (let d = 3; d <= 7; d += 1) wins.push(await finished(group.id, alice.id, bob.id, d, '1-0'));
+    for (let d = 3; d <= 7; d += 1)
+      wins.push(await finishedGame(db, group.id, alice.id, bob.id, d, '1-0'));
     const tenth = await tenDraws(group.id, alice.id, bob.id, 8);
-    const mated = await finished(group.id, bob.id, alice.id, 18, '1-0', {
+    const mated = await finishedGame(db, group.id, bob.id, alice.id, 18, '1-0', {
       line: LINES.scholarsMateQh5,
       over: { endReason: 'checkmate' },
     });
-    const rated = await finished(group.id, alice.id, bob.id, 19, '1-0', {
+    const rated = await finishedGame(db, group.id, alice.id, bob.id, 19, '1-0', {
       over: { whiteRatingAfter: 1612 },
     });
-    const resigned = await finished(group.id, bob.id, alice.id, 20, '1-0', {
+    const resigned = await finishedGame(db, group.id, bob.id, alice.id, 20, '1-0', {
       over: { endReason: 'resignation' },
     });
-    const flagged = await finished(group.id, alice.id, bob.id, 21, '0-1', {
+    const flagged = await finishedGame(db, group.id, alice.id, bob.id, 21, '0-1', {
       over: { endReason: 'timeout' },
     });
-    const flaggedBob = await finished(group.id, alice.id, bob.id, 22, '1-0', {
+    const flaggedBob = await finishedGame(db, group.id, alice.id, bob.id, 22, '1-0', {
       over: { endReason: 'timeout' },
     });
 
@@ -151,7 +107,7 @@ describe('backfillPlayer', () => {
       moved: [],
     });
     // The en passant win is the first of the five in a row, so the third in a row is wins[1].
-    expect(await earned(alice.id)).toEqual([
+    expect(await earned(db, alice.id)).toEqual([
       ['draws_10', tenth.id],
       ['en_passant_win', enPassant.id],
       ['rank_1600', rated.id],
@@ -173,16 +129,20 @@ describe('backfillPlayer', () => {
 
   it('fills no worn slots', async () => {
     const { group, alice, bob } = await players();
-    await finished(group.id, alice.id, bob.id, 2, '1-0', { line: LINES.enPassant });
+    await finishedGame(db, group.id, alice.id, bob.id, 2, '1-0', { line: LINES.enPassant });
     await backfillPlayer(db, alice.id, FLAIR);
-    expect(await earned(alice.id)).toEqual([['en_passant_win', expect.any(Number)]]);
-    expect(await worn(alice.id)).toEqual([]);
+    expect(await earned(db, alice.id)).toEqual([['en_passant_win', expect.any(Number)]]);
+    expect(await worn(db, alice.id)).toEqual([]);
   });
 
   it('moves a held flair to an earlier game, and leaves it when there is none', async () => {
     const { group, alice, bob } = await players();
-    const first = await finished(group.id, alice.id, bob.id, 2, '1-0', { line: LINES.enPassant });
-    const second = await finished(group.id, alice.id, bob.id, 3, '1-0', { line: LINES.enPassant });
+    const first = await finishedGame(db, group.id, alice.id, bob.id, 2, '1-0', {
+      line: LINES.enPassant,
+    });
+    const second = await finishedGame(db, group.id, alice.id, bob.id, 3, '1-0', {
+      line: LINES.enPassant,
+    });
     const tenth = await tenDraws(group.id, alice.id, bob.id, 4);
     await award(alice.id, 'en_passant_win', second);
     await award(alice.id, 'draws_10', tenth);
@@ -191,7 +151,7 @@ describe('backfillPlayer', () => {
       added: [],
       moved: ['en_passant_win'],
     });
-    expect(await earned(alice.id)).toEqual([
+    expect(await earned(db, alice.id)).toEqual([
       ['draws_10', tenth.id],
       ['en_passant_win', first.id],
     ]);
@@ -202,26 +162,26 @@ describe('backfillPlayer', () => {
   it('never moves an award to a later game', async () => {
     const { group, alice, bob } = await players();
     // Credited before its game was voided; a later game now qualifies too.
-    const voided = await finished(group.id, alice.id, bob.id, 2, '1-0', {
+    const voided = await finishedGame(db, group.id, alice.id, bob.id, 2, '1-0', {
       line: LINES.enPassant,
       over: { voidedAt: day(3) },
     });
-    await finished(group.id, alice.id, bob.id, 4, '1-0', { line: LINES.enPassant });
+    await finishedGame(db, group.id, alice.id, bob.id, 4, '1-0', { line: LINES.enPassant });
     await award(alice.id, 'en_passant_win', voided);
     expect(await backfillPlayer(db, alice.id, flair('en_passant_win'))).toEqual({
       added: [],
       moved: [],
     });
-    expect(await earned(alice.id)).toEqual([['en_passant_win', voided.id]]);
+    expect(await earned(db, alice.id)).toEqual([['en_passant_win', voided.id]]);
   });
 
   it('changes nothing when run again', async () => {
     const { group, alice, bob } = await players();
     await tenDraws(group.id, alice.id, bob.id, 2);
     await backfillPlayer(db, alice.id, FLAIR);
-    const before = await earned(alice.id);
+    const before = await earned(db, alice.id);
     expect(await backfillPlayer(db, alice.id, FLAIR)).toEqual({ added: [], moved: [] });
-    expect(await earned(alice.id)).toEqual(before);
+    expect(await earned(db, alice.id)).toEqual(before);
   });
 });
 
@@ -237,16 +197,16 @@ describe('runFlairBackfill', () => {
       moved: {},
       next: null,
     });
-    expect(await earned(alice.id)).toEqual([['draws_10', tenth.id]]);
-    expect(await earned(bob.id)).toEqual([['draws_10', tenth.id]]);
+    expect(await earned(db, alice.id)).toEqual([['draws_10', tenth.id]]);
+    expect(await earned(db, bob.id)).toEqual([['draws_10', tenth.id]]);
   });
 
   it('backfills only the flair it is given', async () => {
     const { group, alice, bob } = await players();
-    await finished(group.id, alice.id, bob.id, 2, '1-0', { line: LINES.enPassant });
+    await finishedGame(db, group.id, alice.id, bob.id, 2, '1-0', { line: LINES.enPassant });
     await tenDraws(group.id, alice.id, bob.id, 3);
     await runFlairBackfill(db, draws);
-    expect((await earned(alice.id)).map(([id]) => id)).toEqual(['draws_10']);
+    expect((await earned(db, alice.id)).map(([id]) => id)).toEqual(['draws_10']);
   });
 
   it('skips deleted players, and sweeps rows of players deleted meanwhile', async () => {
@@ -261,9 +221,9 @@ describe('runFlairBackfill', () => {
     await award(carol.id, 'draws_10', tenth);
 
     expect((await runFlairBackfill(db, draws)).players).toBe(1);
-    expect(await earned(alice.id)).toEqual([['draws_10', tenth.id]]);
-    expect(await earned(bob.id)).toEqual([]);
-    expect(await earned(carol.id)).toEqual([]);
+    expect(await earned(db, alice.id)).toEqual([['draws_10', tenth.id]]);
+    expect(await earned(db, bob.id)).toEqual([]);
+    expect(await earned(db, carol.id)).toEqual([]);
   });
 
   it('records the pairs after a complete run', async () => {
@@ -288,12 +248,12 @@ describe('runFlairBackfill', () => {
 
     const first = await runFlairBackfill(db, draws, { limit: 2 });
     expect(first).toMatchObject({ players: 2, next: bob.id });
-    expect(await earned(carol.id)).toEqual([]);
+    expect(await earned(db, carol.id)).toEqual([]);
     expect(await recorded()).toEqual([]);
 
     const rest = await runFlairBackfill(db, draws, { afterUserId: bob.id, limit: 2 });
     expect(rest).toMatchObject({ players: 1, next: null });
-    expect(await earned(carol.id)).toEqual([['draws_10', tenth.id]]);
+    expect(await earned(db, carol.id)).toEqual([['draws_10', tenth.id]]);
     expect(await recorded()).toEqual([['draws_10', 1]]);
   });
 
@@ -305,27 +265,8 @@ describe('runFlairBackfill', () => {
       return backfillPlayer(tx, userId, candidates);
     };
     await expect(runFlairBackfill(db, draws, { backfillOne })).rejects.toThrow('boom');
-    expect(await earned(alice.id)).toEqual([['draws_10', tenth.id]]);
+    expect(await earned(db, alice.id)).toEqual([['draws_10', tenth.id]]);
     expect(await recorded()).toEqual([]);
-  });
-});
-
-describe('backfillDedupKey', () => {
-  it('names the pairs sorted by id', () => {
-    expect(
-      backfillDedupKey([
-        { id: 'rank_1200', version: 1 },
-        { id: 'draws_10', version: 2 },
-      ]),
-    ).toBe('flair:backfill:draws_10@2,rank_1200@1');
-  });
-});
-
-describe('canRunBackfill', () => {
-  it('runs only pairs this build knows, at a version it has reached', () => {
-    expect(canRunBackfill([{ id: 'draws_10', version: 1 }])).toBe(true);
-    expect(canRunBackfill([{ id: 'retired_flair', version: 1 }])).toBe(false);
-    expect(canRunBackfill([{ id: 'draws_10', version: 2 }])).toBe(false);
   });
 });
 
@@ -363,7 +304,7 @@ describe('backfill_flair', () => {
       dedupKey: 'flair:backfill:draws_10@1',
     });
     await worker().runOnce();
-    expect(await earned(alice.id)).toEqual([['draws_10', tenth.id]]);
+    expect(await earned(db, alice.id)).toEqual([['draws_10', tenth.id]]);
     expect(await recorded()).toEqual([['draws_10', 1]]);
     const [job] = await db.select().from(jobs);
     expect(job!.doneAt).not.toBeNull();
@@ -392,14 +333,14 @@ describe('backfill_flair', () => {
       flair: [{ id: 'draws_10', version: 1 }],
       afterUserId: alice.id,
     });
-    expect(await earned(alice.id)).toEqual([['draws_10', tenth.id]]);
-    expect(await earned(bob.id)).toEqual([]);
+    expect(await earned(db, alice.id)).toEqual([['draws_10', tenth.id]]);
+    expect(await earned(db, bob.id)).toEqual([]);
     expect(await recorded()).toEqual([]);
 
     for (let i = 0; i < 3 && (await db.select().from(jobs))[0]!.doneAt === null; i += 1)
       await chunked.runOnce();
     expect((await db.select().from(jobs))[0]!.doneAt).not.toBeNull();
-    expect(await earned(bob.id)).toEqual([['draws_10', tenth.id]]);
+    expect(await earned(db, bob.id)).toEqual([['draws_10', tenth.id]]);
     expect(await recorded()).toEqual([['draws_10', 1]]);
   });
 

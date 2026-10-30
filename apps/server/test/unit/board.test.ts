@@ -1,8 +1,8 @@
 import { INITIAL_FEN } from '@group-chess/shared';
 import { describe, expect, it } from 'vitest';
-import { isLightSquare, parsePlacement, renderBoardSvg } from '../../src/images/board';
+import { parsePlacement, renderBoardSvg } from '../../src/images/board';
+import { AFTER_E4 } from '../helpers/chess';
 
-const AFTER_E4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
 /** Fool's mate: the white king on e1 is in check from h4. */
 const CHECK = 'rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3';
 const white = { lastMove: null, check: false, orientation: 'white' as const };
@@ -13,14 +13,6 @@ describe('parsePlacement', () => {
     expect(pieces).toHaveLength(32);
     expect(pieces).toContainEqual({ file: 4, rank: 0, piece: 'wK' });
     expect(pieces).toContainEqual({ file: 3, rank: 7, piece: 'bQ' });
-  });
-});
-
-describe('isLightSquare', () => {
-  it('has a dark a1 and a light h1 and a8', () => {
-    expect(isLightSquare(0, 0)).toBe(false);
-    expect(isLightSquare(7, 0)).toBe(true);
-    expect(isLightSquare(0, 7)).toBe(true);
   });
 });
 
@@ -37,9 +29,11 @@ describe('renderBoardSvg', () => {
     const svg = renderBoardSvg({ fen: CHECK, lastMove: 'd8h4', check: true, orientation: 'white' });
     expect(svg).toContain('<rect class="last-move" x="300" y="0"');
     expect(svg).toContain('<rect class="last-move" x="700" y="400"');
-    expect(svg).toContain('<rect class="check" x="400" y="700"');
+    expect(svg).toContain(
+      '<rect class="check" x="400" y="700" width="100" height="100" fill="url(#check)"/>',
+    );
+    expect(svg).toContain('<radialGradient id="check"');
     expect(svg).toContain('fill="rgba(224, 185, 74, 0.6)"');
-    expect(svg).toContain('fill="#f0ead2"');
   });
 
   it('puts the sharer colour at the bottom', () => {

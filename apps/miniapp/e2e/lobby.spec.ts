@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test';
-import { clickBack, clickMain, openApp, seed, telegramCalls, tgState } from './support';
+import { expect } from '@playwright/test';
+import { clickBack, clickMain, openApp, seed, telegramCalls, test, tgState } from './support';
 
 test('a challenge made in the app is posted to the group and accepted from the lobby', async ({
   browser,

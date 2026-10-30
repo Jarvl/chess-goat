@@ -3,12 +3,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { dmMessages, jobs, users } from '../../src/db/schema';
 import { markWaiting, recordDm, retireGameDms } from '../../src/domain/dms';
 import { telegramJobHandlers } from '../../src/jobs/handlers/telegram';
-import { JobWorker } from '../../src/jobs/worker';
-import { createTelegramApi } from '../../src/telegram/client';
-import { testConfig } from '../helpers/config';
+import type { JobWorker } from '../../src/jobs/worker';
+
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
-import { FakeTelegram } from '../helpers/fakeTelegram';
+import type { FakeTelegram } from '../helpers/fakeTelegram';
 import { insertGame, insertGroup, insertUser } from '../helpers/fixtures';
+import { jobWorker } from '../helpers/worker';
 
 const { db, close } = openTestDb();
 const deps = testDeps(db);
@@ -16,15 +16,7 @@ let fake: FakeTelegram;
 let worker: JobWorker;
 
 beforeAll(async () => {
-  fake = await FakeTelegram.start();
-  const config = testConfig({ TELEGRAM_API_ROOT: fake.url });
-  const api = createTelegramApi(config, { apiRoot: fake.url });
-  worker = new JobWorker({
-    db,
-    log: deps.log,
-    handlers: telegramJobHandlers({ deps, api, config }),
-    workerId: 't',
-  });
+  ({ fake, worker } = await jobWorker(deps, telegramJobHandlers));
 });
 beforeEach(async () => {
   await truncateAll(db);
@@ -129,7 +121,8 @@ describe('live DM rows', () => {
       description: 'Bad Request: message to delete not found',
     });
     await worker.runOnce();
-    expect((await db.select().from(jobs)).every((job) => job.doneAt !== null)).toBe(true);
+    expect(fake.callsTo('deleteMessage')).toHaveLength(1);
+    expect((await db.select().from(jobs)).map((job) => job.doneAt !== null)).toEqual([true]);
   });
 
   it('turns DMs off and forgets rows when the user blocked the bot', async () => {

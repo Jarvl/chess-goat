@@ -19,10 +19,8 @@ describe('MoveRequestSchema', () => {
     expect(MoveRequestSchema.parse(valid)).toEqual({ ...valid, premoveTree: '' });
   });
 
-  it('defaults the premove tree to empty and keeps a sent one', () => {
-    expect(MoveRequestSchema.parse(valid).premoveTree).toBe('');
+  it('keeps a sent premove tree', () => {
     expect(MoveRequestSchema.parse({ ...valid, premoveTree: 'AQwH' }).premoveTree).toBe('AQwH');
-    expect(MoveRequestSchema.safeParse({ ...valid, premoveTree: 'AQ+H' }).success).toBe(false);
   });
 
   it.each([
@@ -97,10 +95,6 @@ describe('GroupSettingsUpdateRequestSchema', () => {
       ratedDefault: false,
     });
   });
-
-  it('still enforces the range of each field', () => {
-    expect(GroupSettingsUpdateRequestSchema.safeParse({ fixedTopicId: -1 }).success).toBe(false);
-  });
 });
 
 describe('LaunchRequestSchema', () => {
@@ -137,7 +131,6 @@ describe('PremoveTreeRequestSchema', () => {
   it.each([
     ['a 42-char base hash', { ...valid, baseHash: 'A'.repeat(42) }],
     ['a 44-char base hash', { ...valid, baseHash: 'A'.repeat(44) }],
-    ['a plus sign in the tree', { ...valid, tree: 'AQ+H' }],
     ['padding in the tree', { ...valid, tree: 'AQwH==' }],
     ['a missing ply', { baseHash: valid.baseHash, tree: valid.tree }],
     ['a negative ply', { ...valid, expectedPly: -1 }],

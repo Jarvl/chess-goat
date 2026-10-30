@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyRatedGame,
-  freshPlayerState,
   replayRatings,
   scoreFor,
   type PlayerRatingState,
@@ -64,19 +63,6 @@ describe('applyRatedGame', () => {
     const second = applyRatedGame(states, game('bob', 'alice', '0-1', 100));
     expect(second.black.before.rd).toBeGreaterThan(first.white.after.rd);
     expect(second.black.before.rating).toBe(first.white.after.rating);
-  });
-
-  it('leaves a fresh state untouched when building from an empty map', () => {
-    expect(freshPlayerState()).toEqual({
-      rating: 1500,
-      rd: 350,
-      volatility: 0.06,
-      gamesPlayed: 0,
-      wins: 0,
-      draws: 0,
-      losses: 0,
-      lastRatedGameAt: null,
-    });
   });
 });
 

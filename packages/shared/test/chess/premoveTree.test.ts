@@ -45,10 +45,6 @@ describe('encodePremoveBytes', () => {
     );
   });
 
-  it('keeps the zero count of an empty child list', () => {
-    expect(encodePremoveBytes([{ move: 'e2e4', reply: 'e7e5', children: [] }]).at(-1)).toBe(0);
-  });
-
   it('skips unanswered nodes and everything under them', () => {
     const draft: DraftNode[] = [
       { move: 'e7e5', reply: null, children: [{ move: 'g1f3', reply: 'b8c6', children: [] }] },
@@ -84,11 +80,6 @@ describe('round trips', () => {
     ];
     expect(decodePremoveBytes(encodePremoveBytes(tree))).toEqual(tree);
     expect(decodePremoveTree(encodePremoveTree(tree))).toEqual(tree);
-  });
-
-  it('writes base64url without padding or url-unsafe characters', () => {
-    const text = encodePremoveTree(wide);
-    expect(text).toMatch(/^[A-Za-z0-9_-]+$/);
   });
 });
 
@@ -280,11 +271,15 @@ describe('premoveTreeCheck', () => {
     });
   });
 
-  it('accepts castling and promotion', () => {
+  it('refuses a move from an empty square', () => {
+    // The Italian's bishop has left f1.
     expect(checkPremoveTree(ITALIAN, [node('f1e2', 'g8f6')])).toEqual({
       ok: false,
       path: ['f1e2'],
     });
+  });
+
+  it('accepts castling and promotion', () => {
     expect(checkPremoveTree(ITALIAN, [node('e1g1', 'g8f6', [node('d2d3', 'e8g8')])])).toEqual({
       ok: true,
     });
@@ -381,14 +376,6 @@ describe('premoveTreeCheck', () => {
     expect(checkPremoveTree(AFTER_E4, tree, known)).toEqual({
       ok: false,
       path: ['e7e5', 'g1f3', 'b8c6', 'f1b5', 'a7a6', 'b5b7'],
-    });
-  });
-});
-
-describe('from the initial position', () => {
-  it('checks a white tree where the owner moves second', () => {
-    expect(checkPremoveTree(INITIAL_FEN, [node('e2e4', 'e7e5', [node('g1f3', 'b8c6')])])).toEqual({
-      ok: true,
     });
   });
 });

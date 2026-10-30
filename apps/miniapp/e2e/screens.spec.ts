@@ -1,6 +1,6 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
-import { clickBack, openApp, seed } from './support';
+import { clickBack, openApp, seed, test } from './support';
 
 // Review Focus 5: a long title or display name must never push the page sideways at phone width.
 const LONG_TITLE = 'The Extremely Long Friday Evening Correspondence Chess Club of Manchester';
