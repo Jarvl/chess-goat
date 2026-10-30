@@ -1175,6 +1175,7 @@ button {
   align-items: center;
   overflow-x: auto;
   white-space: nowrap;
+  position: relative;
   padding: 10px 16px 6px;
   scrollbar-width: none;
   font-size: 15px;
@@ -1202,10 +1203,20 @@ button {
   padding-left: 6px;
 }
 
-/* The opponent's unknown reply: tight, so each premove costs little width in the strip. */
-.move-list .premove-gap {
+/* The player's move waiting for Confirm move. */
+.move-list button.waiting {
+  box-shadow: inset 0 0 0 1.5px var(--acc);
+}
+
+/* The opponent's moves in the premove line. */
+.move-list button.line-opponent {
   color: var(--hint);
-  padding: 3px 1px;
+}
+
+.move-list button.line-opponent[aria-current='true'] {
+  background: var(--pm-soft);
+  color: var(--hint);
+  font-weight: 700;
 }
 
 .move-list .premove-number {
@@ -1224,7 +1235,7 @@ button {
   box-shadow: none;
 }
 
-/* Removes the shown premove and the ones after it, after asking. */
+/* Removes the selected premove and the ones after it, after asking. */
 .move-list button.premove-remove {
   padding: 3px 8px;
   border-radius: 999px;

@@ -556,8 +556,7 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
 
   // Material counts real moves up to the shown ply: never a pending move or a shown premove.
   const shownFen = store.position.value.fen;
-  const end = store.timelineEnd.value;
-  const at = store.timelineAt.value;
+  const { end, at } = store.timeline.value;
   const view = (index: number): void => {
     if (store.viewTimeline(index)) tg.hapticSelection();
   };
@@ -618,9 +617,9 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
       <MoveList
         store={store}
         locked={moveState.kind === 'pendingConfirm'}
-        onRemove={(step) => void removePremove(step)}
+        onRemove={() => void removePremove(store.shownStep.value)}
       />
-      {/* One slider in every game: the real moves, then on through the queued premoves. */}
+      {/* One slider in every game: the real moves, the waiting move, then the premove line viewed. */}
       <div class="replay-controls">
         <button
           class="pill-btn"
