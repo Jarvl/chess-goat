@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Router } from '../src/router';
 import { createTg } from '../src/tg/webapp';
 import { installFakeWebApp } from './support/fakeWebApp';
@@ -136,5 +136,97 @@ describe('Router', () => {
     expect(router.showTabs.value).toBe(false);
     router.suppressTabs.value = false;
     expect(router.showTabs.value).toBe(true);
+  });
+  describe('leave guard', () => {
+    const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+    const guarded = (answer: boolean) => {
+      const guard = vi.fn(() => Promise.resolve(answer));
+      return guard;
+    };
+
+    it('keeps the stack when the guard says stay, on Back, close, a tab and push or replace', async () => {
+      const { router, record } = setup(true);
+      router.land('groups', { name: 'groups' });
+      router.push({ name: 'game', gameId: 'AbCdEfGhIj' });
+      const guard = guarded(false);
+      router.leaveGuard = guard;
+      record.clickBack();
+      await flush();
+      router.select('settings');
+      await flush();
+      router.push({ name: 'flair' });
+      await flush();
+      router.replace({ name: 'lobby', groupId: 'GrOuPiDxYz' });
+      await flush();
+      expect(guard).toHaveBeenCalledTimes(4);
+      expect(router.tab.value).toBe('groups');
+      expect(router.stack.value).toEqual([
+        { name: 'groups' },
+        { name: 'game', gameId: 'AbCdEfGhIj' },
+      ]);
+      router.back();
+      record.clickBack();
+      await flush();
+      expect(record.closed).toBe(false);
+    });
+
+    it('pops, switches, pushes and replaces when the guard says leave', async () => {
+      const { router, record } = setup();
+      router.land('groups', { name: 'groups' });
+      router.push({ name: 'game', gameId: 'AbCdEfGhIj' });
+      router.leaveGuard = guarded(true);
+      record.clickBack();
+      await flush();
+      expect(router.current.value).toEqual({ name: 'groups' });
+      router.push({ name: 'game', gameId: 'AbCdEfGhIj' });
+      await flush();
+      expect(router.current.value).toEqual({ name: 'game', gameId: 'AbCdEfGhIj' });
+      router.replace({ name: 'lobby', groupId: 'GrOuPiDxYz' });
+      await flush();
+      expect(router.current.value).toEqual({ name: 'lobby', groupId: 'GrOuPiDxYz' });
+      router.select('settings');
+      await flush();
+      expect(router.tab.value).toBe('settings');
+    });
+
+    it('closes the app from the root once the guard says leave', async () => {
+      const { router, record } = setup(true);
+      router.land('games', { name: 'game', gameId: 'AbCdEfGhIj' });
+      router.leaveGuard = guarded(true);
+      record.clickBack();
+      expect(record.closed).toBe(false);
+      await flush();
+      expect(record.closed).toBe(true);
+    });
+
+    it('asks one question at a time', async () => {
+      const { router } = setup();
+      router.land('groups', { name: 'groups' });
+      const guard = vi.fn(() => Promise.resolve(true));
+      router.leaveGuard = guard;
+      router.select('settings');
+      router.select('games');
+      await flush();
+      expect(guard).toHaveBeenCalledTimes(1);
+      expect(router.tab.value).toBe('settings');
+    });
+
+    it('acts at once, in the same tick, with no guard', () => {
+      const { router, record } = setup();
+      router.land('groups', { name: 'groups' });
+      router.push({ name: 'settings' });
+      record.clickBack();
+      expect(router.current.value).toEqual({ name: 'groups' });
+      router.select('settings');
+      expect(router.tab.value).toBe('settings');
+    });
+
+    it('leaves back() itself unguarded', () => {
+      const { router } = setup();
+      router.land('groups', { name: 'groups' });
+      router.push({ name: 'settings' });
+      router.leaveGuard = guarded(false);
+      expect(router.back()).toBe(true);
+    });
   });
 });

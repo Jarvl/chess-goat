@@ -53,12 +53,20 @@ test('Cancel puts the piece back and sends nothing', async ({ page }) => {
   await expect.poll(async () => (await harnessGame(gameId)).plyCount).toBe(1);
 });
 
-test('leaving the game with a move waiting cancels it', async ({ page }) => {
+test('leaving the game with a move waiting asks first, then cancels it', async ({ page }) => {
   const gameId = await openAsAlice(page);
   await dragMove(page, 'e2', 'e4');
   await expect.poll(async () => (await tgState(page)).mainButton.visible).toBe(true);
-  // The tab bar is hidden while the move waits; Telegram's Settings item still selects a tab.
+  // The tab bar is hidden while the move waits; Telegram's Settings item still selects a tab, once
+  // the player agrees to leave (conditional premoves spec, Sending it).
   await clickSettings(page);
+  await expect
+    .poll(async () => (await tgState(page)).popups.at(-1))
+    .toMatchObject({
+      title: 'Leave this game?',
+      message: "Your move hasn't been sent and will be lost.",
+    });
+  await page.evaluate(() => window.__tg!.answerPopup('confirm'));
   await expect(page.locator('[data-pref="moveConfirmations"]')).toBeVisible();
   const state = await tgState(page);
   expect(state.mainButton.visible).toBe(false);

@@ -195,11 +195,24 @@ export const games = pgTable(
     startedAt: tz().notNull().defaultNow(),
     finishedAt: tz(),
     lastMoveAt: tz(),
-    /** The premove chain of the side not to move, oldest first, as UCI (premoves spec, Data). */
+    /** Unused since conditional premoves; dropped in a later release. */
     premoves: text()
       .array()
       .notNull()
       .default(sql`'{}'::text[]`),
+    /**
+     * The premove tree of the side not to move, in the premove tree codec's bytes; empty for none
+     * (conditional premoves spec, Data).
+     */
+    premoveTree: bytea()
+      .notNull()
+      .default(sql`''::bytea`),
+    /**
+     * The ply the stored tree was written at. The tree counts only while this equals `plyCount`:
+     * a container that moves without knowing about trees (an overlapping deploy, a rollback) leaves
+     * it behind, and it must never show or fire in a position its owner did not see.
+     */
+    premoveTreePly: integer().notNull().default(0),
   },
   (t) => [
     index('games_deadline_active')

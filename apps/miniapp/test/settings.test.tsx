@@ -76,7 +76,7 @@ describe('Settings', () => {
     expect(window.__tg!.popups.at(-1)).toMatchObject({
       title: 'Move confirmations',
       message:
-        'Ask before a move is sent. With "Only against people", moves against the bot send on drop. Premoves never ask.',
+        'Ask before a move is sent. With "Only against people", moves against the bot send on drop. Premoves are confirmed with the move.',
       buttons: [
         { id: 'always', text: 'Always' },
         { id: 'people', text: '✓ Only against people' },

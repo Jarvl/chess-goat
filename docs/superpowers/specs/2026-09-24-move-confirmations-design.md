@@ -6,6 +6,10 @@ as a three-way user setting. Supersedes the Settings card in §3.6 of the
 paragraph of the [navigation spec](./2026-09-22-miniapp-tab-navigation.md) where they conflict
 with this one.
 
+Update, 2026-10-29: the [conditional premoves spec](./2026-10-29-conditional-premoves-design.md)
+supersedes the minimise and leave rules below. Minimising keeps the waiting move, and leaving the
+game asks first when it holds unconfirmed changes (Telegram's own prompt covers closing the app).
+
 ## Why
 
 Alpha players asked to be able to turn move confirmations on or off. #16 made every move send

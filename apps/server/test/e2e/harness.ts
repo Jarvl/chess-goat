@@ -4,12 +4,13 @@
  */
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
-import { INITIAL_FEN } from '@group-chess/shared';
+import { INITIAL_FEN, toBase64Url } from '@group-chess/shared';
 import { eq } from 'drizzle-orm';
 import { games, ratings, userFlair, users } from '../../src/db/schema';
 import { runMigrations } from '../../src/db/migrate';
 import { touchMember } from '../../src/domain/members';
 import { storePhoto } from '../../src/domain/photos';
+import type { Engine } from '../../src/engine/engine';
 import { startServer } from '../../src/main';
 import { testConfig } from '../helpers/config';
 import { openTestDb, truncateAll } from '../helpers/db';
@@ -33,6 +34,47 @@ const FOOLS_MATE = [
 ] as const;
 /** White pawn on e7, black king on d8: e7e8 promotes with check. */
 const PROMOTION_FEN = '3k4/4P3/8/8/8/8/8/4K3 w - - 0 1';
+
+/**
+ * The engine the server plays with: the fake one, unless a spec scripts its next replies or holds
+ * it "thinking" (`POST /engine`) — a bot answers within moments, so a spec that builds premoves on
+ * the bot's turn holds it until they are saved, then releases it.
+ */
+function scriptedEngine(): Engine & {
+  script(options: { replies?: string[]; hold?: boolean }): void;
+  reset(): void;
+} {
+  const fallback = fakeEngine();
+  let replies: string[] = [];
+  let held: { promise: Promise<void>; release: () => void } | null = null;
+  const release = () => {
+    held?.release();
+    held = null;
+  };
+  return {
+    async bestMove(fen, level, deadlineMs) {
+      while (held) await held.promise;
+      const uci = replies.shift();
+      return uci ? { uci } : fallback.bestMove(fen, level, deadlineMs);
+    },
+    probe: () => fallback.probe(),
+    script(options) {
+      if (options.replies) replies = [...options.replies];
+      if (options.hold === false) release();
+      if (options.hold && !held) {
+        let open!: () => void;
+        const promise = new Promise<void>((resolve) => {
+          open = resolve;
+        });
+        held = { promise, release: open };
+      }
+    },
+    reset() {
+      replies = [];
+      release();
+    },
+  };
+}
 
 type Scenario = 'none' | 'fresh' | 'opening' | 'promotion' | 'finished' | 'ranked';
 type SeedRequest = {
@@ -65,6 +107,7 @@ async function main(): Promise<void> {
   const { db, close } = openTestDb();
   await truncateAll(db);
   const fake = await FakeTelegram.start();
+  const engine = scriptedEngine();
   for (const user of Object.values(TELEGRAM_USERS)) fake.members.set(user.id, 'member');
   fake.admins = [TELEGRAM_USERS.alice.id];
   const server = await startServer(
@@ -81,12 +124,13 @@ async function main(): Promise<void> {
     }),
     // The engine is injected, so nothing here — the boot probe included — spawns a real `stockfish`
     // process (global constraint: no test may spawn a binary, no CI runner installs one).
-    fakeEngine(),
+    engine,
   );
 
   const seed = async (request: SeedRequest) => {
     await truncateAll(db);
     fake.reset();
+    engine.reset();
     for (const user of Object.values(TELEGRAM_USERS)) fake.members.set(user.id, 'member');
     fake.admins = [TELEGRAM_USERS.alice.id];
     const group = await insertGroup(db, {
@@ -214,6 +258,10 @@ async function main(): Promise<void> {
             return reply(200, { ok: true });
           }
           if (path === '/seed' && body) return reply(200, await seed(body));
+          if (path === '/engine' && body) {
+            engine.script(body as { replies?: string[]; hold?: boolean });
+            return reply(200, { ok: true });
+          }
           if (path === '/telegram/calls') return reply(200, fake.calls);
           if (path === '/connections/close') {
             server.closeConnections();
@@ -230,7 +278,7 @@ async function main(): Promise<void> {
                     fen: row.fen,
                     plyCount: row.plyCount,
                     result: row.result,
-                    premoves: row.premoves,
+                    premoveTree: toBase64Url(row.premoveTree),
                   }
                 : {},
             );

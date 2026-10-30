@@ -1,4 +1,10 @@
-import { INITIAL_FEN, type GameDto, type MoveDto } from '@group-chess/shared';
+import {
+  encodePremoveTree,
+  INITIAL_FEN,
+  type GameDto,
+  type MoveDto,
+  type PremoveNode,
+} from '@group-chess/shared';
 
 export const AFTER_E4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
 export const AFTER_E4_E5 = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2';
@@ -71,7 +77,7 @@ export function gameDto(overrides: Partial<GameDto> = {}): GameDto {
     startedAt: '2026-09-20T10:00:00.000Z',
     finishedAt: null,
     engineLevel: null,
-    premoves: [],
+    premoveTree: '',
     ...overrides,
   };
 }
@@ -87,4 +93,14 @@ export function afterPlies(plies: number, overrides: Partial<GameDto> = {}): Gam
     fen: last ? last.fenAfter : INITIAL_FEN,
     ...overrides,
   });
+}
+
+/** A premove pair for fixtures: if the opponent plays `move`, the owner answers `reply`. */
+export function pair(move: string, reply: string, ...children: PremoveNode[]): PremoveNode {
+  return { move, reply, children };
+}
+
+/** The wire form of a premove tree, for a `premoveTree` override. */
+export function treeText(...nodes: PremoveNode[]): string {
+  return encodePremoveTree(nodes);
 }

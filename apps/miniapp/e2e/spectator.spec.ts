@@ -17,12 +17,13 @@ test('a spectator cannot lift a piece, and can flip the board', async ({ page })
   await expect(page.locator('.cg-wrap.orientation-black')).toBeVisible();
 });
 
-test('the player who is not to move queues a premove instead of moving', async ({ page }) => {
+test('the player who is not to move builds premoves instead of moving', async ({ page }) => {
   const world = await seed('fresh');
   await openApp(page, { user: world.users.bob.telegram, startParam: `g_${world.game!.publicId}` });
   await expect(page.locator('.cg-wrap.orientation-black')).toBeVisible();
-  await dragMove(page, 'e7', 'e5', 'black');
-  await expect(page.locator('.move-list [data-premove="1"]')).toHaveText('e5');
+  // On White's turn Bob plays a move White might make, into his premove tree.
+  await dragMove(page, 'e2', 'e4', 'black');
+  await expect(page.locator('.move-list [data-line="0"]')).toHaveText('e4');
   expect((await harnessGame(world.game!.publicId)).plyCount).toBe(0);
   await expect(page.locator('.player-bar[data-colour="black"]')).toContainText('@bob');
 });

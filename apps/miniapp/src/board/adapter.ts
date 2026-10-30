@@ -18,7 +18,7 @@ export type MoveHandler = (orig: string, dest: string, meta: { captured: boolean
 
 export type SelectHandler = (square: string) => void;
 
-/** The viewed premove's two squares, as chessground custom highlights (premoves spec, Board). */
+/** The viewed premove's two squares, as chessground custom highlights (conditional premoves spec, The game screen). */
 export function highlightSquares(squares: string[]): Map<Key, string> {
   return new Map(squares.map((square) => [square as Key, 'premove-sq']));
 }

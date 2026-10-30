@@ -1,4 +1,4 @@
-import { t, type EngineLevel } from '@group-chess/shared';
+import { encodePremoveTree, t, type EngineLevel } from '@group-chess/shared';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { jobs, ratings } from '../../src/db/schema';
 import { createEngineGame, getEngineUser } from '../../src/domain/engineGames';
@@ -7,7 +7,11 @@ import { buildGamePgn } from '../../src/domain/pgn';
 import { forfeitOverdueGames } from '../../src/clock/scanners';
 import { reminderExpression } from '../../src/domain/limits';
 import { touchMember } from '../../src/domain/members';
+import { Metrics } from '../../src/metrics';
+import { testConfig } from '../helpers/config';
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
+import { createEngineJobRunner } from '../helpers/engineJob';
+import { fakeEngine } from '../helpers/fakeEngine';
 import { insertGame, insertGroup, insertUser } from '../helpers/fixtures';
 
 const { db, close } = openTestDb();
@@ -201,6 +205,37 @@ describe('playMove and finishGame with an engine opponent', () => {
     expect(kinds).not.toContain('rebuild_ratings');
     expect(kinds).not.toContain('send_result_photo');
     expect(kinds).not.toContain('send_dm');
+  });
+});
+
+describe('a premove tree in an engine game', () => {
+  it("fires the human's reply after the engine's move and owes the engine its next move", async () => {
+    const { group, alice } = await setup();
+    const game = await createEngineGame(deps, {
+      groupId: group.id,
+      userId: alice.id,
+      level: 'club',
+      colour: 'white',
+    });
+    await playMove(deps, {
+      gameId: game.publicId,
+      userId: alice.id,
+      uci: 'e2e4',
+      expectedPly: 0,
+      clientMoveId: 'c1',
+      premoveTree: encodePremoveTree([{ move: 'e7e5', reply: 'g1f3', children: [] }]),
+    });
+    const runEngineJob = createEngineJobRunner(deps, db, new Metrics(), testConfig());
+    const outcome = await runEngineJob(fakeEngine({ replies: [{ uci: 'e7e5' }] }), game.id);
+    // The fired reply moved the game past the job's ply, which is not a stall.
+    expect(outcome).toEqual({ outcome: 'done' });
+    const after = await requireGameByPublicId(db, game.publicId);
+    expect(after).toMatchObject({ plyCount: 3, status: 'active' });
+    expect(after.premoveTree).toHaveLength(0);
+    const queued = await db.select().from(jobs);
+    expect(queued.map((job) => job.dedupKey)).toContain(`engine:g:${game.publicId}:ply:3`);
+    expect(queued.map((job) => job.kind)).not.toContain('send_dm');
+    expect(queued.map((job) => job.kind)).not.toContain('edit_card');
   });
 });
 

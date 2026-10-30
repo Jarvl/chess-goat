@@ -1,27 +1,41 @@
 import {
   applyMove,
+  branchFor,
+  decodePremoveBytes,
+  encodePremoveBytes,
   opposite,
   sideToMove,
   timeoutOutcome,
+  type ApplyMoveResult,
   type Colour,
   type EndReason,
   type GameDto,
   type GameResult,
+  type PremoveNode,
   type TimePerMove,
 } from '@group-chess/shared';
 import { asc, eq, sql } from 'drizzle-orm';
 import { dbNow, type DbOrTx } from '../db/client';
-import { adminActions, games, groups, moves, type GameRow, type MoveRow } from '../db/schema';
+import {
+  adminActions,
+  games,
+  groups,
+  moves,
+  type GameRow,
+  type MoveRow,
+  type UserRow,
+} from '../db/schema';
 import { isCountedGame } from '../flair/history';
 import { enqueue } from '../jobs/queue';
 import type { Deps } from './deps';
 import { enqueueEngineMove, isEngineGame } from './engineGames';
 import { DomainError } from './errors';
-import { buildGameDto, colourOf, positionKeys } from './gameDto';
+import { buildGameDto, colourOf, positionKeys, storedPremoveTree } from './gameDto';
 import { deadlineExpression, reminderExpression } from './limits';
 import { gameEndedStub, moveLabel, waitingText } from './dmText';
 import { resultRecipients } from './dmRules';
 import { markWaiting, retireGameDms } from './dms';
+import { parseTree, requireLegalTree } from './premoveCheck';
 import { applyGameResultToRatings, getPlayerRating } from './ratings';
 import { nameWithFlair, requireUser, wantsDms } from './users';
 
@@ -123,7 +137,8 @@ export async function finishGame(
       reminderAt: null,
       drawOfferBy: null,
       drawOfferPly: null,
-      premoves: [],
+      premoveTree: Buffer.alloc(0),
+      premoveTreePly: 0,
       lichessImportStatus: importable ? 'pending' : null,
       version: sql`${games.version} + 1`,
     })
@@ -251,7 +266,14 @@ export type PlayMoveInput = {
   uci: string;
   expectedPly: number;
   clientMoveId: string;
+  /**
+   * The mover's premove tree for the position after `uci`, base64url (conditional premoves spec,
+   * API). Absent or `''`, as for an engine move, means none.
+   */
+  premoveTree?: string;
 };
+
+type LegalMove = Extract<ApplyMoveResult, { legal: true }>;
 
 type CommitInput = {
   game: GameRow;
@@ -260,25 +282,38 @@ type CommitInput = {
   clientMoveId: string;
   now: Date;
   history: MoveRow[];
-  /**
-   * False only on the recursive call that plays a fired premove. Any leftover chain still belongs
-   * to the side that just moved (the premove's owner), for their next turn — not to whoever is to
-   * move now — so only the outer call may look at the queue and try to fire from it. Defaults to true.
-   */
-  firePremoves?: boolean;
+  /** The mover's new tree, for the position after `uci`; empty when the request carried none. */
+  premoveTree: readonly PremoveNode[];
+};
+
+type CommittedMove = {
+  /** The row after the move; the finished row when the move ended the game. */
+  game: GameRow;
+  /** Every move so far, this one included. */
+  history: MoveRow[];
+  ended: boolean;
+  /** The player now to move. */
+  opponent: UserRow;
 };
 
 /**
- * Plays `uci` for `colour`, who is to move on the locked `game`, and everything that follows a
- * move: the clock, the end of the game, the card, the turn DM or the engine's reply. The queue on the
- * row belongs to the other side, whose turn it now is; its first premove is played or the whole
- * chain cancelled right here (premoves spec, Firing). Returns the final row.
+ * Commits one move for `colour`, whether a player sent it or it fired from a premove tree: the
+ * move row, the mover's waiting DM, the clock, a lapsed draw offer, the version and, when the move
+ * ends the game, `finishGame`. What the side then to move is told is left to `commitMove`, which
+ * says it once, after its loop stops.
  */
-async function commitMove(tx: DbOrTx, input: CommitInput): Promise<GameRow> {
-  const { game, colour, now, history } = input;
-  const result = applyMove(game.fen, positionKeys(history), input.uci);
-  if (!result.legal) throw new DomainError('illegal_move', 'illegal move');
-
+async function commitOne(
+  tx: DbOrTx,
+  input: {
+    game: GameRow;
+    colour: Colour;
+    move: LegalMove;
+    clientMoveId: string;
+    now: Date;
+    history: MoveRow[];
+  },
+): Promise<CommittedMove> {
+  const { game, colour, move: result, now } = input;
   const ply = game.plyCount + 1;
   const [inserted] = await tx
     .insert(moves)
@@ -293,14 +328,9 @@ async function commitMove(tx: DbOrTx, input: CommitInput): Promise<GameRow> {
     })
     .returning();
   if (!inserted) throw new Error('move insert returned no row');
-  const opponentId = colour === 'white' ? game.blackId : game.whiteId;
-  const opponent = await requireUser(tx, opponentId);
-  // `engineNext` decides whether to enqueue the engine's reply; `engineGame` suppresses the card
-  // and the turn DM. Neither touches the clock any more: a bot game has no time control, so both
-  // clock expressions below already return null for it without being asked about the engine.
-  const engineNext = opponent.isEngine;
-  const engineGame = isEngineGame(game);
-  if (!engineGame) {
+  const history = [...input.history, inserted];
+  const opponent = await requireUser(tx, colour === 'white' ? game.blackId : game.whiteId);
+  if (!isEngineGame(game)) {
     // DM notifications spec §2.2: the mover's live DM quietly becomes the waiting line. A fired
     // premove comes through here too, for its owner.
     await markWaiting(tx, {
@@ -323,84 +353,143 @@ async function commitMove(tx: DbOrTx, input: CommitInput): Promise<GameRow> {
       // leaves the human nothing to be reminded about.
       deadlineAt: deadlineExpression(timePerMove),
       reminderAt: reminderExpression(timePerMove, wantsDms(opponent)),
-      // The opponent's queue rides along; after a fired premove this is the rest of the chain.
-      premoves: game.premoves,
       ...(offerLapses ? { drawOfferBy: null, drawOfferPly: null } : {}),
     })
     .where(eq(games.id, game.id))
     .returning();
   if (!moved) throw new DomainError('not_found', 'game not found');
 
-  if (result.outcome.kind !== 'continue') {
-    const end: EndInput =
-      result.outcome.kind === 'checkmate'
-        ? { result: result.outcome.winner === 'white' ? '1-0' : '0-1', endReason: 'checkmate' }
-        : { result: '1/2-1/2', endReason: result.outcome.reason };
-    return finishGame(tx, moved, end, now, colour);
-  }
+  if (result.outcome.kind === 'continue') return { game: moved, history, ended: false, opponent };
+  const end: EndInput =
+    result.outcome.kind === 'checkmate'
+      ? { result: result.outcome.winner === 'white' ? '1-0' : '0-1', endReason: 'checkmate' }
+      : { result: '1/2-1/2', endReason: result.outcome.reason };
+  return { game: await finishGame(tx, moved, end, now, colour), history, ended: true, opponent };
+}
 
-  let premovesCancelled = false;
-  if (input.firePremoves !== false) {
-    const [next, ...rest] = moved.premoves;
-    if (next !== undefined) {
-      const played = [...history, inserted];
-      const trial = applyMove(moved.fen, positionKeys(played), next);
-      if (trial.legal) {
-        // `rest` rides along untouched, even an entry the reply has already made impossible: it is
-        // cancelled when it comes up after the opponent's next move, and only then does the
-        // owner's turn DM say "Your premoves were cancelled." (premoves spec, Firing).
-        // The premove is the opponent's move: its commit does the card, the turn DM to `colour` (or
-        // the engine enqueue) and the clock. The opponent gets no turn DM of their own. It is the
-        // only recursive call, and it never fires again (see `firePremoves` above).
-        return commitMove(tx, {
-          game: { ...moved, premoves: rest },
-          colour: opposite(colour),
-          uci: next,
-          clientMoveId: `premove:${game.publicId}:${ply + 1}`,
-          now,
-          history: played,
-          firePremoves: false,
-        });
-      }
-      await tx.update(games).set({ premoves: [] }).where(eq(games.id, game.id));
-      premovesCancelled = true;
+/**
+ * Plays `uci` for `colour`, who is to move on the locked `game`, then fires premoves (conditional
+ * premoves spec, Firing). Two trees are in play: `waiting`, the tree of the side that just moved,
+ * and `toMove`, the stored tree, which belongs to the side now to move. While `toMove` has a
+ * branch for the move just played, its reply is played as a normal move and the trees swap. The
+ * loop stops on a miss, which clears the stored tree (and flags its owner's turn DM if it held
+ * anything), or on a move that ends the game. Only then does the side left to move get the card,
+ * its turn DM or the engine's reply, and `waiting` is stored as the row's tree. Returns the final
+ * row.
+ */
+async function commitMove(tx: DbOrTx, input: CommitInput): Promise<GameRow> {
+  const first = applyMove(input.game.fen, positionKeys(input.history), input.uci);
+  if (!first.legal) throw new DomainError('illegal_move', 'illegal move');
+  let committed = await commitOne(tx, { ...input, move: first });
+  if (committed.ended) return committed.game;
+
+  // A loop, not recursion: its length is bounded only by the two trees.
+  let mover = input.colour;
+  let last = first.uci;
+  let waiting = input.premoveTree;
+  let toMove: readonly PremoveNode[] = decodePremoveBytes(storedPremoveTree(input.game));
+  let missed: boolean;
+  for (;;) {
+    const branch = branchFor(toMove, last);
+    if (!branch) {
+      missed = toMove.length > 0;
+      break;
     }
+    const { game, history } = committed;
+    const reply = applyMove(game.fen, positionKeys(history), branch.reply);
+    // Always legal, since its line was checked from this very position; were the arbiter ever to
+    // refuse it, the tree counts as missed.
+    if (!reply.legal) {
+      missed = true;
+      break;
+    }
+    mover = opposite(mover);
+    // The reply's owner has just moved: they get the waiting DM from `commitOne`, never a turn DM.
+    committed = await commitOne(tx, {
+      game,
+      colour: mover,
+      move: reply,
+      clientMoveId: `premove:${game.publicId}:${game.plyCount + 1}`,
+      now: input.now,
+      history,
+    });
+    if (committed.ended) return committed.game;
+    [waiting, toMove] = [branch.children, waiting];
+    last = reply.uci;
   }
 
-  if (engineNext) {
+  // The stored tree belongs to `mover`, the side not to move, and is valid at this ply. The
+  // per-move updates above leave it alone, so the row still holds the stored tree read at the start.
+  let moved = committed.game;
+  const bytes = encodePremoveBytes(waiting);
+  if (bytes.length > 0 || moved.premoveTree.length > 0) {
+    const [stored] = await tx
+      .update(games)
+      .set({ premoveTree: Buffer.from(bytes), premoveTreePly: moved.plyCount })
+      .where(eq(games.id, moved.id))
+      .returning();
+    if (!stored) throw new DomainError('not_found', 'game not found');
+    moved = stored;
+  }
+
+  const { opponent } = committed;
+  if (opponent.isEngine) {
     // Spec §8: engine games post no card, and the engine has no DM to receive.
     await enqueueEngineMove(tx, moved);
-  } else if (!engineGame) {
+  } else if (!isEngineGame(moved)) {
     // Spec §8: a bot game announces nothing when the engine moves — no card, and no turn DM to
     // the human. The whole branch is a no-op for it.
     await enqueue(tx, {
       kind: 'edit_card',
-      payload: { gameId: game.id },
-      dedupKey: `card:g:${game.publicId}`,
+      payload: { gameId: moved.id },
+      dedupKey: `card:g:${moved.publicId}`,
     });
     await enqueue(tx, {
       kind: 'send_dm',
       payload: {
-        userId: opponentId,
+        userId: opponent.id,
         template: 'turn',
-        gameId: game.id,
-        // The ply it applies to, so a merged payload cannot repeat it on a later turn.
-        ...(premovesCancelled ? { premovesCancelledAtPly: ply } : {}),
+        gameId: moved.id,
+        // The ply of the move that missed, so a merged payload cannot repeat it on a later turn.
+        ...(missed ? { premovesCancelledAtPly: moved.plyCount } : {}),
       },
-      dedupKey: `dm:${opponentId}:g:${game.publicId}`,
+      dedupKey: `dm:${opponent.id}:g:${moved.publicId}`,
       mergePayload: true,
     });
   }
-  return premovesCancelled ? { ...moved, premoves: [] } : moved;
+  return moved;
 }
 
-/** The move transaction of spec §7.4, step for step. */
+/**
+ * The move transaction of spec §7.4, step for step. A tree sent with the move is checked in full
+ * before the lock, from the position after the move read without it (conditional premoves spec,
+ * API); anything the locked checks refuse is left to them, so their error is the one reported.
+ */
 export async function playMove(deps: Deps, input: PlayMoveInput): Promise<GameDto> {
+  const parsed = input.premoveTree ? parseTree(input.premoveTree) : { tree: [] };
+  let checkedAtPly: number | null = null;
+  if (parsed && parsed.tree.length > 0) {
+    const seen = await requireGameByPublicId(deps.db, input.gameId);
+    if (
+      seen.status === 'active' &&
+      seen.plyCount === input.expectedPly &&
+      sideToMove(seen.fen) === colourOf(seen, input.userId)
+    ) {
+      // The position after the move does not depend on the history the arbiter is given.
+      const trial = applyMove(seen.fen, [], input.uci);
+      if (trial.legal) {
+        await requireLegalTree(trial.fenAfter, parsed.tree, []);
+        checkedAtPly = seen.plyCount;
+      }
+    }
+  }
+
   const dto = await deps.db.transaction(async (tx) => {
     const { game, colour, now, ended } = await lockActiveGame(tx, input.gameId, input.userId);
     if (ended) return loadGameDto(tx, game, input.userId);
     // A retried request must return the current state even though it is now the opponent's turn,
-    // and a stale client learns that before it learns whose turn it is.
+    // and a stale client learns that before it learns whose turn it is. Its tree is neither
+    // checked nor stored.
     const history = await listMoves(tx, game.id);
     if (history.some((move) => move.clientMoveId === input.clientMoveId)) {
       return loadGameDto(tx, game, input.userId);
@@ -409,6 +498,17 @@ export async function playMove(deps: Deps, input: PlayMoveInput): Promise<GameDt
       throw new DomainError('stale_state', 'the position has changed', { plyCount: game.plyCount });
     }
     if (sideToMove(game.fen) !== colour) throw new DomainError('not_your_turn', 'not your turn');
+    if (!parsed) throw new DomainError('validation', 'malformed premove tree');
+    // The same ply means the same position as the check above. Only a race (the row reached the
+    // expected state between the two reads) or an illegal move left it unchecked. The tree is never
+    // checked under the lock, which it would hold for as long as the tree takes: an illegal move is
+    // refused as such, and a race is refused as stale, so the device reloads and sends again.
+    if (parsed.tree.length > 0 && checkedAtPly !== game.plyCount) {
+      if (!applyMove(game.fen, [], input.uci).legal) {
+        throw new DomainError('illegal_move', 'illegal move');
+      }
+      throw new DomainError('stale_state', 'the position has changed', { plyCount: game.plyCount });
+    }
     const final = await commitMove(tx, {
       game,
       colour,
@@ -416,6 +516,7 @@ export async function playMove(deps: Deps, input: PlayMoveInput): Promise<GameDt
       clientMoveId: input.clientMoveId,
       now,
       history,
+      premoveTree: parsed.tree,
     });
     return loadGameDto(tx, final, input.userId);
   });

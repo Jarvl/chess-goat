@@ -1,4 +1,4 @@
-import type { ColourChoice } from '@group-chess/shared';
+import { encodePremoveBytes, type ColourChoice } from '@group-chess/shared';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { createEngineGame, getEngineUser } from '../../src/domain/engineGames';
@@ -306,7 +306,12 @@ describe('engine_move job handler', () => {
     });
     await db
       .update(games)
-      .set({ premoves: ['g1f3'] })
+      .set({
+        premoveTree: Buffer.from(
+          encodePremoveBytes([{ move: 'e7e5', reply: 'g1f3', children: [] }]),
+        ),
+        premoveTreePly: 1,
+      })
       .where(eq(games.id, game.id));
     const outcome = await runEngineJob(engine, game.id);
     expect(outcome).toEqual({ outcome: 'done' });

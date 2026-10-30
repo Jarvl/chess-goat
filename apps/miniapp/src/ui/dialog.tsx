@@ -8,6 +8,8 @@ type Request = {
   title?: string;
   message: string;
   confirmLabel: string;
+  /** Names the cancel button; Telegram's own Cancel when absent. */
+  cancelLabel?: string;
   danger: boolean;
   /** False for a message with a single OK. */
   cancellable: boolean;
@@ -54,7 +56,9 @@ function ask(request: Request): Promise<boolean> {
     message: request.message,
     buttons: request.cancellable
       ? [
-          { id: 'cancel', type: 'cancel' },
+          request.cancelLabel
+            ? { id: 'cancel', type: 'default', text: request.cancelLabel }
+            : { id: 'cancel', type: 'cancel' },
           {
             id: 'confirm',
             type: request.danger ? 'destructive' : 'default',
@@ -73,9 +77,11 @@ function ask(request: Request): Promise<boolean> {
 /** Cancel and one confirm action: Telegram's popup from 6.2, a bottom sheet below. */
 export function confirmDialog(
   message: string,
-  options: { confirmLabel?: string; danger?: boolean } = {},
+  options: { confirmLabel?: string; danger?: boolean; title?: string; cancelLabel?: string } = {},
 ): Promise<boolean> {
   return ask({
+    ...(options.title ? { title: options.title } : {}),
+    ...(options.cancelLabel ? { cancelLabel: options.cancelLabel } : {}),
     message,
     confirmLabel: options.confirmLabel ?? t('app.game.confirm'),
     danger: options.danger ?? false,
@@ -182,7 +188,7 @@ export function Dialogs() {
         <div class="actions">
           {current.cancellable ? (
             <button class="btn secondary" data-dialog="cancel" onClick={() => answer(false)}>
-              {t('app.game.cancel')}
+              {current.cancelLabel ?? t('app.game.cancel')}
             </button>
           ) : null}
           <button

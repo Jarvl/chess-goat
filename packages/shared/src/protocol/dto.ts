@@ -18,6 +18,9 @@ export const UciSchema = z.string().regex(/^[a-h][1-8][a-h][1-8][qrbn]?$/);
 
 export type Uci = z.infer<typeof UciSchema>;
 
+/** A premove tree on the wire: base64url without padding, `''` for the empty tree (premove tree codec). */
+export const PremoveTreeTextSchema = z.string().regex(/^[A-Za-z0-9_-]*$/);
+
 /** Timestamps travel as ISO-8601 UTC strings, exactly what `Date#toISOString()` produces. */
 export const IsoDateSchema = z.iso.datetime();
 
@@ -103,8 +106,8 @@ export const GameDtoSchema = z.object({
   finishedAt: IsoDateSchema.nullable(),
   /** The bot level when this is a game against the bot, otherwise null. */
   engineLevel: EngineLevelSchema.nullable(),
-  /** The viewer's own premove chain while it is not their turn; `[]` for everyone else (premoves spec). */
-  premoves: z.array(UciSchema).default([]),
+  /** The viewer's own premove tree while it is not their turn; `''` for everyone else. */
+  premoveTree: PremoveTreeTextSchema.default(''),
   /** Only present once the game is finished (spec §7.6). */
   lichessUrl: z.url().optional(),
   analysisUrl: z.url().optional(),

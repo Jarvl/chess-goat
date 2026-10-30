@@ -1,7 +1,8 @@
-import type { MoveDto } from '@group-chess/shared';
+import { INITIAL_FEN, legalDests, type MoveDto } from '@group-chess/shared';
+import { effect } from '@preact/signals';
 import { describe, expect, it } from 'vitest';
 import { diffNotices, GameStore, positionAt } from '../src/state/game';
-import { afterPlies, gameDto } from './support/gameFixtures';
+import { afterPlies, gameDto, pair, treeText } from './support/gameFixtures';
 
 /** A minimal MoveDto for hand-crafted multi-ply fixtures; diffNotices only reads `.uci`. */
 const move = (ply: number, uci: string): MoveDto => ({
@@ -35,7 +36,7 @@ describe('GameStore', () => {
     expect(white.canMove.value).toBe(true);
 
     const waitingBlack = new GameStore(afterPlies(2, { viewerRole: 'black' }));
-    expect(waitingBlack.premoveMode.value).toBe(true); // premoves spec: the waiting player premoves
+    expect(waitingBlack.building.value).toBe(true); // the waiting player builds premoves
     expect(waitingBlack.canMove.value).toBe(true);
     expect(new GameStore(afterPlies(2, { viewerRole: 'spectator' })).canMove.value).toBe(false);
     expect(
@@ -112,246 +113,355 @@ describe('diffNotices', () => {
   });
 });
 
-describe('GameStore premoves', () => {
+describe('GameStore building', () => {
   // After 1. f3 it is Black's move; White (the viewer) premoves.
-  const waiting = (premoves: string[] = []) => afterPlies(1, { viewerRole: 'white', premoves });
+  const waiting = () => afterPlies(1, { viewerRole: 'white' });
 
-  it('enters premove mode only for a player waiting on the latest position', () => {
-    expect(new GameStore(waiting()).premoveMode.value).toBe(true);
-    expect(new GameStore(afterPlies(2, { viewerRole: 'white' })).premoveMode.value).toBe(false);
-    expect(new GameStore(afterPlies(1, { viewerRole: 'spectator' })).premoveMode.value).toBe(false);
-    expect(
-      new GameStore(afterPlies(1, { viewerRole: 'white', status: 'finished' })).premoveMode.value,
-    ).toBe(false);
+  it('builds only for a player waiting on the opponent, and only at the latest position', () => {
+    expect(new GameStore(waiting()).building.value).toBe(true);
+    expect(new GameStore(afterPlies(2, { viewerRole: 'white' })).building.value).toBe(false);
+    expect(new GameStore(afterPlies(1, { viewerRole: 'spectator' })).building.value).toBe(false);
     const reading = new GameStore(afterPlies(3, { viewerRole: 'black' }));
     reading.viewPly(1);
-    expect(reading.premoveMode.value).toBe(false);
     expect(reading.canMove.value).toBe(false);
   });
 
-  it('offers pattern targets for the viewer’s pieces at the end of the chain', () => {
+  it('applies a same-version state whose tree changed', () => {
     const store = new GameStore(waiting());
-    expect(store.canMove.value).toBe(true);
-    expect(store.boardTurn.value).toBe('white');
-    expect([...(store.dests.value.get('g1') ?? [])].sort()).toEqual(['e2', 'f3', 'h3']);
-    expect(store.dests.value.has('e7')).toBe(false);
+    const changed = afterPlies(1, {
+      viewerRole: 'white',
+      premoveTree: treeText(pair('e7e5', 'g2g4')),
+    });
+    expect(store.apply(changed)).toBe(true);
+    expect(store.apply(changed)).toBe(false);
   });
 
-  it('shows the imagined board and labels for each step, and targets only at the end', () => {
-    const store = new GameStore(waiting(['g1h3', 'h3g5']));
-    expect(store.shownStep.value).toBe(2);
-    expect(store.atChainEnd.value).toBe(true);
-    expect(store.premoveLabels.value).toEqual(['Nh3', 'Ng5']);
-    expect(store.boardView.value.fen.split(' ')[0]).toBe(
-      'rnbqkbnr/pppppppp/8/6N1/8/5P2/PPPPP1PP/RNBQKB1R',
-    );
-    expect(store.premoveSquares.value).toEqual(['h3', 'g5']);
-    expect(store.viewPremove(1)).toBe(true);
-    expect(store.premoveSquares.value).toEqual(['g1', 'h3']);
-    expect(store.canMove.value).toBe(false);
-    expect(store.dests.value.size).toBe(0);
-    store.viewPremove(0);
-    expect(store.boardView.value).toEqual(store.position.value);
-    expect(store.premoveSquares.value).toEqual([]);
-    expect(store.viewPremove(0)).toBe(false);
-    expect(store.viewPremove(9)).toBe(true);
-    expect(store.premoveStep.value).toBeNull();
-  });
-
-  it('applies a same-version state whose chain changed, and it replaces an optimistic chain', () => {
-    const store = new GameStore(waiting());
-    store.optimisticPremoves.value = ['g1h3'];
-    expect(store.premoves.value).toEqual(['g1h3']);
-    expect(store.apply(waiting(['b1c3']))).toBe(true);
-    expect(store.premoves.value).toEqual(['b1c3']);
-    expect(store.optimisticPremoves.value).toBeNull();
-    expect(store.apply(waiting(['b1c3']))).toBe(false);
-  });
-
-  it('clamps the viewed step to the end when the chain shrinks, and resets it when the game moves on', () => {
-    const store = new GameStore(waiting(['g1h3', 'h3g5']));
-    store.premoveStep.value = 2;
-    store.apply(waiting(['g1h3']));
-    // The chain shrank to (at or below) the stored step, so the step itself clamps to the end —
-    // not just the derived shownStep — otherwise a later append would jump back to it (fix round 1).
-    expect(store.premoveStep.value).toBeNull();
-    expect(store.shownStep.value).toBe(1);
-    store.apply(waiting(['g1h3', 'b1c3']));
-    expect(store.atChainEnd.value).toBe(true);
-    store.apply(afterPlies(3, { viewerRole: 'white' }));
-    expect(store.premoveStep.value).toBeNull();
-  });
-
-  it('stays out of premove mode while the player’s own move is still settling', () => {
+  it('stays out of building while the player’s own move is still settling', () => {
     // The stream can show the opponent's turn before the POST /moves answers or while it retries.
     const store = new GameStore(waiting());
     store.moveBusy.value = true;
-    expect(store.premoveMode.value).toBe(false);
+    expect(store.building.value).toBe(false);
     expect(store.canMove.value).toBe(false);
     expect(store.dests.value.size).toBe(0);
     store.moveBusy.value = false;
-    expect(store.premoveMode.value).toBe(true);
-  });
-
-  it('shows a leftover premove the opponent made impossible as raw UCI, moving nothing', () => {
-    // 1.Rxb8+ took the knight Black's queued Nb8-c6 would move, and Black's Kd7 fired. The server
-    // keeps b8c6 until it comes up; White's rook now stands on its from square.
-    const store = new GameStore(
-      gameDto({
-        fen: '1R6/3k4/8/8/8/8/P7/4K3 w - - 1 12',
-        plyCount: 12,
-        version: 12,
-        viewerRole: 'black',
-        premoves: ['b8c6'],
-      }),
-    );
-    expect(store.premoveMode.value).toBe(true);
-    expect(store.premoveLabels.value).toEqual(['b8c6']);
-    expect(store.boardView.value.fen.split(' ')[0]).toBe('1R6/3k4/8/8/8/8/P7/4K3');
-    expect(store.premoveSquares.value).toEqual(['b8', 'c6']);
-    expect(store.dests.value.get('d7')).toEqual(expect.arrayContaining(['c6', 'e8']));
-    expect(store.dests.value.has('b8')).toBe(false);
-  });
-
-  it('keeps the board live while a premove edit is being saved', () => {
-    const store = new GameStore(waiting());
-    store.premoveSending.value = true;
-    expect(store.canMove.value).toBe(true);
-  });
-
-  it('keeps an unsaved chain through a same-ply state while saving, and drops it on a new ply', () => {
-    const store = new GameStore(waiting());
-    store.premoveSending.value = true;
-    store.optimisticPremoves.value = ['g1h3', 'h3g5'];
-    store.apply(waiting(['g1h3']));
-    expect(store.premoves.value).toEqual(['g1h3', 'h3g5']);
-    store.apply(afterPlies(2, { viewerRole: 'white' }));
-    expect(store.optimisticPremoves.value).toBeNull();
-  });
-});
-
-describe('GameStore timeline', () => {
-  // After 1. f3 it is Black's move; White has queued Nh3 and Ng5.
-  const chained = () =>
-    new GameStore(afterPlies(1, { viewerRole: 'white', premoves: ['g1h3', 'h3g5'] }));
-
-  it('runs through the real moves, then on through the premoves, starting at the chain end', () => {
-    const store = chained();
-    expect(store.timelineEnd.value).toBe(3);
-    expect(store.timelineAt.value).toBe(3);
-    expect(store.viewTimeline(2)).toBe(true);
-    expect(store.shownStep.value).toBe(1);
-    expect(store.viewTimeline(1)).toBe(true);
-    expect(store.shownStep.value).toBe(0);
-    expect(store.isLatest.value).toBe(true);
-    expect(store.viewTimeline(1)).toBe(false);
-  });
-
-  it('keeps the premove stretch while an earlier real move is shown, and comes back into it', () => {
-    const store = chained();
-    store.viewTimeline(0);
-    expect(store.position.value.ply).toBe(0);
-    expect(store.premoveMode.value).toBe(false);
-    expect(store.premoveOpen.value).toBe(true);
-    expect(store.timelineEnd.value).toBe(3);
-    expect(store.timelineAt.value).toBe(0);
-    store.viewTimeline(2);
-    expect(store.isLatest.value).toBe(true);
-    expect(store.shownStep.value).toBe(1);
-    expect(store.timelineAt.value).toBe(2);
-  });
-
-  it('ends at the last real move when premoves are not possible', () => {
-    const store = new GameStore(afterPlies(2, { viewerRole: 'white' }));
-    expect(store.timelineEnd.value).toBe(2);
-    store.viewTimeline(1);
-    expect(store.timelineAt.value).toBe(1);
-    const watching = new GameStore(afterPlies(1, { viewerRole: 'spectator' }));
-    expect(watching.timelineEnd.value).toBe(1);
+    expect(store.building.value).toBe(true);
   });
 });
 
 describe('diffNotices premoves', () => {
-  it('tells a played premove from a cancelled chain', () => {
-    const before = afterPlies(1, { viewerRole: 'white', premoves: ['g2g4'] });
+  // After 1. f3 it is Black's move; White (the viewer) owns the tree.
+  const withTree = (premoveTree: string) => afterPlies(1, { viewerRole: 'white', premoveTree });
+  /** Plies 1… of a hand-made game; the fen only decides whose turn it is (White's here). */
+  const played = (...ucis: string[]) =>
+    gameDto({
+      viewerRole: 'white',
+      plyCount: ucis.length,
+      version: ucis.length,
+      fen: INITIAL_FEN,
+      moves: ucis.map((uci, index) => move(index + 1, uci)),
+    });
+
+  it('tells a played pair from a cancelled tree', () => {
+    const before = withTree(treeText(pair('e7e5', 'g2g4')));
     expect(diffNotices(before, afterPlies(3, { viewerRole: 'white' }))).toEqual(['premove_played']);
-    expect(diffNotices(before, afterPlies(2, { viewerRole: 'white' }))).toContain(
+    const missed = withTree(treeText(pair('d7d5', 'g2g4')));
+    expect(diffNotices(missed, afterPlies(2, { viewerRole: 'white' }))).toEqual([
+      'opponent_moved',
       'premoves_cancelled',
-    );
+    ]);
     expect(
       diffNotices(afterPlies(1, { viewerRole: 'white' }), afterPlies(2, { viewerRole: 'white' })),
-    ).not.toContain('premoves_cancelled');
+    ).toEqual(['opponent_moved']);
   });
 
-  it('keeps a fired premove’s leftover quiet, and flags a later cancel across a multi-ply jump', () => {
-    // The server keeps the rest of the chain after a fired premove, so one ply pair later only
-    // the played notice fires.
-    const prev = afterPlies(1, { viewerRole: 'white', premoves: ['g2g4', 'a2a3', 'b2b3'] });
-    expect(
-      diffNotices(prev, afterPlies(3, { viewerRole: 'white', premoves: ['a2a3', 'b2b3'] })),
-    ).toEqual(['premove_played']);
-    // A resumed app sees g4 played and, a reply later, the rest cancelled: both notices.
-    const cancelledLater = gameDto({
-      viewerRole: 'white',
-      plyCount: 4,
-      version: 4,
-      premoves: [],
-      moves: [move(1, 'f2f3'), move(2, 'e7e5'), move(3, 'g2g4'), move(4, 'd8h4')],
-    });
-    expect(diffNotices(prev, cancelledLater)).toEqual([
+  it('counts every fired pair across a multi-ply jump, then flags the miss after them', () => {
+    const before = withTree(
+      treeText(pair('e7e5', 'g2g4', pair('e5e4', 'b1c3', pair('a7a6', 'a2a3')))),
+    );
+    const next = played('f2f3', 'e7e5', 'g2g4', 'e5e4', 'b1c3', 'd7d5');
+    expect(diffNotices(before, next)).toEqual([
       'opponent_moved',
       'premove_played',
       'premoves_cancelled',
     ]);
   });
 
-  it('cancels a chain whose first premove never played', () => {
-    // After ply 2 it is also White's move again, so 'opponent_moved' legitimately fires too.
-    const before = afterPlies(1, { viewerRole: 'white', premoves: ['g2g4'] });
-    expect(diffNotices(before, afterPlies(2, { viewerRole: 'white' }))).toEqual([
+  it('cancels nothing when a line runs out', () => {
+    const before = withTree(treeText(pair('e7e5', 'g2g4')));
+    expect(diffNotices(before, played('f2f3', 'e7e5', 'g2g4', 'd8h4'))).toEqual([
       'opponent_moved',
-      'premoves_cancelled',
+      'premove_played',
     ]);
   });
 
-  // Fix round 1: a backgrounded app resumes and applyState diffs across several plies at once, so
-  // more than one queued premove can have fired between `prev` and `next`. Black is to move after
-  // an odd number of plies (5 here), so the fen keeps 'opponent_moved' from also firing for White.
-  const BLACK_TO_MOVE_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1';
-
-  it('counts every fired premove after a multi-ply jump, not just the first', () => {
-    const prev = gameDto({
-      viewerRole: 'white',
-      plyCount: 1,
-      version: 1,
-      premoves: ['g2g4', 'b1c3'],
-    });
-    const bothFired = gameDto({
-      viewerRole: 'white',
-      plyCount: 5,
-      version: 5,
-      premoves: [],
-      fen: BLACK_TO_MOVE_FEN,
-      moves: [move(1, 'f2f3'), move(2, 'e7e5'), move(3, 'g2g4'), move(4, 'e5e4'), move(5, 'b1c3')],
-    });
-    expect(diffNotices(prev, bothFired)).toEqual(['premove_played']);
+  it('reads an unreadable tree as empty', () => {
+    expect(diffNotices(withTree('!'), afterPlies(2, { viewerRole: 'white' }))).toEqual([
+      'opponent_moved',
+    ]);
   });
 
-  it('drops two fired premoves off a three-long chain without a spurious cancellation', () => {
-    const prev = gameDto({
-      viewerRole: 'white',
-      plyCount: 1,
-      version: 1,
-      premoves: ['a2a3', 'b2b3', 'c2c3'],
+  it('reports a discarded draft only when the game moved on to a new ply and goes on', () => {
+    const before = afterPlies(1, { viewerRole: 'white' });
+    expect(
+      diffNotices(before, afterPlies(2, { viewerRole: 'white' }), { discardedDraft: true }),
+    ).toContain('premove_draft_discarded');
+    expect(
+      diffNotices(
+        before,
+        afterPlies(1, { viewerRole: 'white', version: 2, drawOffer: { by: 'black', atPly: 1 } }),
+        { discardedDraft: true },
+      ),
+    ).not.toContain('premove_draft_discarded');
+    // The result screen explains a game end.
+    expect(
+      diffNotices(before, afterPlies(1, { viewerRole: 'white', status: 'finished' }), {
+        discardedDraft: true,
+      }),
+    ).toEqual(['finished']);
+    expect(
+      diffNotices(before, afterPlies(2, { viewerRole: 'white', status: 'finished' }), {
+        discardedDraft: true,
+      }),
+    ).toEqual(['finished']);
+    expect(diffNotices(before, afterPlies(2, { viewerRole: 'white' }))).not.toContain(
+      'premove_draft_discarded',
+    );
+  });
+});
+
+describe('GameStore premove drafts', () => {
+  // After 1. f3 it is Black's move; White (the viewer) builds premoves.
+  const opponentsTurn = (premoveTree = '') =>
+    new GameStore(afterPlies(1, { viewerRole: 'white', premoveTree }));
+  // After 1. f3 e5 it is White's own move.
+  const ownTurn = () => new GameStore(afterPlies(2, { viewerRole: 'white' }));
+
+  it('shows the server tree until the draft has edits', () => {
+    const store = opponentsTurn(treeText(pair('e7e5', 'g2g4')));
+    expect(store.serverTree.value).toEqual([pair('e7e5', 'g2g4')]);
+    expect(store.tree.value).toBe(store.serverTree.value);
+    store.draftTree.value = [{ move: 'd7d5', reply: null, children: [] }];
+    expect(store.tree.value).toEqual([{ move: 'd7d5', reply: null, children: [] }]);
+    store.draftTree.value = null;
+    expect(store.tree.value).toEqual([pair('e7e5', 'g2g4')]);
+    expect(opponentsTurn('!').serverTree.value).toEqual([]);
+  });
+
+  it('builds on the opponent’s turn, and on the own turn once a move waits', () => {
+    const store = opponentsTurn();
+    expect(store.building.value).toBe(true);
+    store.moveBusy.value = true; // the player's move is still sending or retrying
+    expect(store.building.value).toBe(false);
+
+    const own = ownTurn();
+    expect(own.building.value).toBe(false);
+    own.waiting.value = { uci: 'g2g4', san: 'g4' };
+    own.moveBusy.value = true; // waiting for Confirm counts as busy too
+    expect(own.building.value).toBe(true);
+
+    expect(new GameStore(afterPlies(1, { viewerRole: 'spectator' })).building.value).toBe(false);
+    expect(
+      new GameStore(afterPlies(1, { viewerRole: 'white', status: 'finished' })).building.value,
+    ).toBe(false);
+  });
+
+  it('offers the opponent’s legal moves at the root, and the owner’s after an opponent move', () => {
+    const store = opponentsTurn();
+    const root = store.buildView.value;
+    expect(root.canMove).toBe(true);
+    expect(root.turn).toBe('black');
+    expect(root.dests).toEqual(legalDests(store.dto.value.fen));
+    expect(root.position.fen).toBe(store.dto.value.fen);
+    expect(root.position.lastMove).toEqual(['f2', 'f3']);
+
+    store.draftTree.value = [{ move: 'e7e5', reply: null, children: [] }];
+    store.selected.value = ['e7e5'];
+    const after = store.buildView.value;
+    expect(after.turn).toBe('white');
+    expect([...(after.dests.get('g2') ?? [])].sort()).toEqual(['g3', 'g4']);
+    expect(after.dests.has('e5')).toBe(false);
+    expect(after.position.lastMove).toEqual(['e7', 'e5']);
+    expect(after.position.fen.split(' ')[0]).toBe(
+      'rnbqkbnr/pppp1ppp/8/4p3/8/5P2/PPPPP1PP/RNBQKBNR',
+    );
+  });
+
+  it('roots the tree after the waiting move, and lets the position before it be replayed', () => {
+    const store = ownTurn();
+    store.waiting.value = { uci: 'g2g4', san: 'g4' };
+    expect(store.rootFen.value.split(' ').slice(0, 2)).toEqual([
+      'rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR',
+      'b',
+    ]);
+    expect(store.buildView.value.turn).toBe('black');
+    expect(store.buildView.value.position.lastMove).toEqual(['g2', 'g4']);
+    expect(store.timeline.value).toMatchObject({ plies: 2, rootIndex: 3, end: 3, at: 3 });
+
+    expect(store.viewTimeline(2)).toBe(true);
+    expect(store.viewingPly.value).toBe(2);
+    const before = store.buildView.value;
+    expect(before.canMove).toBe(true);
+    expect(before.turn).toBe('white');
+    expect(before.position.fen).toBe(store.dto.value.fen);
+    expect(before.dests).toEqual(legalDests(store.dto.value.fen));
+
+    expect(store.viewTimeline(1)).toBe(true);
+    const earlier = store.buildView.value;
+    expect(earlier.canMove).toBe(false);
+    expect(earlier.dests.size).toBe(0);
+    expect(earlier.position.ply).toBe(1);
+    expect(store.viewTimeline(1)).toBe(false);
+
+    expect(store.viewTimeline(3)).toBe(true);
+    expect(store.viewingPly.value).toBeNull();
+    expect(store.buildView.value.canMove).toBe(true);
+  });
+
+  it('steps along the line being viewed and comes back to the same branch', () => {
+    const store = opponentsTurn();
+    store.draftTree.value = [pair('e7e5', 'g2g4'), pair('d7d5', 'g2g3')];
+    store.selected.value = ['d7d5', 'g2g3'];
+    store.trail.value = ['d7d5', 'g2g3'];
+    expect(store.timeline.value).toMatchObject({ rootIndex: 1, end: 3, at: 3 });
+    expect(store.viewTimeline(1)).toBe(true);
+    expect(store.selected.value).toEqual([]);
+    expect(store.timeline.value.line).toEqual(['d7d5', 'g2g3']);
+    expect(store.viewTimeline(2)).toBe(true);
+    expect(store.selected.value).toEqual(['d7d5']);
+    expect(store.buildView.value.position.lastMove).toEqual(['d7', 'd5']);
+    expect(store.viewTimeline(0)).toBe(true);
+    expect(store.viewingPly.value).toBe(0);
+    expect(store.buildView.value.canMove).toBe(false);
+    expect(store.viewTimeline(3)).toBe(true);
+    expect(store.selected.value).toEqual(['d7d5', 'g2g3']);
+  });
+
+  it('tells premove changes from a waiting move', () => {
+    const store = opponentsTurn(treeText(pair('e7e5', 'g2g4')));
+    expect(store.draftDirty.value).toBe(false);
+    store.draftTree.value = [pair('e7e5', 'g2g4'), { move: 'd7d5', reply: null, children: [] }];
+    expect(store.premoveDraftChanged.value).toBe(false); // an unanswered move is not a premove
+    store.draftTree.value = [pair('e7e5', 'g2g4'), pair('d7d5', 'g2g3')];
+    expect(store.premoveDraftChanged.value).toBe(true);
+    expect(store.draftDirty.value).toBe(true);
+
+    const own = ownTurn();
+    own.waiting.value = { uci: 'g2g4', san: 'g4' };
+    expect(own.premoveDraftChanged.value).toBe(false);
+    expect(own.draftDirty.value).toBe(true);
+  });
+
+  it('applies a changed server tree at the same ply, keeping the draft, and clears it on a new ply', () => {
+    const store = opponentsTurn();
+    store.draftTree.value = [pair('e7e5', 'g2g4')];
+    store.selected.value = ['e7e5'];
+    store.trail.value = ['e7e5', 'g2g4'];
+    expect(
+      store.apply(
+        afterPlies(1, { viewerRole: 'white', premoveTree: treeText(pair('d7d5', 'g2g3')) }),
+      ),
+    ).toBe(true);
+    expect(store.serverTree.value).toEqual([pair('d7d5', 'g2g3')]);
+    expect(store.draftTree.value).toEqual([pair('e7e5', 'g2g4')]);
+    expect(store.selected.value).toEqual(['e7e5']);
+
+    store.apply(afterPlies(2, { viewerRole: 'white' }));
+    expect(store.draftTree.value).toBeNull();
+    expect(store.waiting.value).toBeNull();
+    expect(store.selected.value).toEqual([]);
+    expect(store.trail.value).toEqual([]);
+  });
+
+  it('resets the draft, and leaves the position before a waiting move once it is gone', () => {
+    const store = ownTurn();
+    store.waiting.value = { uci: 'g2g4', san: 'g4' };
+    store.draftTree.value = [{ move: 'd8h4', reply: null, children: [] }];
+    store.viewTimeline(2);
+    store.resetDraft();
+    expect(store.waiting.value).toBeNull();
+    expect(store.draftTree.value).toBeNull();
+    expect(store.viewingPly.value).toBeNull();
+    expect(store.buildView.value.canMove).toBe(true); // the player's own move, as before
+    expect(store.buildView.value.turn).toBe('white');
+  });
+
+  it('applies a new state in one batch, so no effect sees it beside the old draft', () => {
+    const store = ownTurn();
+    store.waiting.value = { uci: 'g1f3', san: 'Nf3' };
+    const seen: [number, string | null][] = [];
+    const dispose = effect(() => {
+      seen.push([store.dto.value.plyCount, store.waiting.value?.uci ?? null]);
     });
-    const twoFired = gameDto({
-      viewerRole: 'white',
-      plyCount: 5,
-      version: 5,
-      premoves: ['c2c3'],
-      fen: BLACK_TO_MOVE_FEN,
-      moves: [move(1, 'f2f3'), move(2, 'e7e5'), move(3, 'a2a3'), move(4, 'e5e4'), move(5, 'b2b3')],
-    });
-    expect(diffNotices(prev, twoFired)).toEqual(['premove_played']);
+    store.apply(afterPlies(3, { viewerRole: 'white' }));
+    dispose();
+    expect(seen).toEqual([
+      [2, 'g1f3'],
+      [3, null],
+    ]);
+  });
+
+  it('reads a draft the codec refuses as changed instead of throwing', () => {
+    const store = opponentsTurn();
+    // More siblings than one count byte holds: encodePremoveTree throws on it.
+    const wide = Array.from({ length: 219 }, () => pair('e7e5', 'g2g4'));
+    store.draftTree.value = wide;
+    expect(store.premoveDraftChanged.value).toBe(true);
+    expect(store.draftDirty.value).toBe(true);
+  });
+
+  it('starts, snapshots and restores the waiting move with its draft', () => {
+    const store = ownTurn();
+    store.setWaiting({ uci: 'g1f3', san: 'Nf3' });
+    store.draftTree.value = [pair('d8h4', 'f3h4')];
+    store.selected.value = ['d8h4'];
+    const snapshot = store.snapshotDraft();
+    store.setWaiting({ uci: 'g1h3', san: 'Nh3' });
+    expect(store.draftTree.value).toBeNull();
+    expect(store.selected.value).toEqual([]);
+    store.restoreDraft(snapshot);
+    expect(store.waiting.value?.uci).toBe('g1f3');
+    expect(store.selected.value).toEqual(['d8h4']);
+  });
+
+  it('keeps what still exists of the selection when the draft is dropped', () => {
+    const store = opponentsTurn(treeText(pair('e7e5', 'g2g4')));
+    store.draftTree.value = [
+      { move: 'e7e5', reply: 'g2g4', children: [{ move: 'd8h4', reply: null, children: [] }] },
+    ];
+    store.selected.value = ['e7e5', 'g2g4', 'd8h4'];
+    store.dropDraftTree();
+    expect(store.selected.value).toEqual(['e7e5', 'g2g4']);
+  });
+
+  it('starts a draft on the server tree it was made on, once, and forgets it when the draft goes', () => {
+    const store = opponentsTurn(treeText(pair('e7e5', 'g2g4')));
+    store.editDraft([pair('e7e5', 'g2g4'), { move: 'd7d5', reply: null, children: [] }], ['d7d5']);
+    const base = store.draftBase.value;
+    expect(base).toMatchObject({ tree: treeText(pair('e7e5', 'g2g4')), ply: 1 });
+    store.editDraft([pair('e7e5', 'g2g4'), pair('d7d5', 'g2g3')], ['d7d5', 'g2g3']);
+    expect(store.draftBase.value).toBe(base);
+    store.resetDraft();
+    expect(store.draftBase.value).toBeNull();
+    store.editDraft([pair('d7d5', 'g2g3')], ['d7d5', 'g2g3']);
+    expect(store.draftBase.value?.draft).not.toBe(base?.draft);
+    store.dropDraftTree();
+    expect(store.draftBase.value).toBeNull();
+  });
+
+  it('restores a snapshot without undoing a save of the same draft', () => {
+    const store = opponentsTurn();
+    store.editDraft([pair('e7e5', 'g2g4')], ['e7e5', 'g2g4']);
+    const snapshot = store.snapshotDraft();
+    const saved = { ...store.draftBase.value!, tree: treeText(pair('e7e5', 'g2g4')) };
+    store.draftBase.value = saved;
+    store.restoreDraft(snapshot);
+    expect(store.draftBase.value).toBe(saved);
+    // A draft started since the snapshot goes back with it.
+    const empty = new GameStore(afterPlies(1, { viewerRole: 'white' }));
+    const before = empty.snapshotDraft();
+    empty.editDraft([pair('e7e5', 'g2g4')], ['e7e5', 'g2g4']);
+    empty.restoreDraft(before);
+    expect(empty.draftBase.value).toBeNull();
+    expect(empty.draftTree.value).toBeNull();
   });
 });

@@ -5,6 +5,7 @@ import {
   isProvisional,
   positionKey,
   sideToMove,
+  toBase64Url,
   type Colour,
   type GameDto,
   type GamePlayer,
@@ -21,6 +22,18 @@ export function colourOf(
   if (game.whiteId === userId) return 'white';
   if (game.blackId === userId) return 'black';
   return null;
+}
+
+const NO_TREE = new Uint8Array();
+
+/**
+ * The stored premove tree's bytes, or none when it was stored at another ply (conditional
+ * premoves spec, Data): a container that ignores trees can move past one without clearing it.
+ */
+export function storedPremoveTree(
+  game: Pick<GameRow, 'premoveTree' | 'premoveTreePly' | 'plyCount'>,
+): Uint8Array {
+  return game.premoveTreePly === game.plyCount ? game.premoveTree : NO_TREE;
 }
 
 /** Position keys of every position so far, the initial one first (arbiter contract). */
@@ -72,6 +85,9 @@ export function buildGameDto(input: GameDtoInput): GameDto {
   // A void reverts the rated effect (spec §7.1), so the delta disappears from the DTO with it.
   const finishedRated = game.status === 'finished' && game.rated && game.voidedAt === null;
   const active = game.status === 'active';
+  const viewer = colourOf(game, input.viewerUserId);
+  // Premoves always belong to the side not to move, and only their owner may see them.
+  const owner = active && viewer !== null && sideToMove(game.fen) !== viewer;
   const dto: GameDto = {
     id: game.publicId,
     group: { id: group.publicId, title: group.title },
@@ -119,18 +135,14 @@ export function buildGameDto(input: GameDtoInput): GameDto {
     claims: active
       ? computeClaims(game.fen, positionKeys(moves))
       : { threefold: false, fiftyMove: false },
-    viewerRole: colourOf(game, input.viewerUserId) ?? 'spectator',
+    viewerRole: viewer ?? 'spectator',
     result: game.result,
     endReason: game.endReason,
     voided: game.voidedAt !== null,
     startedAt: game.startedAt.toISOString(),
     finishedAt: game.finishedAt ? game.finishedAt.toISOString() : null,
     engineLevel: game.engineLevel,
-    premoves: (() => {
-      const viewer = colourOf(game, input.viewerUserId);
-      // The queue always belongs to the side not to move, and only its owner may see it.
-      return active && viewer !== null && sideToMove(game.fen) !== viewer ? [...game.premoves] : [];
-    })(),
+    premoveTree: owner ? toBase64Url(storedPremoveTree(game)) : '',
   };
   if (game.status === 'finished') {
     if (game.lichessUrl) dto.lichessUrl = game.lichessUrl;

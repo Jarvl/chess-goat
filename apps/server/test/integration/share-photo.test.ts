@@ -1,3 +1,4 @@
+import { encodePremoveBytes } from '@group-chess/shared';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { boardImages, games, jobs, shares, users } from '../../src/db/schema';
@@ -190,15 +191,20 @@ describe('send_share_photo', () => {
     expect(await db.select().from(boardImages)).toHaveLength(2);
   });
 
-  it('leaves a stored premove chain out of the card, for its owner and the opponent alike', async () => {
+  it('leaves a stored premove tree out of the card, for its owner and the opponent alike', async () => {
     const { alice, bob, game } = await table();
     await share(game.id, alice.id, 2);
     await share(game.id, bob.id, 2);
     await worker.runOnce();
-    // White is to move, so the chain is Bob's (premoves spec: the side not to move owns it).
+    // White is to move, so the tree is Bob's (conditional premoves spec: the side not to move owns it).
     await db
       .update(games)
-      .set({ premoves: ['d7d5', 'd5e4'] })
+      .set({
+        premoveTree: Buffer.from(
+          encodePremoveBytes([{ move: 'e2e4', reply: 'd7d5', children: [] }]),
+        ),
+        premoveTreePly: 2,
+      })
       .where(eq(games.id, game.id));
     await share(game.id, alice.id, 2);
     await share(game.id, bob.id, 2);

@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import { decodePremoveTree, type PremoveNode } from '@group-chess/shared';
 import { createHmac } from 'node:crypto';
 import {
   installFakeWebApp,
@@ -53,9 +54,28 @@ export async function harnessGame(publicId: string): Promise<{
   fen: string;
   plyCount: number;
   result: string | null;
-  premoves: string[];
+  /** The stored premove tree, base64url (empty for none). */
+  premoveTree: string;
 }> {
   return (await (await fetch(`${HARNESS}/games/${publicId}`)).json()) as never;
+}
+
+/** The premove tree the server holds for the game, decoded. */
+export async function storedPremoves(publicId: string): Promise<PremoveNode[]> {
+  return decodePremoveTree((await harnessGame(publicId)).premoveTree);
+}
+
+/**
+ * Scripts the harness's engine: `replies` are its next moves, in order (then the fake's own);
+ * `hold: true` keeps it thinking until `hold: false`. Every seed resets both.
+ */
+export async function scriptEngine(options: { replies?: string[]; hold?: boolean }): Promise<void> {
+  const response = await fetch(`${HARNESS}/engine`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(options),
+  });
+  if (!response.ok) throw new Error(`scripting the engine failed: ${response.status}`);
 }
 
 export async function telegramCalls(): Promise<
@@ -179,6 +199,17 @@ export async function dragMove(
   await page.mouse.move(a.x + 6, a.y - 6);
   await page.mouse.move(b.x, b.y, { steps: 10 });
   await page.mouse.up();
+}
+
+/** The piece chessground shows on `square` ("white pawn"), or null; a fading or ghost piece is not there. */
+export function pieceAt(page: Page, square: string): Promise<string | null> {
+  return page.evaluate((key) => {
+    const pieces = [...document.querySelectorAll('cg-board piece')] as (Element & {
+      cgKey?: string;
+    })[];
+    const piece = pieces.find((el) => el.cgKey === key && !el.matches('.fading, .ghost'));
+    return piece ? piece.className.replace(/\s*\b(anim|dragging)\b/g, '').trim() : null;
+  }, square);
 }
 
 export async function tapMove(

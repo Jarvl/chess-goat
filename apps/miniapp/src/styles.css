@@ -1175,6 +1175,7 @@ button {
   align-items: center;
   overflow-x: auto;
   white-space: nowrap;
+  position: relative;
   padding: 10px 16px 6px;
   scrollbar-width: none;
   font-size: 15px;
@@ -1202,10 +1203,20 @@ button {
   padding-left: 6px;
 }
 
-/* The opponent's unknown reply: tight, so each premove costs little width in the strip. */
-.move-list .premove-gap {
+/* The player's move waiting for Confirm move. */
+.move-list button.waiting {
+  box-shadow: inset 0 0 0 1.5px var(--acc);
+}
+
+/* The opponent's moves in the premove line. */
+.move-list button.line-opponent {
   color: var(--hint);
-  padding: 3px 1px;
+}
+
+.move-list button.line-opponent[aria-current='true'] {
+  background: var(--pm-soft);
+  color: var(--hint);
+  font-weight: 700;
 }
 
 .move-list .premove-number {
@@ -1224,7 +1235,7 @@ button {
   box-shadow: none;
 }
 
-/* Removes the shown premove and the ones after it, after asking. */
+/* Removes the selected premove and the ones after it, after asking. */
 .move-list button.premove-remove {
   padding: 3px 8px;
   border-radius: 999px;
@@ -1468,7 +1479,8 @@ cg-board square.move-dest:hover {
   background: var(--dot);
 }
 
-/* Premoves (premoves spec, Board): the viewed premove's squares and blue destination dots. */
+/* Premoves (conditional premoves spec, The game screen): the viewed premove's squares and blue
+   destination dots. */
 cg-board square.premove-sq {
   background-color: var(--pm-sq);
 }
@@ -2066,4 +2078,133 @@ coords.squares:nth-of-type(even) :nth-child(even) {
   border-radius: 50%;
   object-fit: cover;
   object-position: 50% 30%;
+}
+
+/* The status line under the slider: where the premoves stand, then what a move would do. */
+.premove-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  padding: 6px 16px 0;
+  font-size: 13px;
+}
+
+.premove-pill {
+  flex: none;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--pm-soft);
+  color: var(--pm);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.premove-hint {
+  min-width: 0;
+  color: var(--hint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Lines panel (conditional premoves): every branch at once. It scrolls on its own, and has no
+   overscroll-behavior so a swipe on a panel that cannot scroll further scrolls the page. */
+.lines-panel {
+  max-height: 34vh;
+  overflow-y: auto;
+  padding: 8px 16px;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.9;
+}
+
+.lines-panel button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 2px 6px;
+  border-radius: 8px;
+  font: inherit;
+}
+
+.lines-panel button.lines-root {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--pm-soft);
+  color: var(--pm);
+  font-weight: 700;
+}
+
+.lines-panel button.lines-root[aria-current='true'] {
+  background: var(--pm);
+  color: #fff;
+}
+
+.lines-root-caption {
+  font-size: 12px;
+  font-weight: 400;
+  opacity: 0.85;
+}
+
+.lines-block {
+  margin-top: 2px;
+}
+
+.lines-block.split {
+  margin-left: calc(var(--indent, 0) * 14px);
+  padding-left: 8px;
+  border-left: 2px solid var(--pm-sq);
+}
+
+.lines-block[data-depth='1'] {
+  --indent: 1;
+}
+
+.lines-block[data-depth='2'] {
+  --indent: 2;
+}
+
+.lines-block[data-depth='3'] {
+  --indent: 3;
+}
+
+/* A move number never wraps away from its move, nor the ✕ from the move it removes. */
+.lines-unit {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.lines-number {
+  color: var(--hint);
+}
+
+.lines-panel button.lines-token {
+  color: var(--hint);
+}
+
+.lines-panel button.lines-token.mine {
+  color: var(--pm);
+  font-weight: 700;
+}
+
+.lines-panel button.lines-token[aria-current='true'] {
+  background: var(--pm);
+  color: #fff;
+  font-weight: 700;
+}
+
+/* Removes the selected move and the ones after it, after asking. */
+.lines-panel button.lines-remove {
+  margin-left: 2px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--pm-soft);
+  color: var(--pm);
+  font-size: 13px;
+  font-weight: 700;
 }

@@ -65,7 +65,7 @@ const activeGame = {
   startedAt: '2026-09-20T09:00:00.000Z',
   finishedAt: null,
   engineLevel: null,
-  premoves: [],
+  premoveTree: '',
 };
 
 describe('GameDtoSchema', () => {
@@ -265,13 +265,11 @@ describe('TipInvoiceDtoSchema', () => {
   });
 });
 
-describe('GameDtoSchema premoves', () => {
-  it('defaults premoves to an empty list and keeps a sent one', () => {
-    expect(GameDtoSchema.parse(activeGame).premoves).toEqual([]);
-    expect(GameDtoSchema.parse({ ...activeGame, premoves: ['e7e5', 'e5e4'] }).premoves).toEqual([
-      'e7e5',
-      'e5e4',
-    ]);
-    expect(() => GameDtoSchema.parse({ ...activeGame, premoves: ['e9e5'] })).toThrow();
+describe('GameDtoSchema premoveTree', () => {
+  it('defaults the tree to empty text and keeps a sent one', () => {
+    const { premoveTree: _omitted, ...withoutTree } = activeGame;
+    expect(GameDtoSchema.parse(withoutTree).premoveTree).toBe('');
+    expect(GameDtoSchema.parse({ ...activeGame, premoveTree: 'AQwH' }).premoveTree).toBe('AQwH');
+    expect(GameDtoSchema.safeParse({ ...activeGame, premoveTree: 'AQ+H' }).success).toBe(false);
   });
 });

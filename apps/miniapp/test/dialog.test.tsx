@@ -69,6 +69,39 @@ describe('confirmDialog', () => {
   });
 });
 
+describe('confirmDialog with a cancel label', () => {
+  it('names the cancel button with a native default button, and reads it as no', async () => {
+    const r = mount('8.0');
+    await r.flush();
+    const answer = confirmDialog('Your move hasn’t been sent and will be lost.', {
+      title: 'Leave this game?',
+      confirmLabel: 'Leave',
+      cancelLabel: 'Stay',
+      danger: true,
+    });
+    expect(window.__tg!.popups.at(-1)).toEqual({
+      title: 'Leave this game?',
+      message: 'Your move hasn’t been sent and will be lost.',
+      buttons: [
+        { id: 'cancel', type: 'default', text: 'Stay' },
+        { id: 'confirm', type: 'destructive', text: 'Leave' },
+      ],
+    });
+    window.__tg!.answerPopup('cancel');
+    expect(await answer).toBe(false);
+  });
+
+  it('names the in-page cancel button too', async () => {
+    const r = mount('6.1');
+    await r.flush();
+    const answer = confirmDialog('Leave?', { confirmLabel: 'Leave', cancelLabel: 'Stay' });
+    await r.flush();
+    expect(document.querySelector('[data-dialog="cancel"]')?.textContent).toBe('Stay');
+    await r.click('[data-dialog="cancel"]');
+    expect(await answer).toBe(false);
+  });
+});
+
 describe('infoDialog', () => {
   it('shows a titled message with a single OK', async () => {
     const r = mount('8.0');
