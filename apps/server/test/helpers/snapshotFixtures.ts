@@ -1,7 +1,7 @@
 import { INITIAL_FEN } from '@group-chess/shared';
 import type { SnapshotInput } from '../../src/images/snapshotModel';
 
-export const AFTER_E4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
+export { AFTER_E4 } from './chess';
 
 /** An active, rated game at its start, shared by White; override what a test needs. */
 export function snapshotInput(overrides: Partial<SnapshotInput> = {}): SnapshotInput {

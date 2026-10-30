@@ -6,7 +6,7 @@ import { abortGame, resign } from '../../src/domain/games';
 import { awardFlairForGame } from '../../src/flair/award';
 import { coreJobHandlers } from '../../src/jobs/handlers';
 import { JobWorker } from '../../src/jobs/worker';
-import { LINES, play, PROMOTION_FEN, QUEEN_MATE_FEN } from '../helpers/chess';
+import { LINES, play, PROMOTION_FEN, QUEEN_MATE_FEN, AFTER_E4_E5 } from '../helpers/chess';
 import {
   holdOpen,
   openTestDb,
@@ -20,7 +20,6 @@ import { day, earned, finishedGame, startWearing, worn } from '../helpers/flair'
 
 const { db, close } = openTestDb();
 const deps = testDeps(db);
-const AFTER_E4_E5 = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2';
 
 beforeEach(() => truncateAll(db));
 afterAll(() => close());

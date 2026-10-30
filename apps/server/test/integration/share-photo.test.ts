@@ -13,14 +13,13 @@ import type { FakeTelegram } from '../helpers/fakeTelegram';
 import { insertGame, insertGroup, insertMove, insertUser } from '../helpers/fixtures';
 import { FIXTURE_JPEG } from '../helpers/photos';
 import { jobWorker } from '../helpers/worker';
+import { AFTER_E4, AFTER_E4_C5 } from '../helpers/chess';
 
 const { db, close } = openTestDb();
 const deps = testDeps(db);
 let fake: FakeTelegram;
 let worker: JobWorker;
 const CHAT = -1001000000005;
-const AFTER_E4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
-const AFTER_E4_C5 = 'rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2';
 
 beforeAll(async () => {
   const fonts = await loadFonts();

@@ -9,11 +9,11 @@ import {
 } from '../../src/domain/ratings';
 import { resign } from '../../src/domain/games';
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
-import { insertGame, insertGroup, insertUser } from '../helpers/fixtures';
+import { insertGame, insertGroup, insertUser, world } from '../helpers/fixtures';
+import { AFTER_E4_E5 } from '../helpers/chess';
 
 const { db, close } = openTestDb();
 const deps = testDeps(db);
-const AFTER_E4_E5 = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2';
 
 beforeEach(() => truncateAll(db));
 afterAll(() => close());
@@ -44,9 +44,7 @@ const reload = async (id: number) => (await db.select().from(games).where(eq(gam
 
 describe('applyGameResultToRatings', () => {
   it('rates a decisive rated game and stores the snapshots on the game', async () => {
-    const group = await insertGroup(db);
-    const alice = await insertUser(db);
-    const bob = await insertUser(db);
+    const { group, alice, bob } = await world(db, { game: false });
     const game = await finished(group.id, alice.id, bob.id, '1-0', 'resignation', 1);
 
     const snapshot = await applyGameResultToRatings(db, game, finishedAt(1));
@@ -65,9 +63,7 @@ describe('applyGameResultToRatings', () => {
   });
 
   it('does nothing for a casual game', async () => {
-    const group = await insertGroup(db);
-    const alice = await insertUser(db);
-    const bob = await insertUser(db);
+    const { group, alice, bob } = await world(db, { game: false });
     const game = await finished(group.id, alice.id, bob.id, '1-0', 'resignation', 1, false);
     expect(await applyGameResultToRatings(db, game, finishedAt(1))).toBeNull();
     expect(await db.select().from(ratings)).toHaveLength(0);
@@ -75,9 +71,7 @@ describe('applyGameResultToRatings', () => {
   });
 
   it('does nothing for an aborted rated game', async () => {
-    const group = await insertGroup(db);
-    const alice = await insertUser(db);
-    const bob = await insertUser(db);
+    const { group, alice, bob } = await world(db, { game: false });
     const game = await finished(group.id, alice.id, bob.id, '*', 'abort', 1);
     expect(await applyGameResultToRatings(db, game, finishedAt(1))).toBeNull();
     expect(await db.select().from(ratings)).toHaveLength(0);
@@ -88,13 +82,7 @@ describe('concurrent results', () => {
   it('serialises two game ends that share a player so neither update is lost', async () => {
     for (let round = 0; round < 3; round += 1) {
       await truncateAll(db);
-      const group = await insertGroup(db);
-      const [alice, bob, carol] = await Promise.all([
-        insertUser(db),
-        insertUser(db),
-        insertUser(db),
-      ]);
-      for (const user of [alice, bob, carol]) await touchMember(db, group.id, user.id);
+      const { group, alice, bob, carol } = await world(db, { game: false });
       const a = await insertGame(db, group.id, alice.id, bob.id, { fen: AFTER_E4_E5, plyCount: 2 });
       const b = await insertGame(db, group.id, alice.id, carol.id, {
         fen: AFTER_E4_E5,
@@ -121,10 +109,7 @@ describe('concurrent results', () => {
 
 describe('rebuildGroupRatings', () => {
   it('rewrites later games’ snapshots after a void', async () => {
-    const group = await insertGroup(db);
-    const alice = await insertUser(db);
-    const bob = await insertUser(db);
-    const carol = await insertUser(db);
+    const { group, alice, bob, carol } = await world(db, { game: false });
     const a = await finished(group.id, alice.id, bob.id, '1-0', 'checkmate', 1);
     const b = await finished(group.id, bob.id, carol.id, '1-0', 'resignation', 2);
     const c = await finished(group.id, carol.id, alice.id, '1/2-1/2', 'draw_agreement', 3);
@@ -151,9 +136,7 @@ describe('rebuildGroupRatings', () => {
   });
 
   it('removes rating rows for players whose games were all voided', async () => {
-    const group = await insertGroup(db);
-    const alice = await insertUser(db);
-    const bob = await insertUser(db);
+    const { group, alice, bob } = await world(db, { game: false });
     const a = await finished(group.id, alice.id, bob.id, '1-0', 'checkmate', 1);
     await applyGameResultToRatings(db, a, finishedAt(1));
     await db

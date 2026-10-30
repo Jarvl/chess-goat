@@ -11,26 +11,15 @@ import {
   setChallengeMessage,
 } from '../../src/domain/challenges';
 import { updateGroupSettings } from '../../src/domain/groups';
-import { blockUser, touchMember } from '../../src/domain/members';
+import { blockUser } from '../../src/domain/members';
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
-import { insertChallenge, insertGame, insertGroup, insertUser } from '../helpers/fixtures';
+import { insertChallenge, insertGame, insertUser, world } from '../helpers/fixtures';
 
 const { db, close } = openTestDb();
 const deps = testDeps(db);
 
 beforeEach(() => truncateAll(db));
 afterAll(() => close());
-
-async function setup() {
-  const group = await insertGroup(db);
-  const [alice, bob, carol] = await Promise.all([
-    insertUser(db, { firstName: 'Alice' }),
-    insertUser(db, { firstName: 'Bob' }),
-    insertUser(db, { firstName: 'Carol' }),
-  ]);
-  for (const user of [alice, bob, carol]) await touchMember(db, group.id, user.id);
-  return { group, alice, bob, carol };
-}
 
 const direct = (groupId: number, challengerId: number, opponentId: number | null) =>
   createChallenge(deps, {
@@ -53,7 +42,7 @@ const secondsUntil = async (table: 'games' | 'challenges', column: string, id: n
 
 describe('createChallenge', () => {
   it('creates a direct challenge with a 24 h expiry and enqueues the card and the DM', async () => {
-    const { group, alice, bob } = await setup();
+    const { group, alice, bob } = await world(db, { game: false });
     const challenge = await direct(group.id, alice.id, bob.id);
     expect(challenge).toMatchObject({
       status: 'pending',
@@ -75,7 +64,7 @@ describe('createChallenge', () => {
   });
 
   it('refuses a self-challenge', async () => {
-    const { group, alice } = await setup();
+    const { group, alice } = await world(db, { game: false });
     await expect(direct(group.id, alice.id, alice.id)).rejects.toMatchObject({
       code: 'validation',
       details: { reason: 'self' },
@@ -83,7 +72,7 @@ describe('createChallenge', () => {
   });
 
   it('enforces three pending challenges per user per group', async () => {
-    const { group, alice, bob, carol } = await setup();
+    const { group, alice, bob, carol } = await world(db, { game: false });
     const dave = await insertUser(db);
     const erin = await insertUser(db);
     await direct(group.id, alice.id, bob.id);
@@ -96,7 +85,7 @@ describe('createChallenge', () => {
   });
 
   it('caps nobody: a challenge is fine however many games either player already has', async () => {
-    const { group, alice, bob, carol } = await setup();
+    const { group, alice, bob, carol } = await world(db, { game: false });
     // Well past every limit this project used to impose (5 per player, 2 per pair).
     for (let i = 0; i < 6; i += 1) {
       await insertGame(db, group.id, bob.id, carol.id);
@@ -106,7 +95,7 @@ describe('createChallenge', () => {
   });
 
   it('refuses a blocked challenger', async () => {
-    const { group, alice, bob } = await setup();
+    const { group, alice, bob } = await world(db, { game: false });
     await blockUser(db, group.id, alice.id, bob.id);
     await expect(direct(group.id, alice.id, bob.id)).rejects.toMatchObject({
       code: 'forbidden',
@@ -115,7 +104,7 @@ describe('createChallenge', () => {
   });
 
   it('allows open challenges only when the group allows them', async () => {
-    const { group, alice } = await setup();
+    const { group, alice } = await world(db, { game: false });
     const open = await direct(group.id, alice.id, null);
     expect(open.opponentId).toBeNull();
     expect((await jobRows()).map((job) => job.kind)).toEqual(['send_challenge_card']);
@@ -129,7 +118,7 @@ describe('createChallenge', () => {
 
 describe('acceptChallenge', () => {
   it('creates the game with the chosen colours, White’s clock and the card and DM jobs', async () => {
-    const { group, alice, bob } = await setup();
+    const { group, alice, bob } = await world(db, { game: false });
     await db.update(users).set({ dmAllowed: true }).where(eq(users.id, bob.id));
     const challenge = await createChallenge(deps, {
       groupId: group.id,
@@ -168,7 +157,7 @@ describe('acceptChallenge', () => {
   });
 
   it('hands a late card message id to the game that was accepted before the card was sent', async () => {
-    const { group, alice, bob } = await setup();
+    const { group, alice, bob } = await world(db, { game: false });
     const challenge = await direct(group.id, alice.id, bob.id);
     const { game } = await acceptChallenge(deps, { challengeId: challenge.id, userId: bob.id });
     expect(game.cardMessageId).toBeNull();
@@ -183,14 +172,14 @@ describe('acceptChallenge', () => {
   });
 
   it('sets no reminder when White has not allowed DMs', async () => {
-    const { group, alice, bob } = await setup();
+    const { group, alice, bob } = await world(db, { game: false });
     const challenge = await direct(group.id, alice.id, bob.id);
     const { game } = await acceptChallenge(deps, { challengeId: challenge.id, userId: bob.id });
     expect(game.reminderAt).toBeNull();
   });
 
   it('lets only the challenged player accept a direct challenge', async () => {
-    const { group, alice, bob, carol } = await setup();
+    const { group, alice, bob, carol } = await world(db, { game: false });
     const challenge = await direct(group.id, alice.id, bob.id);
     await expect(
       acceptChallenge(deps, { challengeId: challenge.id, userId: carol.id }),
@@ -201,7 +190,7 @@ describe('acceptChallenge', () => {
   });
 
   it('refuses the challenger of an open challenge', async () => {
-    const { group, alice } = await setup();
+    const { group, alice } = await world(db, { game: false });
     const challenge = await direct(group.id, alice.id, null);
     await expect(
       acceptChallenge(deps, { challengeId: challenge.id, userId: alice.id }),
@@ -212,7 +201,7 @@ describe('acceptChallenge', () => {
   });
 
   it('lets exactly one of two concurrent acceptances win an open challenge', async () => {
-    const { group, alice, bob, carol } = await setup();
+    const { group, alice, bob, carol } = await world(db, { game: false });
     const challenge = await direct(group.id, alice.id, null);
     const results = await Promise.allSettled([
       acceptChallenge(deps, { challengeId: challenge.id, userId: bob.id }),
@@ -230,7 +219,7 @@ describe('acceptChallenge', () => {
   });
 
   it('refuses a challenge past its expiry even before the scanner ran', async () => {
-    const { group, alice, bob } = await setup();
+    const { group, alice, bob } = await world(db, { game: false });
     const challenge = await insertChallenge(db, group.id, alice.id, bob.id, {
       expiresInSeconds: -5,
     });
@@ -244,7 +233,7 @@ describe('acceptChallenge', () => {
 
 describe('decline, cancel, expire', () => {
   it('lets the opponent decline and the challenger cancel, each editing the card', async () => {
-    const { group, alice, bob } = await setup();
+    const { group, alice, bob } = await world(db, { game: false });
     const first = await direct(group.id, alice.id, bob.id);
     await expect(
       declineChallenge(deps, { challengeId: first.id, userId: alice.id }),
@@ -266,7 +255,7 @@ describe('decline, cancel, expire', () => {
   });
 
   it('points a bystander at the challenger when they tap Cancel on an open challenge', async () => {
-    const { group, alice, bob } = await setup();
+    const { group, alice, bob } = await world(db, { game: false });
     const open = await direct(group.id, alice.id, null);
     await expect(
       declineChallenge(deps, { challengeId: open.id, userId: bob.id }),
@@ -280,7 +269,7 @@ describe('decline, cancel, expire', () => {
   });
 
   it('names the challenger when someone else tries to withdraw a direct challenge', async () => {
-    const { group, alice, bob } = await setup();
+    const { group, alice, bob } = await world(db, { game: false });
     const challenge = await direct(group.id, alice.id, bob.id);
     await expect(
       cancelChallenge(deps, { challengeId: challenge.id, userId: bob.id }),
@@ -291,7 +280,7 @@ describe('decline, cancel, expire', () => {
   });
 
   it('refuses to act on a challenge that is no longer pending', async () => {
-    const { group, alice, bob } = await setup();
+    const { group, alice, bob } = await world(db, { game: false });
     const challenge = await direct(group.id, alice.id, bob.id);
     await declineChallenge(deps, { challengeId: challenge.id, userId: bob.id });
     await expect(
@@ -303,7 +292,7 @@ describe('decline, cancel, expire', () => {
   });
 
   it('expires only the pending challenges that are past due', async () => {
-    const { group, alice, bob, carol } = await setup();
+    const { group, alice, bob, carol } = await world(db, { game: false });
     const overdue = await insertChallenge(db, group.id, alice.id, bob.id, { expiresInSeconds: -1 });
     const fresh = await insertChallenge(db, group.id, alice.id, carol.id, {
       expiresInSeconds: 3600,
@@ -320,7 +309,7 @@ describe('decline, cancel, expire', () => {
 
 describe('createRematch', () => {
   it('reverses the colours and copies the terms of a finished game', async () => {
-    const { group, alice, bob } = await setup();
+    const { group, alice, bob } = await world(db, { game: false });
     const game = await insertGame(db, group.id, alice.id, bob.id, {
       timePerMove: 3600,
       rated: false,
@@ -343,7 +332,7 @@ describe('createRematch', () => {
   });
 
   it('refuses a rematch from a spectator or on a running game', async () => {
-    const { group, alice, bob, carol } = await setup();
+    const { group, alice, bob, carol } = await world(db, { game: false });
     const running = await insertGame(db, group.id, alice.id, bob.id);
     await expect(
       createRematch(deps, { gameId: running.id, userId: alice.id }),
@@ -362,7 +351,7 @@ describe('createRematch', () => {
 
 describe('challenge DMs', () => {
   async function withLiveDm() {
-    const { group, alice, bob } = await setup();
+    const { group, alice, bob } = await world(db, { game: false });
     const challenge = await insertChallenge(db, group.id, alice.id, bob.id);
     await db.insert(dmMessages).values({
       userId: bob.id,

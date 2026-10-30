@@ -8,13 +8,7 @@ import {
 } from '../../src/clock/scanners';
 import { games, jobs } from '../../src/db/schema';
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
-import {
-  insertChallenge,
-  insertGame,
-  insertGroup,
-  insertMove,
-  insertUser,
-} from '../helpers/fixtures';
+import { insertChallenge, insertGame, world, played } from '../helpers/fixtures';
 
 const { db, close } = openTestDb();
 const deps = testDeps(db);
@@ -22,21 +16,11 @@ const deps = testDeps(db);
 beforeEach(() => truncateAll(db));
 afterAll(() => close());
 
-const AFTER_E4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
-const AFTER_E4_E5 = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2';
-
-async function people() {
-  const group = await insertGroup(db);
-  const alice = await insertUser(db);
-  const bob = await insertUser(db);
-  return { group, alice, bob };
-}
-
 const reload = async (id: number) => (await db.select().from(games).where(eq(games.id, id)))[0]!;
 
 describe('forfeitOverdueGames', () => {
   it('ends only overdue games and publishes each one', async () => {
-    const { group, alice, bob } = await people();
+    const { group, alice, bob } = await world(db, { game: false });
     const overdue = await insertGame(db, group.id, alice.id, bob.id, { deadlineInSeconds: -1 });
     const fresh = await insertGame(db, group.id, alice.id, bob.id, { deadlineInSeconds: 3600 });
     const published: string[] = [];
@@ -59,14 +43,8 @@ describe('forfeitOverdueGames', () => {
   });
 
   it('scores a flag fall after real play as a loss', async () => {
-    const { group, alice, bob } = await people();
-    const game = await insertGame(db, group.id, alice.id, bob.id, {
-      deadlineInSeconds: -1,
-      fen: AFTER_E4_E5,
-      plyCount: 2,
-    });
-    await insertMove(db, game.id, 1, 'e2e4', 'e4', AFTER_E4);
-    await insertMove(db, game.id, 2, 'e7e5', 'e5', AFTER_E4_E5);
+    const { game } = await world(db, { game: { deadlineInSeconds: -1 } });
+    await played(db, game, ['e2e4', 'e7e5']);
     await forfeitOverdueGames(deps);
     expect(await reload(game.id)).toMatchObject({
       status: 'finished',
@@ -78,14 +56,8 @@ describe('forfeitOverdueGames', () => {
 
 describe('timeout result DMs', () => {
   it('sends the result DM to both players on timeout', async () => {
-    const { group, alice, bob } = await people();
-    const game = await insertGame(db, group.id, alice.id, bob.id, {
-      deadlineInSeconds: -1,
-      fen: AFTER_E4_E5,
-      plyCount: 2,
-    });
-    await insertMove(db, game.id, 1, 'e2e4', 'e4', AFTER_E4);
-    await insertMove(db, game.id, 2, 'e7e5', 'e5', AFTER_E4_E5);
+    const { alice, bob, game } = await world(db, { game: { deadlineInSeconds: -1 } });
+    await played(db, game, ['e2e4', 'e7e5']);
     await forfeitOverdueGames(deps);
     const dms = (await db.select().from(jobs)).filter(
       (job) => job.kind === 'send_dm' && job.payload.template === 'result',
@@ -96,7 +68,7 @@ describe('timeout result DMs', () => {
 
 describe('sendDueReminders', () => {
   it('enqueues one reminder DM for the player to move and clears the column', async () => {
-    const { group, alice, bob } = await people();
+    const { group, alice, bob } = await world(db, { game: false });
     const game = await insertGame(db, group.id, alice.id, bob.id, { reminderInSeconds: -1 });
     expect(await sendDueReminders(deps)).toBe(1);
     const [job] = await db.select().from(jobs);
@@ -112,7 +84,7 @@ describe('sendDueReminders', () => {
 
 describe('runScannersOnce and startScanners', () => {
   it('covers forfeits, reminders and challenge expiry in one pass', async () => {
-    const { group, alice, bob } = await people();
+    const { group, alice, bob } = await world(db, { game: false });
     await insertGame(db, group.id, alice.id, bob.id, { deadlineInSeconds: -1 });
     await insertGame(db, group.id, bob.id, alice.id, { reminderInSeconds: -1 });
     await insertChallenge(db, group.id, alice.id, bob.id, { expiresInSeconds: -1 });
@@ -120,7 +92,7 @@ describe('runScannersOnce and startScanners', () => {
   });
 
   it('keeps scanning on an interval until stopped', async () => {
-    const { group, alice, bob } = await people();
+    const { group, alice, bob } = await world(db, { game: false });
     const game = await insertGame(db, group.id, alice.id, bob.id, { deadlineInSeconds: -1 });
     const scanners = startScanners(deps, { intervalMs: 20 });
     try {

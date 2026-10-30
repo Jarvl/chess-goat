@@ -1,8 +1,8 @@
 import { INITIAL_FEN } from '@group-chess/shared';
 import { describe, expect, it } from 'vitest';
 import { parsePlacement, renderBoardSvg } from '../../src/images/board';
+import { AFTER_E4 } from '../helpers/chess';
 
-const AFTER_E4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
 /** Fool's mate: the white king on e1 is in check from h4. */
 const CHECK = 'rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3';
 const white = { lastMove: null, check: false, orientation: 'white' as const };

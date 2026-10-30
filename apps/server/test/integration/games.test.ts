@@ -4,25 +4,14 @@ import { adminActions, dmMessages, games, jobs, moves, ratings, users } from '..
 import { abortGame, getGameDto, playMove, resign, voidGame } from '../../src/domain/games';
 
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
-import {
-  insertGame,
-  insertMove,
-  liveDm,
-  resultDms,
-  secondsUntil,
-  world,
-} from '../helpers/fixtures';
+import { insertGame, liveDm, resultDms, secondsUntil, world, played } from '../helpers/fixtures';
+import { AFTER_E4, AFTER_E4_E5, BEFORE_SCHOLARS_MATE } from '../helpers/chess';
 
 const { db, close } = openTestDb();
 const deps = testDeps(db);
 
 beforeEach(() => truncateAll(db));
 afterAll(() => close());
-
-const AFTER_E4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
-const AFTER_E4_E5 = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2';
-/** 1.e4 e5 2.Qh5 Nc6 3.Bc4 Nf6, White to play Qxf7#. */
-const BEFORE_SCHOLARS_MATE = 'r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4';
 
 let moveCounter = 0;
 const move = (
@@ -111,14 +100,12 @@ describe('playMove', () => {
 
   it("marks the mover's live DM as waiting", async () => {
     const { game, alice } = await world(db);
-    await db.insert(dmMessages).values({
+    await liveDm(db, {
       userId: alice.id,
-      chatId: 11,
       gameId: game.id,
-      telegramMessageId: 101,
       kind: 'turn',
       stub: 'Game vs Bob ended',
-      sentAt: new Date(),
+      telegramMessageId: 101,
     });
     await move(game.publicId, alice.id, 'e2e4', 0);
     expect(await db.select().from(dmMessages)).toMatchObject([
@@ -208,11 +195,8 @@ describe('playMove', () => {
   });
 
   it('scores a late move after real play as a rated loss on time', async () => {
-    const { game, alice } = await world(db, {
-      game: { deadlineInSeconds: -1, fen: AFTER_E4_E5, plyCount: 2 },
-    });
-    await insertMove(db, game.id, 1, 'e2e4', 'e4', AFTER_E4);
-    await insertMove(db, game.id, 2, 'e7e5', 'e5', AFTER_E4_E5);
+    const { game, alice } = await world(db, { game: { deadlineInSeconds: -1 } });
+    await played(db, game, ['e2e4', 'e7e5']);
     const dto = await move(game.publicId, alice.id, 'g1f3', 2);
     expect(dto).toMatchObject({
       status: 'finished',
@@ -296,11 +280,8 @@ describe('resign, abort, void', () => {
   });
 
   it('applies a passed deadline before a resignation by the player who is not flagged', async () => {
-    const { game, bob } = await world(db, {
-      game: { deadlineInSeconds: -1, fen: AFTER_E4_E5, plyCount: 2 },
-    });
-    await insertMove(db, game.id, 1, 'e2e4', 'e4', AFTER_E4);
-    await insertMove(db, game.id, 2, 'e7e5', 'e5', AFTER_E4_E5);
+    const { game, bob } = await world(db, { game: { deadlineInSeconds: -1 } });
+    await played(db, game, ['e2e4', 'e7e5']);
     const dto = await resign(deps, { gameId: game.publicId, userId: bob.id });
     expect(dto).toMatchObject({ status: 'finished', result: '0-1', endReason: 'timeout' });
   });
@@ -362,8 +343,8 @@ describe('resign, abort, void', () => {
 
 describe('getGameDto', () => {
   it('describes a running game for a spectator without Lichess links', async () => {
-    const { game, carol } = await world(db, { game: { fen: AFTER_E4, plyCount: 1 } });
-    await insertMove(db, game.id, 1, 'e2e4', 'e4', AFTER_E4);
+    const { game, carol } = await world(db);
+    await played(db, game, ['e2e4']);
     const dto = await getGameDto(deps, { gameId: game.publicId, viewerUserId: carol.id });
     expect(dto).toMatchObject({
       viewerRole: 'spectator',

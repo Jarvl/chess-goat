@@ -13,9 +13,9 @@ import { getGameDto, playMove, requireGameById, resign } from '../../src/domain/
 import { DomainError } from '../../src/domain/errors';
 import { touchMember } from '../../src/domain/members';
 import { setPremoveTree } from '../../src/domain/premoves';
-import { deepLine } from '../helpers/chess';
+import { deepLine, AFTER_E4_E5 } from '../helpers/chess';
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
-import { insertGame, insertGroup, insertUser, type GameOverrides } from '../helpers/fixtures';
+import { insertGroup, insertUser, world, liveDm } from '../helpers/fixtures';
 
 const { db, close } = openTestDb();
 const deps = testDeps(db);
@@ -42,23 +42,13 @@ const move = (
 const jobList = async () =>
   (await db.select().from(jobs).orderBy(jobs.id)).map((job) => [job.kind, job.dedupKey]);
 
-async function setup(overrides: GameOverrides = {}) {
-  const group = await insertGroup(db);
-  const alice = await insertUser(db, { firstName: 'Alice' });
-  const bob = await insertUser(db, { firstName: 'Bob' });
-  const carol = await insertUser(db, { firstName: 'Carol' });
-  for (const user of [alice, bob, carol]) await touchMember(db, group.id, user.id);
-  const game = await insertGame(db, group.id, alice.id, bob.id, overrides);
-  return { group, alice, bob, carol, game };
-}
-
 describe('premove storage and visibility', () => {
   // White (Alice) to move; Black (Bob) owns the tree.
   const e4e5: PremoveNode[] = [{ move: 'e2e4', reply: 'e7e5', children: [] }];
   const bytesOf = (tree: PremoveNode[]) => Buffer.from(encodePremoveBytes(tree));
 
   it('shows the tree to its owner only, and only while it is not their turn', async () => {
-    const { game, alice, bob, carol } = await setup({ premoveTree: bytesOf(e4e5) });
+    const { game, alice, bob, carol } = await world(db, { game: { premoveTree: bytesOf(e4e5) } });
     const treeFor = async (viewerUserId: number | null) =>
       (await getGameDto(deps, { gameId: game.publicId, viewerUserId })).premoveTree;
     expect(await treeFor(bob.id)).toBe(encodePremoveTree(e4e5));
@@ -68,13 +58,13 @@ describe('premove storage and visibility', () => {
   });
 
   it('empties the tree when the game ends', async () => {
-    const { game, alice } = await setup({ premoveTree: bytesOf(e4e5) });
+    const { game, alice } = await world(db, { game: { premoveTree: bytesOf(e4e5) } });
     await resign(deps, { gameId: game.publicId, userId: alice.id });
     expect((await requireGameById(db, game.id)).premoveTree).toHaveLength(0);
   });
 
   it('reports why it refused', async () => {
-    const { game, bob } = await setup();
+    const { game, bob } = await world(db);
     const refusal = async (input: {
       baseHash?: string;
       tree: PremoveNode[];
@@ -106,7 +96,7 @@ describe('premove storage and visibility', () => {
 
 describe('saving a deep tree', () => {
   it('saves an edit at the bottom of a deep stored line', async () => {
-    const { game, bob } = await setup();
+    const { game, bob } = await world(db);
     const stored = deepLine(8_900).root;
     await storeTree(game.id, stored);
     const edited = deepLine(8_900);
@@ -146,7 +136,7 @@ describe('firing premoves', () => {
   ];
 
   it('plays the matching reply and keeps its subtree', async () => {
-    const { game, alice } = await setup();
+    const { game, alice } = await world(db);
     await storeTree(game.id, bobsLine);
     const dto = await move(game.publicId, alice.id, 'e2e4', 0);
     expect(dto).toMatchObject({ plyCount: 2, version: 2 });
@@ -162,15 +152,13 @@ describe('firing premoves', () => {
   });
 
   it("marks the tree owner's DM as waiting and sends them no turn DM", async () => {
-    const { game, alice, bob } = await setup();
-    await db.insert(dmMessages).values({
+    const { game, alice, bob } = await world(db);
+    await liveDm(db, {
       userId: bob.id,
-      chatId: 22,
       gameId: game.id,
-      telegramMessageId: 101,
       kind: 'turn',
       stub: 'Game vs Alice ended',
-      sentAt: new Date(),
+      telegramMessageId: 101,
     });
     await storeTree(game.id, bobsLine);
     await move(game.publicId, alice.id, 'e2e4', 0);
@@ -181,7 +169,7 @@ describe('firing premoves', () => {
   });
 
   it("clears a missed tree and flags the owner's turn DM", async () => {
-    const { game, alice, bob } = await setup();
+    const { game, alice, bob } = await world(db);
     await storeTree(game.id, bobsLine);
     const dto = await move(game.publicId, alice.id, 'd2d4', 0);
     expect(dto.plyCount).toBe(1);
@@ -197,7 +185,7 @@ describe('firing premoves', () => {
   });
 
   it('sends no flag when the line runs out', async () => {
-    const { game, alice } = await setup();
+    const { game, alice } = await world(db);
     await storeTree(game.id, [{ move: 'e2e4', reply: 'e7e5', children: [] }]);
     const dto = await move(game.publicId, alice.id, 'e2e4', 0);
     expect(dto.plyCount).toBe(2);
@@ -208,7 +196,7 @@ describe('firing premoves', () => {
   });
 
   it('stores the mover’s tree with their move', async () => {
-    const { game, alice, bob } = await setup();
+    const { game, alice, bob } = await world(db);
     const alicesTree: PremoveNode[] = [{ move: 'e7e5', reply: 'g1f3', children: [] }];
     const dto = await move(game.publicId, alice.id, 'e2e4', 0, alicesTree);
     expect(dto).toMatchObject({ plyCount: 1, premoveTree: encodePremoveTree(alicesTree) });
@@ -219,7 +207,7 @@ describe('firing premoves', () => {
   });
 
   it('plays alternating trees until one misses', async () => {
-    const { game, alice, bob } = await setup();
+    const { game, alice, bob } = await world(db);
     await storeTree(game.id, bobsLine);
     const alicesTree: PremoveNode[] = [
       {
@@ -255,11 +243,15 @@ describe('firing premoves', () => {
 
   it('finishes the game when a fired reply mates', async () => {
     // 1.e4 e5 2.Bc4 Nc6 3.Qh5, Black to move; Alice answers Nf6 with Qxf7#.
-    const { game, bob } = await setup({
-      fen: 'r1bqkbnr/pppp1ppp/2n5/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR b KQkq - 3 3',
-      plyCount: 5,
-      premoveTree: Buffer.from(encodePremoveBytes([{ move: 'g8f6', reply: 'h5f7', children: [] }])),
-      premoveTreePly: 5,
+    const { game, bob } = await world(db, {
+      game: {
+        fen: 'r1bqkbnr/pppp1ppp/2n5/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR b KQkq - 3 3',
+        plyCount: 5,
+        premoveTree: Buffer.from(
+          encodePremoveBytes([{ move: 'g8f6', reply: 'h5f7', children: [] }]),
+        ),
+        premoveTreePly: 5,
+      },
     });
     const dto = await move(game.publicId, bob.id, 'g8f6', 5, [
       { move: 'd2d3', reply: 'd7d6', children: [] },
@@ -270,13 +262,15 @@ describe('firing premoves', () => {
   });
 
   it('fires a promoting reply', async () => {
-    const { game, bob } = await setup({
-      fen: '4k3/1P6/8/8/8/8/8/4K3 b - - 0 40',
-      plyCount: 79,
-      premoveTree: Buffer.from(
-        encodePremoveBytes([{ move: 'e8d7', reply: 'b7b8q', children: [] }]),
-      ),
-      premoveTreePly: 79,
+    const { game, bob } = await world(db, {
+      game: {
+        fen: '4k3/1P6/8/8/8/8/8/4K3 b - - 0 40',
+        plyCount: 79,
+        premoveTree: Buffer.from(
+          encodePremoveBytes([{ move: 'e8d7', reply: 'b7b8q', children: [] }]),
+        ),
+        premoveTreePly: 79,
+      },
     });
     const dto = await move(game.publicId, bob.id, 'e8d7', 79);
     expect(dto.moves.map((m) => m.san)).toEqual(['Kd7', 'b8=Q']);
@@ -284,7 +278,7 @@ describe('firing premoves', () => {
   });
 
   it('refuses a move whose tree is illegal, and plays nothing', async () => {
-    const { game, alice } = await setup();
+    const { game, alice } = await world(db);
     const error = await refusal(
       move(game.publicId, alice.id, 'e2e4', 0, [{ move: 'e7e5', reply: 'e1e3', children: [] }]),
     );
@@ -294,7 +288,7 @@ describe('firing premoves', () => {
   });
 
   it('reports a malformed tree only after the game, ply and turn checks', async () => {
-    const { game, alice, bob, carol } = await setup();
+    const { game, alice, bob, carol } = await world(db);
     const send = (userId: number, expectedPly: number, premoveTree: string) =>
       refusal(
         playMove(deps, {
@@ -315,7 +309,7 @@ describe('firing premoves', () => {
   });
 
   it('returns the current state for a retried move with a tree', async () => {
-    const { game, alice } = await setup();
+    const { game, alice } = await world(db);
     const alicesTree: PremoveNode[] = [{ move: 'e7e5', reply: 'g1f3', children: [] }];
     const input = {
       gameId: game.publicId,
@@ -337,7 +331,7 @@ describe('firing premoves', () => {
   });
 
   it('returns the current state for a retried move after its premove reply was played', async () => {
-    const { game, alice } = await setup();
+    const { game, alice } = await world(db);
     await storeTree(game.id, bobsLine);
     const input = {
       gameId: game.publicId,
@@ -372,14 +366,15 @@ describe('firing premoves', () => {
 describe('a tree stored at another ply', () => {
   // 1.e4 e5, White (Alice) to move. Bob's tree was stored at ply 0 by a container that then moved
   // without firing or clearing it (an overlapping deploy, a rollback): it must stay inert.
-  const AFTER_E4_E5 = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2';
   const stale: PremoveNode[] = [{ move: 'g1f3', reply: 'b8c6', children: [] }];
   const staleRow = () =>
-    setup({
-      fen: AFTER_E4_E5,
-      plyCount: 2,
-      premoveTree: Buffer.from(encodePremoveBytes(stale)),
-      premoveTreePly: 0,
+    world(db, {
+      game: {
+        fen: AFTER_E4_E5,
+        plyCount: 2,
+        premoveTree: Buffer.from(encodePremoveBytes(stale)),
+        premoveTreePly: 0,
+      },
     });
 
   it('is not shown to its owner', async () => {
@@ -422,7 +417,7 @@ describe('a tree stored at another ply', () => {
   });
 
   it('is stored at the ply it is valid at by a move and by the firing loop', async () => {
-    const { game, alice } = await setup();
+    const { game, alice } = await world(db);
     await storeTree(game.id, [
       { move: 'e2e4', reply: 'e7e5', children: [{ move: 'g1f3', reply: 'b8c6', children: [] }] },
     ]);
@@ -458,7 +453,7 @@ describe('a row that changes between the unlocked read and the lock', () => {
   const d4d5: PremoveNode[] = [{ move: 'd2d4', reply: 'd7d5', children: [] }];
 
   it('refuses a save with new pairs as premoves_changed instead of checking under the lock', async () => {
-    const { game, bob } = await setup();
+    const { game, bob } = await world(db);
     // This device already shows e4 e5, which another device is saving: the unlocked read still
     // sees the empty tree, so the new pair is not checked before the lock.
     const raced = racing(() => storeTree(game.id, e4e5));
@@ -477,7 +472,7 @@ describe('a row that changes between the unlocked read and the lock', () => {
   });
 
   it('still saves a race whose tree has nothing to check, such as a removal', async () => {
-    const { game, bob } = await setup();
+    const { game, bob } = await world(db);
     const both = [...e4e5, ...d4d5];
     const raced = racing(() => storeTree(game.id, both));
     const dto = await setPremoveTree(raced, {
@@ -492,7 +487,7 @@ describe('a row that changes between the unlocked read and the lock', () => {
   });
 
   it('refuses a move with a tree as stale instead of checking the tree under the lock', async () => {
-    const { game, alice, bob } = await setup();
+    const { game, alice, bob } = await world(db);
     // Bob answers 1.e4, which lands only after his request's unlocked read saw ply 0.
     const raced = racing(() => move(game.publicId, alice.id, 'e2e4', 0));
     const sent = playMove(raced, {

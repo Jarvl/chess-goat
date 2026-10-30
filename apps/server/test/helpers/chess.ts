@@ -3,6 +3,16 @@ import type { StoredMove } from '../../src/flair/patterns';
 import type { CountedGame } from '../../src/flair/rules';
 
 /** White to move, with a pawn on e7 one step from promoting on e8 (flair spec §7). */
+/** After 1.e4. */
+export const AFTER_E4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
+/** After 1.e4 e5, as the older fixtures write it (with an e6 en passant square). */
+export const AFTER_E4_E5 = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2';
+/** After 1.e4 c5. */
+export const AFTER_E4_C5 = 'rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2';
+/** 1.e4 e5 2.Qh5 Nc6 3.Bc4 Nf6, White to play Qxf7#. */
+export const BEFORE_SCHOLARS_MATE =
+  'r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4';
+
 export const PROMOTION_FEN = '3k4/4P3/8/8/8/8/8/4K3 w - - 0 1';
 
 /** White, with only king and queen, mates by `a1a8` (flair spec §1.8). */

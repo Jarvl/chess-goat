@@ -16,13 +16,13 @@ import {
   insertMove,
   insertUser,
 } from '../helpers/fixtures';
+import { AFTER_E4 } from '../helpers/chess';
 
 const { db, close } = openTestDb();
 const deps = testDeps(db);
 let fake: FakeTelegram;
 let worker: JobWorker;
 const CHAT = -1001000000002;
-const AFTER_E4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
 const AFTER_E5 = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2';
 
 beforeAll(async () => {

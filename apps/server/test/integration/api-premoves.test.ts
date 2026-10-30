@@ -12,10 +12,10 @@ import { Chess, type Move } from 'chess.js';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { games } from '../../src/db/schema';
-import { touchMember } from '../../src/domain/members';
+
 import { startTestApi, type TestApi } from '../helpers/api';
 import { openTestDb, truncateAll } from '../helpers/db';
-import { insertGame, insertGroup, insertUser } from '../helpers/fixtures';
+import { world } from '../helpers/fixtures';
 
 const { db, close } = openTestDb();
 let api: TestApi;
@@ -34,21 +34,15 @@ afterAll(async () => {
   await close();
 });
 
-async function world() {
-  const group = await insertGroup(db, { telegramChatId: -1001000000004 });
-  const alice = await insertUser(db, { telegramUserId: 11, firstName: 'Alice' });
-  const bob = await insertUser(db, { telegramUserId: 22, firstName: 'Bob' });
-  const carol = await insertUser(db, { telegramUserId: 33, firstName: 'Carol' });
-  for (const user of [alice, bob, carol])
-    await touchMember(db, group.id, user.id, { verified: true });
-  // Alice is White and to move; Bob premoves.
-  const game = await insertGame(db, group.id, alice.id, bob.id);
+/** world(), as the API sees it: Alice is White and to move, Bob premoves. */
+async function members() {
+  const people = await world(db, { telegramIds: true, verified: true });
   const tokens = {
-    alice: await api.sessionFor(alice),
-    bob: await api.sessionFor(bob),
-    carol: await api.sessionFor(carol),
+    alice: await api.sessionFor(people.alice),
+    bob: await api.sessionFor(people.bob),
+    carol: await api.sessionFor(people.carol),
   };
-  return { group, alice, bob, carol, game, tokens };
+  return { ...people, tokens };
 }
 
 const put = (token: string, gameId: string, body: unknown) =>
@@ -134,7 +128,7 @@ function bigTree(pairs: number): PremoveNode[] {
 
 describe('PUT /api/games/:id/premoves', () => {
   it('saves, replaces and clears the tree without bumping the version', async () => {
-    const { game, tokens } = await world();
+    const { game, tokens } = await members();
     let res = await put(tokens.bob, game.publicId, await body([], e4e5));
     expect(res.status).toBe(200);
     expect(GameDtoSchema.parse(await res.json()).premoveTree).toBe(enc(e4e5));
@@ -154,7 +148,7 @@ describe('PUT /api/games/:id/premoves', () => {
   });
 
   it('refuses the player to move, a stale ply, a stale fingerprint, a malformed tree and an illegal move', async () => {
-    const { game, tokens } = await world();
+    const { game, tokens } = await members();
     expect(await errorCode(await put(tokens.alice, game.publicId, await body([], e4e5)))).toBe(
       'not_your_turn',
     );
@@ -182,7 +176,7 @@ describe('PUT /api/games/:id/premoves', () => {
   });
 
   it('refuses a malformed tree only after the game, turn, ply and fingerprint checks', async () => {
-    const { game, tokens } = await world();
+    const { game, tokens } = await members();
     const malformed = async (token: string, base: PremoveNode[], expectedPly = 0) =>
       errorCode(
         await put(token, game.publicId, { ...(await body(base, [], expectedPly)), tree: 'AA' }),
@@ -197,7 +191,7 @@ describe('PUT /api/games/:id/premoves', () => {
   });
 
   it('checks only nodes not already stored', async () => {
-    const { game, tokens } = await world();
+    const { game, tokens } = await members();
     // A stored pair that is not legal. Stored pairs were checked when they were saved; this one
     // stands in for that, to show it is not checked again.
     const bad: PremoveNode[] = [{ move: 'e2e4', reply: 'e7e4', children: [] }];
@@ -217,7 +211,7 @@ describe('PUT /api/games/:id/premoves', () => {
   });
 
   it('saves and edits a tree of 8,990 pairs, near the size limit', async () => {
-    const { game, tokens } = await world();
+    const { game, tokens } = await members();
     const tree = bigTree(8_990);
     expect(countPremovePairs(tree)).toBe(8_990);
     expect(encodePremoveTree(tree).length).toBeLessThanOrEqual(PREMOVE_TREE_MAX_CHARS);
@@ -242,7 +236,7 @@ describe('PUT /api/games/:id/premoves', () => {
   });
 
   it('checks without holding the lock: an opponent move during the check makes it stale', async () => {
-    const { game, tokens } = await world();
+    const { game, tokens } = await members();
     // Bob's stored reply to the root move the big tree leaves free, so Alice's move fires it and
     // the game moves on to White's turn again.
     const chess = new Chess();
@@ -300,7 +294,7 @@ describe('PUT /api/games/:id/premoves', () => {
   });
 
   it('pushes an edit to the owner’s streams only, and publishes nothing for a no-op', async () => {
-    const { game, bob, tokens } = await world();
+    const { game, bob, tokens } = await members();
     const heard: unknown[] = [];
     onTestFinished(api.deps.bus.subscribe(game.publicId, (audience) => heard.push(audience)));
     await put(tokens.bob, game.publicId, await body([], e4e5));
@@ -309,7 +303,7 @@ describe('PUT /api/games/:id/premoves', () => {
   });
 
   it('gives a reconnecting device the current tree even with a current Last-Event-ID', async () => {
-    const { game, tokens } = await world();
+    const { game, tokens } = await members();
     const firstState = async (headers: Record<string, string> = {}) => {
       const controller = new AbortController();
       const res = await api.request(
@@ -330,7 +324,7 @@ describe('PUT /api/games/:id/premoves', () => {
   });
 
   it('delivers an owner-only push that lands while the first snapshot is being read', async () => {
-    const { game, bob, tokens } = await world();
+    const { game, bob, tokens } = await members();
     // Fire the push at the exact moment the stream first reaches for the database after opening:
     // the snapshot's DTO read. Arming on the stream gauge keeps the auth and access reads out of it.
     const realDb = api.deps.db;
@@ -392,7 +386,7 @@ describe('POST /api/games/:id/moves with a premove tree', () => {
   const e5f3: PremoveNode[] = [{ move: 'e7e5', reply: 'g1f3', children: [] }];
 
   it('stores the tree with the move', async () => {
-    const { game, tokens } = await world();
+    const { game, tokens } = await members();
     const res = await post(tokens.alice, game.publicId, moveBody(enc(e5f3)));
     expect(res.status).toBe(200);
     expect(GameDtoSchema.parse(await res.json())).toMatchObject({

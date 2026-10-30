@@ -13,6 +13,7 @@ import {
   insertUser,
 } from '../helpers/fixtures';
 import { signInitData } from '../helpers/initData';
+import { AFTER_E4 } from '../helpers/chess';
 
 const { db, close } = openTestDb();
 let api: TestApi;
@@ -87,7 +88,6 @@ describe('GET /api/me/games', () => {
   });
 
   it('carries each game’s position, last move and bot flag for the list thumbnails', async () => {
-    const AFTER_E4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
     const viewer = await insertUser(db);
     const [engine] = await db.select().from(users).where(eq(users.isEngine, true));
     const club = await insertGroup(db, { title: 'Club' });

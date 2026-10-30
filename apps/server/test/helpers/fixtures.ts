@@ -138,21 +138,34 @@ export type World = {
   game: GameRow;
 };
 
+type WorldOptions = {
+  /** Telegram ids 11, 22 and 33, as the API tests' sessions and the fake Bot API use. */
+  telegramIds?: boolean;
+  /** Members Telegram has confirmed, as the API requires. */
+  verified?: boolean;
+};
+
 /**
  * A group with three members, Alice, Bob and Carol, and their game: Alice White, Bob Black, Carol
  * watching. `game: false` leaves the game out.
  */
-export function world(db: DbOrTx, opts?: { game?: GameOverrides }): Promise<World>;
-export function world(db: DbOrTx, opts: { game: false }): Promise<Omit<World, 'game'>>;
+export function world(db: DbOrTx, opts?: WorldOptions & { game?: GameOverrides }): Promise<World>;
+export function world(
+  db: DbOrTx,
+  opts: WorldOptions & { game: false },
+): Promise<Omit<World, 'game'>>;
 export async function world(
   db: DbOrTx,
-  opts: { game?: GameOverrides | false } = {},
+  opts: WorldOptions & { game?: GameOverrides | false } = {},
 ): Promise<World | Omit<World, 'game'>> {
   const group = await insertGroup(db);
-  const alice = await insertUser(db, { firstName: 'Alice' });
-  const bob = await insertUser(db, { firstName: 'Bob' });
-  const carol = await insertUser(db, { firstName: 'Carol' });
-  for (const user of [alice, bob, carol]) await touchMember(db, group.id, user.id);
+  const person = (firstName: string, telegramUserId: number) =>
+    insertUser(db, { firstName, ...(opts.telegramIds ? { telegramUserId } : {}) });
+  const alice = await person('Alice', 11);
+  const bob = await person('Bob', 22);
+  const carol = await person('Carol', 33);
+  for (const user of [alice, bob, carol])
+    await touchMember(db, group.id, user.id, opts.verified ? { verified: true } : undefined);
   if (opts.game === false) return { group, alice, bob, carol };
   const game = await insertGame(db, group.id, alice.id, bob.id, opts.game);
   return { group, alice, bob, carol, game };
