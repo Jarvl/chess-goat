@@ -186,7 +186,12 @@ describe('the flair catalog', () => {
       }),
     ).toEqual(third);
     const ids = (category: string) => FLAIR.filter((f) => f.category === category).map((f) => f.id);
-    expect(ids('feat').slice(-4)).toEqual(['draws_10', 'marathon_win', 'pacifist_mate', 'rival_5']);
+    expect(ids('feat').slice(-5, -1)).toEqual([
+      'draws_10',
+      'marathon_win',
+      'pacifist_mate',
+      'rival_5',
+    ]);
     expect(ids('dubious').slice(0, 7)).toEqual([
       'scholars_mate_loss',
       'bongcloud_win',
@@ -210,6 +215,20 @@ describe('the flair catalog', () => {
     ).toEqual(['dubious', '1F4A4', ended('loss', 'timeout'), 'Lose a game on time']);
     const ids = FLAIR.filter((f) => f.category === 'dubious').map((f) => f.id);
     expect(ids.indexOf('timed_out')).toBe(ids.indexOf('resigned') + 1);
+  });
+
+  it('holds 🚩 after 👬, with its rule and description', () => {
+    const flair = flairById('timeout_win');
+    expect(
+      flair && [
+        flair.category,
+        codePoints(flair.emoji),
+        flair.rule,
+        t(flairDescriptionKey(flair.id)),
+      ],
+    ).toEqual(['feat', '1F6A9', ended('win', 'timeout'), 'Win a game on time']);
+    const ids = FLAIR.filter((f) => f.category === 'feat').map((f) => f.id);
+    expect(ids.indexOf('timeout_win')).toBe(ids.indexOf('rival_5') + 1);
   });
 
   it('backfills ♟️ again for its loosened rule', () =>
