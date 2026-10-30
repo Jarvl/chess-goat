@@ -43,7 +43,7 @@ function Screen() {
         />
       );
     case 'game':
-      return <Game key={route.gameId} gameId={route.gameId} />;
+      return <Game key={route.gameId} gameId={route.gameId} hop={route.hop === true} />;
     case 'player':
       return (
         <Player

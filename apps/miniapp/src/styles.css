@@ -952,13 +952,101 @@ button {
   padding: 8px 0 24px;
 }
 
+/* The switcher strip above the meta line (game switcher spec): 56px boards, the 11px name under
+   them and the strip's padding and border. The board gives the whole row back, so a short phone
+   keeps the slider above the tab bar. */
+.game.with-switcher {
+  --switcher-row: 86px;
+}
+
+.switcher {
+  display: flex;
+  gap: 10px;
+  margin-top: -8px;
+  padding: 10px 12px 8px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  background: var(--card);
+  border-bottom: 1px solid var(--sep);
+}
+
+.switcher::-webkit-scrollbar {
+  display: none;
+}
+
+.switch {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+}
+
+.switch .thumb {
+  position: relative;
+  display: block;
+}
+
+.switch .mini-board {
+  width: 56px;
+  height: 56px;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.switch.current .mini-board {
+  box-shadow:
+    0 0 0 2px var(--card),
+    0 0 0 4px var(--acc);
+}
+
+.switch .dot {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border: 2px solid var(--card);
+  border-radius: 50%;
+  background: var(--move);
+}
+
+.switch .name {
+  max-width: 56px;
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.switch.current .name {
+  color: var(--acc-text);
+  font-weight: 700;
+}
+
+.switch.dim .mini-board {
+  opacity: 0.45;
+  filter: grayscale(0.7);
+}
+
+.switch.dim .name {
+  color: var(--hint);
+}
+
 .board-wrap {
   position: relative;
   width: min(
     100vw,
     calc(
       var(--stable-height) - 200px - var(--board-reserve) - var(--replay-row) -
-        var(--icon-bar-extra) - var(--meta-rows)
+        var(--icon-bar-extra) - var(--meta-rows) - var(--switcher-row, 0px)
     )
   );
   max-width: 640px;

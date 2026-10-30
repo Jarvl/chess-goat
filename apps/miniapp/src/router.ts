@@ -14,7 +14,8 @@ export type Route =
   | { name: 'lobby'; groupId: string; scope?: LobbyScope }
   | { name: 'leaderboard'; groupId: string }
   | { name: 'newGame'; groupId: string; opponentId?: string }
-  | { name: 'game'; gameId: string }
+  /** `hop` marks a game reached from the switcher strip, which keeps the strip's order. */
+  | { name: 'game'; gameId: string; hop?: true }
   | { name: 'player'; groupId: string; userId: string }
   | { name: 'settings' }
   | { name: 'flair' }

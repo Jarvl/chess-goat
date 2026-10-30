@@ -37,6 +37,7 @@ import { confirmDialog } from '../dialog';
 import { termsLabel } from '../format';
 import { toast } from '../toast';
 import { Board } from './Board';
+import { GameSwitcher } from './GameSwitcher';
 import { LinesPanel } from './LinesPanel';
 import { MoveList } from './MoveList';
 import { PlayerBar } from './PlayerBar';
@@ -56,6 +57,7 @@ import {
 } from './premoveHelpers';
 import { PremoveStatus } from './PremoveStatus';
 import { useClock } from './useClock';
+import { useStrip } from './useStrip';
 
 /** A send answered within this shows nothing; a slower one greys the board under a spinner. */
 const SLOW_SEND_MS = 1_000;
@@ -75,7 +77,12 @@ const PIECE_LABEL = {
   n: 'app.game.piece.n',
 } as const;
 
-export function GameView(props: { initial: GameDto; onReload: () => Promise<GameDto> }) {
+export function GameView(props: {
+  initial: GameDto;
+  onReload: () => Promise<GameDto>;
+  /** Reached from the switcher strip, which keeps its order. */
+  hop?: boolean;
+}) {
   const { client, tg, router } = useApp();
   const store = useMemo(() => new GameStore(props.initial), [props.initial.id]);
   const adapterRef = useRef<BoardAdapter | null>(null);
@@ -107,6 +114,7 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
   const gameId = dto.id;
   const isPlayer = dto.viewerRole === 'white' || dto.viewerRole === 'black';
   const premovePath = `/api/games/${gameId}/premoves`;
+  const strip = useStrip(dto, props.hop ?? false);
 
   // Read at each use, so a setting changed mid-game applies from the next move.
   const confirmsNow = (): boolean =>
@@ -878,7 +886,8 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
   const percent = (index: number): string => `${end ? +((index / end) * 100).toFixed(3) : 0}%`;
 
   return (
-    <div class="game">
+    <div class={strip ? 'game with-switcher' : 'game'}>
+      {strip ? <GameSwitcher games={strip} current={dto} /> : null}
       <div class="game-meta">
         {t('app.game.meta', {
           group: dto.group.title,
