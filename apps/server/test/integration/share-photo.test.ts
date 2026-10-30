@@ -6,13 +6,13 @@ import { storePhoto } from '../../src/domain/photos';
 import { loadFonts } from '../../src/images/fonts';
 import { sharePhotoJobHandlers } from '../../src/jobs/handlers/sharePhoto';
 import { enqueue } from '../../src/jobs/queue';
-import { JobWorker } from '../../src/jobs/worker';
-import { createTelegramApi } from '../../src/telegram/client';
-import { testConfig } from '../helpers/config';
+import type { JobWorker } from '../../src/jobs/worker';
+
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
-import { FakeTelegram } from '../helpers/fakeTelegram';
+import type { FakeTelegram } from '../helpers/fakeTelegram';
 import { insertGame, insertGroup, insertMove, insertUser } from '../helpers/fixtures';
 import { FIXTURE_JPEG } from '../helpers/photos';
+import { jobWorker } from '../helpers/worker';
 
 const { db, close } = openTestDb();
 const deps = testDeps(db);
@@ -23,16 +23,8 @@ const AFTER_E4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
 const AFTER_E4_C5 = 'rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2';
 
 beforeAll(async () => {
-  fake = await FakeTelegram.start();
-  const config = testConfig({ TELEGRAM_API_ROOT: fake.url });
-  const api = createTelegramApi(config, { apiRoot: fake.url });
   const fonts = await loadFonts();
-  worker = new JobWorker({
-    db,
-    log: deps.log,
-    handlers: sharePhotoJobHandlers({ deps, api, config }, fonts),
-    workerId: 's',
-  });
+  ({ fake, worker } = await jobWorker(deps, (ctx) => sharePhotoJobHandlers(ctx, fonts)));
 });
 beforeEach(async () => {
   await truncateAll(db);

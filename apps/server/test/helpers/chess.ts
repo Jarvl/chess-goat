@@ -1,5 +1,6 @@
-import { applyMove, positionKey, type PremoveNode } from '@group-chess/shared';
+import { applyMove, positionKey, type PlayerResult, type PremoveNode } from '@group-chess/shared';
 import type { StoredMove } from '../../src/flair/patterns';
+import type { CountedGame } from '../../src/flair/rules';
 
 /** White to move, with a pawn on e7 one step from promoting on e8 (flair spec §7). */
 export const PROMOTION_FEN = '3k4/4P3/8/8/8/8/8/4K3 w - - 0 1';
@@ -99,4 +100,24 @@ export function deepLine(pairs: number): { root: PremoveNode[]; bottom: PremoveN
     bottom = entry.children;
   }
   return { root, bottom };
+}
+
+/** A rated game against player 100 on day `id` of February 2026, as the flair rules count it. */
+export function countedGame(
+  id: number,
+  result: PlayerResult,
+  over: Partial<CountedGame> = {},
+): CountedGame {
+  return {
+    id,
+    startedAt: new Date(Date.UTC(2026, 1, id, 11)),
+    finishedAt: new Date(Date.UTC(2026, 1, id, 12)),
+    rated: true,
+    result,
+    ratingAfter: null,
+    side: 'white',
+    endReason: 'checkmate',
+    opponentId: 100,
+    ...over,
+  };
 }
