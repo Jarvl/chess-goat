@@ -23,6 +23,7 @@ import {
 } from '../../board/promotion';
 import { diffNotices, GameStore, positionAt, type Notice } from '../../state/game';
 import { fenAt, moveLabel, playAt, removeAt, type PlayResult } from '../../state/premoveDraft';
+import { stripMinimized } from '../../state/switcher';
 import { noteTurnChange } from '../../state/yourMove';
 import {
   needsConfirmation,
@@ -37,6 +38,7 @@ import { confirmDialog } from '../dialog';
 import { termsLabel } from '../format';
 import { toast } from '../toast';
 import { Board } from './Board';
+import { GameSwitcher } from './GameSwitcher';
 import { LinesPanel } from './LinesPanel';
 import { MoveList } from './MoveList';
 import { PlayerBar } from './PlayerBar';
@@ -56,6 +58,7 @@ import {
 } from './premoveHelpers';
 import { PremoveStatus } from './PremoveStatus';
 import { useClock } from './useClock';
+import { useStrip } from './useStrip';
 
 /** A send answered within this shows nothing; a slower one greys the board under a spinner. */
 const SLOW_SEND_MS = 1_000;
@@ -75,7 +78,12 @@ const PIECE_LABEL = {
   n: 'app.game.piece.n',
 } as const;
 
-export function GameView(props: { initial: GameDto; onReload: () => Promise<GameDto> }) {
+export function GameView(props: {
+  initial: GameDto;
+  onReload: () => Promise<GameDto>;
+  /** Reached from the switcher strip, which keeps its order. */
+  hop?: boolean;
+}) {
   const { client, tg, router } = useApp();
   const store = useMemo(() => new GameStore(props.initial), [props.initial.id]);
   const adapterRef = useRef<BoardAdapter | null>(null);
@@ -107,6 +115,7 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
   const gameId = dto.id;
   const isPlayer = dto.viewerRole === 'white' || dto.viewerRole === 'black';
   const premovePath = `/api/games/${gameId}/premoves`;
+  const strip = useStrip(dto, props.hop ?? false);
 
   // Read at each use, so a setting changed mid-game applies from the next move.
   const confirmsNow = (): boolean =>
@@ -813,7 +822,8 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
           body,
           GameDtoSchema,
         );
-        router.replace({ name: 'game', gameId: next.id });
+        // In place like a hop: the switcher strip keeps its order and takes the new game on.
+        router.replace({ name: 'game', gameId: next.id, hop: true });
         return;
       }
       await client.post(`/api/games/${gameId}/rematch`, {});
@@ -878,7 +888,15 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
   const percent = (index: number): string => `${end ? +((index / end) * 100).toFixed(3) : 0}%`;
 
   return (
-    <div class="game">
+    <div
+      class={
+        strip
+          ? stripMinimized.value
+            ? 'game with-switcher switcher-minimized'
+            : 'game with-switcher'
+          : 'game'
+      }
+    >
       <div class="game-meta">
         {t('app.game.meta', {
           group: dto.group.title,
@@ -1101,6 +1119,8 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
           </button>
         </div>
       )}
+      {/* Docked just above the tab bar, where a thumb reaches it (game switcher spec). */}
+      {strip ? <GameSwitcher games={strip} currentId={dto.id} live={dto} /> : null}
     </div>
   );
 }

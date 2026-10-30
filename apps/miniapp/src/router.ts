@@ -14,7 +14,8 @@ export type Route =
   | { name: 'lobby'; groupId: string; scope?: LobbyScope }
   | { name: 'leaderboard'; groupId: string }
   | { name: 'newGame'; groupId: string; opponentId?: string }
-  | { name: 'game'; gameId: string }
+  /** `hop` marks a game reached from the switcher strip, which keeps the strip's order. */
+  | { name: 'game'; gameId: string; hop?: true }
   | { name: 'player'; groupId: string; userId: string }
   | { name: 'settings' }
   | { name: 'flair' }
@@ -41,6 +42,14 @@ const TABLESS: ReadonlySet<Route['name']> = new Set([
 ]);
 
 type Stacks = Record<TabName, Route[]>;
+
+/**
+ * A game resumed from another section is arrived at, not hopped to: the switcher strip takes a
+ * fresh order (game switcher spec), not whatever the other section's games left behind.
+ */
+function arrival(route: Route): Route {
+  return route.name === 'game' && route.hop ? { name: 'game', gameId: route.gameId } : route;
+}
 
 /**
  * A tabbed in-memory router (Telegram owns the URL fragment). Tabs carry lateral movement and
@@ -89,7 +98,7 @@ export class Router {
   /** A lateral move: another tab resumes where it was left, the active one returns to its root. */
   select(tab: TabName): void {
     void this.leave(() => {
-      const kept = this.stacks.value[tab];
+      const kept = this.stacks.value[tab].map(arrival);
       const next = tab === this.tab.value || kept.length === 0 ? [TAB_ROOT[tab]] : kept;
       this.tab.value = tab;
       this.write(tab, next);

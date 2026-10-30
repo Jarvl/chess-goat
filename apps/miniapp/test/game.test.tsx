@@ -300,7 +300,8 @@ describe('Game', () => {
     const post = r.calls.at(-1);
     expect(post?.path).toBe(`/api/groups/${finished.group.id}/engine-games`);
     expect(post?.body).toEqual({ level: 'club', colour: 'random' });
-    expect(r.app.router.current.value).toEqual({ name: 'game', gameId: 'NextGameA1' });
+    // Opened in place like a hop, so the switcher strip keeps its order and adds the new game.
+    expect(r.app.router.current.value).toEqual({ name: 'game', gameId: 'NextGameA1', hop: true });
   });
 
   it('lets spectators flip and share the viewed position', async () => {

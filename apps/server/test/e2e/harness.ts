@@ -76,7 +76,8 @@ function scriptedEngine(): Engine & {
   };
 }
 
-type Scenario = 'none' | 'fresh' | 'opening' | 'promotion' | 'finished' | 'ranked';
+type Scenario =
+  'none' | 'fresh' | 'opening' | 'promotion' | 'finished' | 'ranked' | 'several' | 'crowd';
 type SeedRequest = {
   scenario: Scenario;
   prefs?: Record<string, Record<string, unknown>>;
@@ -131,6 +132,10 @@ async function main(): Promise<void> {
     await truncateAll(db);
     fake.reset();
     engine.reset();
+    // Ids restart with the truncate, so every seed's Alice is the same user to the rate limiters:
+    // without this, a whole run's requests add up against her, as the integration tests avoid too.
+    server.ctx.rateLimiter.reset();
+    server.ctx.tipLimiter.reset();
     for (const user of Object.values(TELEGRAM_USERS)) fake.members.set(user.id, 'member');
     fake.admins = [TELEGRAM_USERS.alice.id];
     const group = await insertGroup(db, {
@@ -172,6 +177,33 @@ async function main(): Promise<void> {
       await insertMove(db, row.id, 1, 'e2e4', 'e4', AFTER_E4);
       await insertMove(db, row.id, 2, 'e7e5', 'e5', AFTER_E4_E5);
       game = row;
+    }
+    if (request.scenario === 'several') {
+      // Two of Alice's games (game switcher spec): 1.e4 e5 against Bob, hers to move, then 1.e4
+      // against Carol, Carol's to move.
+      const row = await insertGame(db, group.id, alice, bob, { fen: AFTER_E4_E5, plyCount: 2 });
+      await insertMove(db, row.id, 1, 'e2e4', 'e4', AFTER_E4);
+      await insertMove(db, row.id, 2, 'e7e5', 'e5', AFTER_E4_E5);
+      const carol = await insertGame(db, group.id, alice, rows.carol!.id, {
+        fen: AFTER_E4,
+        plyCount: 1,
+      });
+      await insertMove(db, carol.id, 1, 'e2e4', 'e4', AFTER_E4);
+      game = row;
+    }
+    if (request.scenario === 'crowd') {
+      // Nine of Alice's games, more than a phone's strip shows at once (game switcher spec): the
+      // first five hers to move, the rest her opponents'.
+      for (let index = 0; index < 9; index += 1) {
+        const opponent = index % 2 === 0 ? bob : rows.carol!.id;
+        const yours = index < 5;
+        const row = await insertGame(db, group.id, alice, opponent, {
+          fen: yours ? INITIAL_FEN : AFTER_E4,
+          plyCount: yours ? 0 : 1,
+        });
+        if (!yours) await insertMove(db, row.id, 1, 'e2e4', 'e4', AFTER_E4);
+        game ??= row;
+      }
     }
     if (request.scenario === 'promotion')
       game = await insertGame(db, group.id, alice, bob, { fen: PROMOTION_FEN, plyCount: 6 });

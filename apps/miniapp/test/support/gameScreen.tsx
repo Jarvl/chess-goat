@@ -30,6 +30,8 @@ import { stubAdapter, type StubAdapter } from './stubAdapter';
 export const GAME = 'AbCdEfGhIj';
 export const premovePath = `/api/games/${GAME}/premoves`;
 const movesPath = `/api/games/${GAME}/moves`;
+/** The switcher strip's list of the viewer's games, which every game screen loads. */
+export const meGamesPath = '/api/me/games';
 
 const screen: { adapter: StubAdapter; confirmations: MoveConfirmations } = {
   adapter: stubAdapter(),
@@ -69,14 +71,17 @@ export function staleState(message = 'the position has changed'): FakeResponse {
 
 /**
  * The server for a game screen showing `initial`. A move POST answers the game after one ply, a
- * premove PUT the game with the tree it saved; `on` overrides either, or the draw buttons. Any
- * other request answers 404, so a test that forgets a route fails rather than reading `{}` as a game.
+ * premove PUT the game with the tree it saved, and the switcher strip's list no other games; `on`
+ * overrides any of them, or the draw buttons. Any other request answers 404, so a test that forgets
+ * a route fails rather than reading `{}` as a game.
  */
 export function gameRoutes(
   initial: GameDto,
-  on: { move?: FakeRoute; premovePut?: FakeRoute; draw?: FakeRoute } = {},
+  on: { move?: FakeRoute; premovePut?: FakeRoute; draw?: FakeRoute; meGames?: FakeRoute } = {},
 ): FakeRoute {
   return (call) => {
+    if (call.method === 'GET' && call.path === meGamesPath)
+      return on.meGames ? on.meGames(call) : { status: 200, body: { items: [] } };
     if (call.method === 'POST' && call.path === movesPath)
       return on.move ? on.move(call) : { status: 200, body: afterPlies(1) };
     if (call.method === 'PUT' && call.path === premovePath)
@@ -96,22 +101,35 @@ export function gameRoutes(
   };
 }
 
-/** Mounts the game screen on `initial`, prefetched, as the router would after a game link. */
+/**
+ * Mounts the game screen on `initial`, prefetched, as the router would after a game link. Its
+ * `calls` leaves out the switcher strip's list, which every game screen loads, so a count of the
+ * screen's own requests keeps its meaning; `allCalls` has everything.
+ */
 export function mountGame(
   initial: GameDto,
-  opts: { route?: FakeRoute; version?: string; tg?: Tg; confirmations?: MoveConfirmations } = {},
-): Rendered {
+  opts: {
+    route?: FakeRoute;
+    version?: string;
+    tg?: Tg;
+    confirmations?: MoveConfirmations;
+    hop?: boolean;
+  } = {},
+): Rendered & { allCalls: Rendered['calls'] } {
   const r = renderApp(
     (app) => {
       app.prefetched.game = initial;
-      return <Game gameId={GAME} />;
+      return <Game gameId={GAME} hop={opts.hop} />;
     },
     opts.route ?? gameRoutes(initial),
     { version: opts.version ?? '8.0', ...(opts.tg ? { tg: opts.tg } : {}) },
   );
   // renderApp resets the preferences; the screen reads them when a move is dropped.
   prefs.value = { ...prefs.value, moveConfirmations: opts.confirmations ?? screen.confirmations };
-  return r;
+  const allCalls = r.calls;
+  return Object.defineProperty({ ...r, allCalls }, 'calls', {
+    get: () => allCalls.filter((call) => call.path !== meGamesPath),
+  }) as Rendered & { allCalls: Rendered['calls'] };
 }
 
 /** Drops each move on the board in turn, letting the screen settle after each. */

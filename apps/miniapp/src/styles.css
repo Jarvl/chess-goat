@@ -50,7 +50,7 @@
   --pm-soft: #e6f1fa;
   --stable-height: 100vh;
   --radius: 12px;
-  --tabbar-h: calc(56px + env(safe-area-inset-bottom, 0px));
+  --tabbar-h: calc(58px + env(safe-area-inset-bottom, 0px));
   /** Vertical space the board must leave for chrome below it; the tab bar adds itself here. */
   --board-reserve: 0px;
   color-scheme: light dark;
@@ -106,6 +106,9 @@ button {
   right: 0;
   bottom: 0;
   z-index: 10;
+  /* Exactly the height every layout reserves for it, so whatever sits on it sits flush. */
+  box-sizing: border-box;
+  height: var(--tabbar-h);
   display: flex;
   background: var(--card);
   border-top: 1px solid var(--sep);
@@ -868,6 +871,16 @@ button {
   bottom: calc(var(--tabbar-h) + 16px);
 }
 
+/* Clear of the game switcher docked on the tab bar: the strip and its chevron tab, or the tab
+   alone once minimized (game switcher spec), so a toast never covers a thumbnail. */
+.with-tabbar.dock-open ~ .toast {
+  bottom: calc(var(--tabbar-h) + 92px + 28px + 16px);
+}
+
+.with-tabbar.dock-minimized ~ .toast {
+  bottom: calc(var(--tabbar-h) + 28px + 16px);
+}
+
 .dialog-backdrop {
   position: fixed;
   inset: 0;
@@ -952,8 +965,171 @@ button {
   padding: 8px 0 24px;
 }
 
+/* The switcher strip, docked just above the tab bar where a thumb reaches it (game switcher spec).
+   It lies over the game, so the board keeps its size: the game's bottom padding lets every
+   control scroll clear of the strip (92px) and the chevron tab on its edge (28px), or of the tab
+   alone once minimized. */
+.game.with-switcher {
+  padding-bottom: calc(24px + 92px + 28px);
+}
+
+.game.with-switcher.switcher-minimized {
+  padding-bottom: calc(24px + 28px);
+}
+
+.switcher-dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: var(--tabbar-h);
+  z-index: 9;
+  background: var(--card);
+  border-top: 1px solid var(--sep);
+  box-shadow: 0 -6px 16px rgb(0 0 0 / 6%);
+}
+
+.switcher-dock.minimized {
+  background: none;
+  border-top: 0;
+  box-shadow: none;
+}
+
+.switcher {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px 8px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.switcher::-webkit-scrollbar {
+  display: none;
+}
+
+/* The one control, a chevron on the strip's top edge at the right: down hides, up shows. */
+.switcher-toggle {
+  position: absolute;
+  right: 12px;
+  bottom: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--sep);
+  border-bottom: 0;
+  border-radius: 14px 14px 0 0;
+  background: var(--card);
+  color: var(--text);
+  box-shadow: 0 -4px 10px rgb(0 0 0 / 5%);
+}
+
+/* A 28px tab is short for a finger: the hit area reaches 16px further up, 44px in all. */
+.switcher-toggle::before {
+  content: '';
+  position: absolute;
+  inset: -16px -4px 0;
+}
+
+.switcher-toggle svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.2s;
+}
+
+.switcher-dock.minimized .switcher-toggle svg {
+  transform: rotate(180deg);
+}
+
+.switcher-toggle .dot {
+  position: absolute;
+  top: 4px;
+  right: 10px;
+  width: 9px;
+  height: 9px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--card);
+  border-radius: 50%;
+  background: var(--move);
+}
+
+.switcher-game {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+}
+
+.switcher-game .thumb {
+  position: relative;
+  display: block;
+}
+
+.switcher-game .mini-board {
+  width: 56px;
+  height: 56px;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.switcher-game.current .mini-board {
+  box-shadow:
+    0 0 0 2px var(--card),
+    0 0 0 4px var(--acc);
+}
+
+.switcher-game .dot {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border: 2px solid var(--card);
+  border-radius: 50%;
+  background: var(--move);
+}
+
+.switcher-game .name {
+  max-width: 56px;
+  line-height: 14px;
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.switcher-game.current .name {
+  color: var(--acc-text);
+  font-weight: 700;
+}
+
+.switcher-game.dim .mini-board {
+  opacity: 0.45;
+  filter: grayscale(0.7);
+}
+
+.switcher-game.dim .name {
+  color: var(--hint);
+}
+
 .board-wrap {
   position: relative;
+  /* Keeps chessground's raised layers (coordinates at z 20, a dragged piece) inside the board, so
+     on a screen short enough to slide the board under the docked switcher strip, they stay under
+     it too. */
+  isolation: isolate;
   width: min(
     100vw,
     calc(
