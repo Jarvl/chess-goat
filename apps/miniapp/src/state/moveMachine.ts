@@ -1,6 +1,12 @@
 import type { EngineLevel, MoveConfirmations } from '@group-chess/shared';
 
-export type PendingMove = { uci: string; expectedPly: number; clientMoveId: string };
+export type PendingMove = {
+  uci: string;
+  expectedPly: number;
+  clientMoveId: string;
+  /** The premove tree sent with the move (conditional premoves spec): `''` for none. */
+  premoveTree: string;
+};
 
 export type MoveState =
   | { kind: 'idle' }
@@ -11,11 +17,16 @@ export type MoveState =
 
 export type MoveEvent =
   | { type: 'drop'; uci: string; expectedPly: number; clientMoveId?: string }
-  | { type: 'confirm' }
+  /** Confirm move, carrying the encoded premove tree built on top of the move. */
+  | { type: 'confirm'; premoveTree: string }
+  /** A different move played from the position before the waiting one takes its place. */
+  | { type: 'replace'; uci: string }
   | { type: 'cancel' }
   | { type: 'sent' }
   /** 409 or 422: reload the state and snap back without a message (spec §6.3). */
   | { type: 'rejected' }
+  /** 413: the tree made the request too big. The move waits again, nothing reloads. */
+  | { type: 'tooBig' }
   | { type: 'networkError'; now: number }
   | { type: 'retryNow' }
   | { type: 'tick'; now: number };
@@ -72,16 +83,23 @@ export function reduceMove(
         uci: event.uci,
         expectedPly: event.expectedPly,
         clientMoveId: event.clientMoveId ?? newClientMoveId(),
+        premoveTree: '',
       };
       if (options.confirm) return { state: { kind: 'pendingConfirm', move }, effects: [] };
       return { state: { kind: 'sending', move, attempt: 1 }, effects: [{ type: 'send', move }] };
     }
     case 'pendingConfirm': {
       if (event.type === 'confirm') {
+        const move = { ...state.move, premoveTree: event.premoveTree };
         return {
-          state: { kind: 'sending', move: state.move, attempt: 1 },
-          effects: [{ type: 'send', move: state.move }],
+          state: { kind: 'sending', move, attempt: 1 },
+          effects: [{ type: 'send', move }],
         };
+      }
+      if (event.type === 'replace') {
+        // A new id: the server must never take the replacement for a retry of the old move.
+        const move = { ...state.move, uci: event.uci, clientMoveId: newClientMoveId() };
+        return { state: { kind: 'pendingConfirm', move }, effects: [] };
       }
       if (event.type === 'cancel')
         return { state: { kind: 'idle' }, effects: [{ type: 'restore' }] };
@@ -89,6 +107,8 @@ export function reduceMove(
     }
     case 'sending': {
       if (event.type === 'sent') return { state: { kind: 'idle' }, effects: [] };
+      if (event.type === 'tooBig')
+        return { state: { kind: 'pendingConfirm', move: state.move }, effects: [] };
       if (event.type === 'rejected') {
         return { state: { kind: 'idle' }, effects: [{ type: 'restore' }, { type: 'reload' }] };
       }

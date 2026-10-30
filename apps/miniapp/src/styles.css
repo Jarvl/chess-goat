@@ -2081,6 +2081,34 @@ coords.squares:nth-of-type(even) :nth-child(even) {
 
 /* Lines panel (conditional premoves): every branch at once. It scrolls on its own, and has no
    overscroll-behavior so a swipe on a panel that cannot scroll further scrolls the page. */
+/* The status line under the slider: where the premoves stand, then what a move would do. */
+.premove-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  padding: 6px 16px 0;
+  font-size: 13px;
+}
+
+.premove-pill {
+  flex: none;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--pm-soft);
+  color: var(--pm);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.premove-hint {
+  min-width: 0;
+  color: var(--hint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .lines-panel {
   max-height: 34vh;
   overflow-y: auto;

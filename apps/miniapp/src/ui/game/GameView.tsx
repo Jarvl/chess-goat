@@ -1,15 +1,15 @@
 import {
-  applyMove,
+  countPremovePairs,
   GameDtoSchema,
-  imaginedBoard,
-  isPremovePromotion,
   PgnLinkDtoSchema,
-  sideToMove,
   t,
   type Colour,
+  type DraftNode,
   type EngineGameRequest,
   type GameDto,
+  type PremoveTreeRequest,
 } from '@group-chess/shared';
+import { batch } from '@preact/signals';
 import { h } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { ApiError } from '../../api/client';
@@ -22,7 +22,7 @@ import {
   type PromotionPiece,
 } from '../../board/promotion';
 import { diffNotices, GameStore, positionAt, type Notice } from '../../state/game';
-import { sameList } from '../../state/premoves';
+import { fenAt, moveLabel, playAt, removeAt, type PlayResult } from '../../state/premoveDraft';
 import { noteTurnChange } from '../../state/yourMove';
 import {
   needsConfirmation,
@@ -37,13 +37,29 @@ import { confirmDialog } from '../dialog';
 import { termsLabel } from '../format';
 import { toast } from '../toast';
 import { Board } from './Board';
+import { LinesPanel } from './LinesPanel';
 import { MoveList } from './MoveList';
 import { PlayerBar } from './PlayerBar';
+import {
+  colourAt,
+  confirmMoveLabel,
+  fingerprint,
+  hasOpenMove,
+  removedMessage,
+  removeMessage,
+  replaceReplyMessage,
+  replaceWaitingMessage,
+  samePath,
+  sameTree,
+  sanOf,
+  sendable,
+} from './premoveHelpers';
+import { PremoveStatus } from './PremoveStatus';
 import { useClock } from './useClock';
 
 /** A send answered within this shows nothing; a slower one greys the board under a spinner. */
 const SLOW_SEND_MS = 1_000;
-/** Telegram shows Confirm move and Cancel itself; the page draws neither. */
+/** Telegram shows Confirm and Cancel itself; the page draws neither. */
 const NO_IN_PAGE = { confirm: false, cancel: false };
 
 const PIECE_CLASS: Record<PromotionPiece, string> = {
@@ -59,29 +75,6 @@ const PIECE_LABEL = {
   n: 'app.game.piece.n',
 } as const;
 
-/**
- * Pushes the position after a move that just went to `pendingConfirm`, so the frozen board shows
- * what is being confirmed instead of chessground's own drop display: the picked promotion piece,
- * an en passant capture with the pawn removed, a check highlight. Pushes nothing when `uci` turns
- * out illegal (e.g. a malformed test fixture); the board stays as chessground left it.
- */
-function pushPendingPosition(
-  adapter: BoardAdapter | null,
-  fen: string,
-  uci: string,
-  orientation: Colour,
-): void {
-  const result = applyMove(fen, [], uci);
-  if (!result.legal) return;
-  adapter?.setPosition({
-    fen: result.fenAfter,
-    lastMove: [uci.slice(0, 2), uci.slice(2, 4)],
-    check: result.check,
-    orientation,
-    turnColour: sideToMove(result.fenAfter),
-  });
-}
-
 export function GameView(props: { initial: GameDto; onReload: () => Promise<GameDto> }) {
   const { client, tg, router } = useApp();
   const store = useMemo(() => new GameStore(props.initial), [props.initial.id]);
@@ -91,21 +84,43 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
   const [promotion, setPromotion] = useState<{
     orig: string;
     dest: string;
-    premove: boolean;
-    ply: number;
-    /** The chain the piece was dropped onto; a different one by pick time voids the pick. */
-    base: string[];
+    /** The side whose pawn promotes: the opponent's, for one of their moves in the tree. */
+    colour: Colour;
+    /** Where it was dropped; anything different by pick time voids the pick. */
+    at: string;
+    tree: DraftNode[];
   } | null>(null);
   const [slowSend, setSlowSend] = useState(false);
   // True from a drop that waits for Confirm move until that move settles (sent, cancelled or
   // rejected): the bar stays up through the send, and the tab bar stays hidden (move confirmations spec).
   const [confirming, setConfirming] = useState(false);
-  // Which of Confirm move and Cancel this client has no Telegram button for, so the page draws them.
+  // Which of Confirm and Cancel this client has no Telegram button for, so the page draws them.
   const [inPage, setInPage] = useState(NO_IN_PAGE);
+  // Confirm premoves is on its way to the server.
+  const [confirmingPremoves, setConfirmingPremoves] = useState(false);
+  const confirmingPremovesRef = useRef(false);
+  // A save with confirmations off is running (premoves spec, Queuing).
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  /** The server tree the open draft was started on: Confirm premoves compares against it. */
+  const draftBaseRef = useRef<string | null>(null);
   const now = useClock(store);
   const dto = store.dto.value;
   const gameId = dto.id;
   const isPlayer = dto.viewerRole === 'white' || dto.viewerRole === 'black';
+  const premovePath = `/api/games/${gameId}/premoves`;
+
+  // Read at each use, so a setting changed mid-game applies from the next move.
+  const confirmsNow = (): boolean =>
+    needsConfirmation(prefs.value.moveConfirmations, store.dto.value);
+  const opponentName = (): string => {
+    const current = store.dto.value;
+    return current[current.viewerRole === 'black' ? 'white' : 'black'].name;
+  };
+  const syncLocked = (): void => {
+    const kind = moveRef.current.kind;
+    store.locked.value = kind === 'sending' || kind === 'retry' || confirmingPremovesRef.current;
+  };
 
   const notify = useCallback(
     (notice: Notice) => {
@@ -117,8 +132,10 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
         toast(t('app.game.premoves_cancelled'));
         tg.hapticNotify('warning');
       }
+      if (notice === 'premove_draft_discarded')
+        toast(t('app.game.premove_draft_discarded', { name: opponentName() }));
     },
-    [tg],
+    [tg, store],
   );
   // applyState is defined before dispatch; it reaches the machine through this ref.
   const dispatchRef = useRef<(event: MoveEvent) => void>(() => undefined);
@@ -126,18 +143,32 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
     (next: GameDto) => {
       const previous = store.dto.value;
       noteServerTime(next.serverTime);
+      // Unconfirmed premove changes that a new ply or a game end throws away; never a draft that
+      // is on its way to the server with a move or with Confirm premoves.
+      const discardedDraft =
+        needsConfirmation(prefs.value.moveConfirmations, previous) &&
+        store.premoveDraftChanged.value &&
+        !store.locked.value;
+      // A draft with nothing unsaved in it follows a tree changed on another device.
+      const draft = store.draftTree.value;
+      const followServer =
+        draft !== null &&
+        !savingRef.current &&
+        !confirmingPremovesRef.current &&
+        sendable(draft) === previous.premoveTree;
       if (!store.apply(next)) return;
+      const samePly = next.plyCount === previous.plyCount && next.status === previous.status;
+      if (samePly && followServer && next.premoveTree !== previous.premoveTree) {
+        store.dropDraftTree();
+      }
       noteTurnChange(previous, next);
-      for (const notice of diffNotices(previous, next)) notify(notice);
+      for (const notice of diffNotices(previous, next, { discardedDraft })) notify(notice);
       // Spec §6.3: a check buzzes, whichever side gave it.
       if (next.plyCount > previous.plyCount && positionAt(next, next.plyCount).check)
         tg.hapticNotify('warning');
       // A move waiting for Confirm move is void once the game has moved on (the server would
       // reject its expectedPly anyway): take it off the board and the buttons.
-      if (
-        moveRef.current.kind === 'pendingConfirm' &&
-        (next.plyCount !== previous.plyCount || next.status !== previous.status)
-      )
+      if (moveRef.current.kind === 'pendingConfirm' && !samePly)
         dispatchRef.current({ type: 'cancel' });
     },
     [store, notify, tg],
@@ -168,57 +199,84 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
     });
   }, [store]);
 
-  // Premoves spec, Queuing: optimistic compare-and-set edits, saved one at a time. An edit made
-  // while a save runs goes on screen at once and is saved as soon as that one settles.
-  const wantedPremovesRef = useRef<string[] | null>(null);
-  const editPremoves = async (next: string[], step: number | null): Promise<void> => {
-    const previousStep = store.premoveStep.value;
-    store.optimisticPremoves.value = next;
-    store.premoveStep.value = step;
-    wantedPremovesRef.current = next;
-    if (store.premoveSending.value) return;
-    // Every edit made from here until the loop ends builds on the chain the previous save
-    // confirmed, so that is what each save compares against.
-    let confirmed = store.dto.value.premoves;
-    const expectedPly = store.dto.value.plyCount;
-    store.premoveSending.value = true;
+  /** A refused premove request: reload, and say so when another device changed the tree. */
+  const reloadAfterRefusal = async (error: unknown, expectedPly: number): Promise<void> => {
     try {
-      while (wantedPremovesRef.current && !sameList(wantedPremovesRef.current, confirmed)) {
-        const target = wantedPremovesRef.current;
-        const body = { base: confirmed, premoves: target, expectedPly };
-        const saved = await client.put(`/api/games/${gameId}/premoves`, body, GameDtoSchema);
-        confirmed = saved.premoves;
+      const fresh = await props.onReload();
+      applyState(fresh);
+      // The server keeps why it refused to itself; an unchanged ply means the tree changed under us.
+      if (
+        error instanceof ApiError &&
+        error.code === 'stale_state' &&
+        fresh.status === 'active' &&
+        fresh.plyCount === expectedPly
+      )
+        toast(t('app.game.premoves_changed'));
+    } catch {
+      // The stream brings the state back when the connection does.
+    }
+  };
+
+  // Confirmations off (conditional premoves spec, Sending it): every completed change saves at
+  // once, one save at a time, each against the fingerprint of the tree the previous one
+  // confirmed. A change made while a save runs is saved as soon as that one settles.
+  const wantedTreeRef = useRef<readonly DraftNode[] | null>(null);
+  const saveTree = async (tree: readonly DraftNode[]): Promise<void> => {
+    wantedTreeRef.current = tree;
+    if (savingRef.current) return;
+    let confirmed = store.dto.value.premoveTree;
+    const expectedPly = store.dto.value.plyCount;
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      for (let wanted = wantedTreeRef.current; wanted; wanted = wantedTreeRef.current) {
+        const text = sendable(wanted);
+        if (text === confirmed) break;
+        if (text === null) {
+          // Kept on screen, never sent (spec, The tree).
+          toast(t('app.game.premove_too_big'));
+          break;
+        }
+        const body: PremoveTreeRequest = {
+          baseHash: await fingerprint(confirmed),
+          tree: text,
+          expectedPly,
+        };
+        const saved = await client.put(premovePath, body, GameDtoSchema);
+        confirmed = saved.premoveTree;
         applyState(saved);
         tg.haptic('light');
       }
-      wantedPremovesRef.current = null;
-      store.optimisticPremoves.value = null;
     } catch (error) {
-      wantedPremovesRef.current = null;
-      store.optimisticPremoves.value = null;
-      store.premoveStep.value = previousStep;
+      if (error instanceof ApiError && error.status === 413) {
+        toast(t('app.game.premove_too_big'));
+        return;
+      }
+      store.dropDraftTree();
       restore();
       if (error instanceof ApiError && error.isNetwork) {
         toast(t('app.common.offline'));
         return;
       }
-      try {
-        const fresh = await props.onReload();
-        applyState(fresh);
-        // The server keeps why it refused to itself; an unchanged ply means the chain changed under us.
-        if (
-          error instanceof ApiError &&
-          error.code === 'stale_state' &&
-          fresh.status === 'active' &&
-          fresh.plyCount === expectedPly
-        )
-          toast(t('app.game.premoves_changed'));
-      } catch {
-        // The stream brings the state back when the connection does.
-      }
+      await reloadAfterRefusal(error, expectedPly);
     } finally {
-      store.premoveSending.value = false;
+      wantedTreeRef.current = null;
+      savingRef.current = false;
+      setSaving(false);
     }
+  };
+  /** A completed change: saved at once with confirmations off, held for Confirm otherwise. */
+  const completed = (): void => {
+    if (!confirmsNow()) void saveTree(store.tree.value);
+  };
+  /** Puts an edited tree in the draft and shows `path`. */
+  const edit = (tree: DraftNode[], path: string[]): void => {
+    batch(() => {
+      if (store.draftTree.value === null) draftBaseRef.current = store.dto.value.premoveTree;
+      store.draftTree.value = tree;
+      store.selected.value = path;
+      store.viewingPly.value = null;
+    });
   };
 
   // The effect runner closes over this render's props and callbacks; `dispatch` stays stable and
@@ -226,21 +284,29 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
   const runEffectRef = useRef<(effect: MoveEffect) => void>(() => undefined);
   const dispatch = useCallback(
     (event: MoveEvent) => {
-      // Read at each drop, so a setting changed mid-game applies from the next move.
       const confirm = needsConfirmation(prefs.value.moveConfirmations, store.dto.value);
-      const { state, effects } = reduceMove(moveRef.current, event, { confirm });
+      const before = moveRef.current;
+      const { state, effects } = reduceMove(before, event, { confirm });
       moveRef.current = state;
       setMoveState(state);
-      store.moveBusy.value = state.kind !== 'idle';
-      if (state.kind === 'pendingConfirm') {
-        setConfirming(true);
-        pushPendingPosition(
-          adapterRef.current,
-          store.dto.value.fen,
-          state.move.uci,
-          store.orientation.value,
-        );
-      } else if (state.kind === 'idle') setConfirming(false);
+      batch(() => {
+        store.moveBusy.value = state.kind !== 'idle';
+        syncLocked();
+        if (state.kind === 'pendingConfirm') {
+          // The machine's waiting move is the draft's: the tree is built on top of it.
+          if (store.waiting.value?.uci !== state.move.uci) {
+            store.setWaiting({
+              uci: state.move.uci,
+              san: sanOf(store.dto.value.fen, state.move.uci),
+            });
+          }
+        } else if (state.kind === 'idle' && before.kind !== 'idle') {
+          // Cancelled, sent or refused: the draft goes with the move.
+          store.resetDraft();
+        }
+      });
+      if (state.kind === 'pendingConfirm') setConfirming(true);
+      else if (state.kind === 'idle') setConfirming(false);
       for (const effect of effects) runEffectRef.current(effect);
     },
     [store],
@@ -260,7 +326,11 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
           .catch((error: unknown) => {
             if (error instanceof ApiError && error.isNetwork)
               dispatch({ type: 'networkError', now: Date.now() });
-            else dispatch({ type: 'rejected' });
+            else if (error instanceof ApiError && error.status === 413) {
+              // The tree made the request too big: the move waits again, with its draft.
+              toast(t('app.game.premove_too_big'));
+              dispatch({ type: 'tooBig' });
+            } else dispatch({ type: 'rejected' });
           });
         return;
       }
@@ -283,6 +353,64 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
 
   runEffectRef.current = runEffect;
 
+  /** Confirm move: the move and the tree built on it, in one request. */
+  const confirmMove = (): void => {
+    if (moveRef.current.kind !== 'pendingConfirm') return;
+    const text = sendable(store.tree.value);
+    if (text === null) {
+      toast(t('app.game.premove_too_big'));
+      return;
+    }
+    dispatch({ type: 'confirm', premoveTree: text });
+  };
+  /** Confirm premoves (the opponent's turn): the draft replaces the tree it was started on. */
+  const confirmPremoves = async (): Promise<void> => {
+    if (confirmingPremovesRef.current || moveRef.current.kind !== 'idle') return;
+    if (!store.premoveDraftChanged.value) return;
+    const text = sendable(store.tree.value);
+    if (text === null) {
+      toast(t('app.game.premove_too_big'));
+      return;
+    }
+    const base = draftBaseRef.current ?? store.dto.value.premoveTree;
+    const expectedPly = store.dto.value.plyCount;
+    confirmingPremovesRef.current = true;
+    setConfirmingPremoves(true);
+    syncLocked();
+    try {
+      const body: PremoveTreeRequest = {
+        baseHash: await fingerprint(base),
+        tree: text,
+        expectedPly,
+      };
+      const saved = await client.put(premovePath, body, GameDtoSchema);
+      applyState(saved);
+      // Confirmed: the server's tree is the draft now, less any opponent move left unanswered.
+      if (store.dto.value.plyCount === expectedPly) store.dropDraftTree();
+      tg.haptic('light');
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 413) toast(t('app.game.premove_too_big'));
+      else if (error instanceof ApiError && error.isNetwork) toast(t('app.common.offline'));
+      else {
+        store.resetDraft();
+        restore();
+        await reloadAfterRefusal(error, expectedPly);
+      }
+    } finally {
+      confirmingPremovesRef.current = false;
+      setConfirmingPremoves(false);
+      syncLocked();
+    }
+  };
+  /** Cancel on the opponent's turn: the premove changes since the last save go. */
+  const cancelDraft = (): void => {
+    store.resetDraft();
+    restore();
+  };
+  // Telegram's buttons keep their handlers between renders; they call the latest of these.
+  const actionsRef = useRef({ confirmMove, confirmPremoves, cancelDraft });
+  actionsRef.current = { confirmMove, confirmPremoves, cancelDraft };
+
   // Retry timer: wake the machine when the backoff elapses.
   useEffect(() => {
     if (moveState.kind !== 'retry') return;
@@ -304,57 +432,65 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
     return () => clearTimeout(timer);
   }, [moveState.kind, slowSend]);
 
-  // Telegram buttons per machine state (spec §6.3, move confirmations spec). A send that needed
-  // no confirmation shows none: the main button resizes the viewport, and the board with it, so
-  // flashing it on every move makes the page jump. After Confirm move the bar is already up, so
-  // it stays, with a spinner, until the move settles.
+  // The bottom bar (conditional premoves spec, Sending it: confirmations on): Confirm move with the
+  // premoves on top of it, or Confirm premoves on the opponent's turn, each beside Cancel.
+  const confirmOn = needsConfirmation(prefs.value.moveConfirmations, dto);
+  const premoveDraftOpen =
+    confirmOn && moveState.kind === 'idle' && store.premoveDraftChanged.value;
+  const pairs = moveState.kind === 'pendingConfirm' ? countPremovePairs(store.tree.value) : 0;
+  const confirmLabel =
+    moveState.kind === 'pendingConfirm' ? confirmMoveLabel(pairs) : t('app.game.confirm_premoves');
+  const onConfirm = (): void => {
+    if (moveRef.current.kind === 'pendingConfirm') actionsRef.current.confirmMove();
+    else void actionsRef.current.confirmPremoves();
+  };
+  const onCancel = (): void => {
+    if (moveRef.current.kind === 'pendingConfirm') dispatch({ type: 'cancel' });
+    else actionsRef.current.cancelDraft();
+  };
+  // A send that needed no confirmation shows no bar: the main button resizes the viewport, and
+  // the board with it, so flashing it on every move makes the page jump. After a Confirm the bar
+  // is already up, so it stays, with a spinner, until the request settles.
   useEffect(() => {
-    switch (moveState.kind) {
-      case 'pendingConfirm': {
-        const main = tg.setMainButton({
-          text: t('app.game.confirm_move'),
-          onClick: () => dispatch({ type: 'confirm' }),
-        });
-        const secondary = tg.setSecondaryButton({
-          text: t('app.game.cancel'),
-          onClick: () => dispatch({ type: 'cancel' }),
-        });
-        setInPage({ confirm: !main, cancel: !secondary });
-        return;
-      }
-      case 'sending':
-        tg.setSecondaryButton(null);
-        tg.setMainButton(
-          confirming
-            ? { text: t('app.game.sending'), onClick: () => undefined, progress: true }
-            : null,
-        );
-        setInPage(NO_IN_PAGE);
-        return;
-      case 'retry':
-        tg.setSecondaryButton(null);
-        tg.setMainButton({
-          text: t('app.game.retry'),
-          onClick: () => dispatch({ type: 'retryNow' }),
-        });
-        setInPage(NO_IN_PAGE);
-        return;
-      case 'idle':
-        tg.setMainButton(null);
-        tg.setSecondaryButton(null);
-        setInPage(NO_IN_PAGE);
-        return;
+    const ask = moveState.kind === 'pendingConfirm' || (premoveDraftOpen && !confirmingPremoves);
+    if (ask) {
+      const main = tg.setMainButton({ text: confirmLabel, onClick: onConfirm });
+      const secondary = tg.setSecondaryButton({ text: t('app.game.cancel'), onClick: onCancel });
+      setInPage({ confirm: !main, cancel: !secondary });
+      return;
     }
-  }, [moveState.kind, confirming, tg, dispatch]);
+    tg.setSecondaryButton(null);
+    setInPage(NO_IN_PAGE);
+    if (moveState.kind === 'retry') {
+      tg.setMainButton({
+        text: t('app.game.retry'),
+        onClick: () => dispatch({ type: 'retryNow' }),
+      });
+      return;
+    }
+    const sendingConfirmed = (moveState.kind === 'sending' && confirming) || confirmingPremoves;
+    tg.setMainButton(
+      sendingConfirmed
+        ? { text: t('app.game.sending'), onClick: () => undefined, progress: true }
+        : null,
+    );
+  }, [
+    moveState.kind,
+    confirming,
+    confirmingPremoves,
+    premoveDraftOpen,
+    confirmLabel,
+    tg,
+    dispatch,
+  ]);
   // Telegram's bar takes about the space the tab bar frees, so the board keeps its size while a
-  // move waits; and no tab tap can leave the move unsent (move confirmations spec).
+  // draft is open; and no tab tap can leave it unsent (move confirmations spec).
+  const hideTabs = confirming || confirmingPremoves || (confirmOn && store.draftDirty.value);
   useEffect(() => {
-    router.suppressTabs.value = confirming;
-  }, [router, confirming]);
-  // Minimising (Telegram 8.0) is leaving too: a waiting move is dropped. Once sent, cancel is a no-op.
-  useEffect(() => tg.onDeactivated(() => dispatch({ type: 'cancel' })), [tg, dispatch]);
-  // Leaving the screen (a tab, Back, Telegram's Settings item, another game) discards a waiting
-  // move with the component; this puts Telegram's buttons and the tab bar back.
+    router.suppressTabs.value = hideTabs;
+  }, [router, hideTabs]);
+  // Leaving the screen (a tab, Back, Telegram's Settings item, another game) discards the draft
+  // with the component; this puts Telegram's buttons and the tab bar back. Minimising keeps it.
   useEffect(
     () => () => {
       tg.setMainButton(null);
@@ -364,73 +500,204 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
     [tg, router],
   );
 
-  const onDrop = (orig: string, dest: string, meta: { captured: boolean }): void => {
-    if (moveRef.current.kind !== 'idle') {
+  /** Where a drop lands; a promotion pick made anywhere else no longer applies. */
+  const dropContext = (): string =>
+    [
+      store.dto.value.plyCount,
+      store.dto.value.status,
+      store.building.value,
+      store.viewingPly.value,
+      store.waiting.value?.uci,
+      store.selected.value.join(','),
+    ].join('|');
+
+  /** Replace a reply in the tree (spec, Building it): previewed, then asked. */
+  const replaceInTree = async (
+    path: readonly string[],
+    uci: string,
+    result: PlayResult,
+  ): Promise<void> => {
+    const replaced = result.replaced!;
+    const snapshot = store.snapshotDraft();
+    const ply = store.dto.value.plyCount;
+    const fen = fenAt(store.rootFen.value, path);
+    const message = replaceReplyMessage(fen, replaced.old, uci, replaced.dropped);
+    edit(result.tree, result.path);
+    const yes = await confirmDialog(message, {
+      confirmLabel: t('app.game.premove_replace'),
+      danger: true,
+    });
+    // The game moved on, or the draft went, while the popup was open: nothing left to answer.
+    if (store.dto.value.plyCount !== ply || store.draftTree.value !== result.tree) return;
+    if (!yes) {
+      store.restoreDraft(snapshot);
       restore();
       return;
     }
-    if (store.premoveMode.value) {
-      const board = imaginedBoard(
-        store.dto.value.fen,
-        store.premoves.value,
-        store.dto.value.viewerRole as Colour,
-      );
-      if (isPremovePromotion(board, orig, dest)) {
-        setPromotion({
-          orig,
-          dest,
-          premove: true,
-          ply: store.dto.value.plyCount,
-          base: store.premoves.value,
-        });
-        return;
-      }
-      void editPremoves([...store.premoves.value, `${orig}${dest}`], null);
+    tg.haptic('light');
+    completed();
+  };
+
+  /** Replace the waiting move from the position before it (spec, Building it). */
+  const replaceWaiting = async (uci: string): Promise<void> => {
+    const waiting = store.waiting.value;
+    if (!waiting || moveRef.current.kind !== 'pendingConfirm') {
+      restore();
       return;
     }
-    tg.haptic(meta.captured ? 'medium' : 'light');
-    if (isPromotion(store.dto.value.fen, orig, dest)) {
-      setPromotion({
-        orig,
-        dest,
-        premove: false,
-        ply: store.dto.value.plyCount,
-        base: store.premoves.value,
+    if (uci === waiting.uci) {
+      // The same move again just goes back to it.
+      batch(() => {
+        store.viewingPly.value = null;
+        store.selected.value = [];
       });
       return;
     }
-    dispatch({ type: 'drop', uci: `${orig}${dest}`, expectedPly: store.dto.value.plyCount });
+    const fen = store.dto.value.fen;
+    const next = { uci, san: sanOf(fen, uci) };
+    const premoves = countPremovePairs(store.tree.value);
+    if (premoves === 0) {
+      store.setWaiting(next);
+      dispatch({ type: 'replace', uci });
+      return;
+    }
+    const snapshot = store.snapshotDraft();
+    const ply = store.dto.value.plyCount;
+    const message = replaceWaitingMessage(fen, waiting, uci, premoves);
+    store.setWaiting(next);
+    const yes = await confirmDialog(message, {
+      confirmLabel: t('app.game.premove_replace'),
+      danger: true,
+    });
+    if (
+      store.dto.value.plyCount !== ply ||
+      moveRef.current.kind !== 'pendingConfirm' ||
+      store.waiting.value !== next
+    )
+      return;
+    if (!yes) {
+      store.restoreDraft(snapshot);
+      restore();
+      return;
+    }
+    dispatch({ type: 'replace', uci });
+  };
+
+  /** A move on the premove board: the opponent's or the player's, at the selected position. */
+  const playInTree = (uci: string): void => {
+    const path = store.selected.value;
+    let result: PlayResult;
+    try {
+      result = playAt(store.tree.value, path, uci);
+    } catch {
+      restore();
+      return;
+    }
+    if (result.kind === 'navigate') {
+      store.selected.value = result.path;
+      return;
+    }
+    if (result.kind === 'replace') {
+      void replaceInTree(path, uci, result);
+      return;
+    }
+    edit(result.tree, result.path);
+    tg.haptic('light');
+    if (result.kind === 'reply') completed();
+  };
+
+  const play = (uci: string): void => {
+    if (!store.building.value) {
+      dispatch({ type: 'drop', uci, expectedPly: store.dto.value.plyCount });
+      return;
+    }
+    // The only earlier position that takes a move is the one before the waiting move.
+    if (store.viewingPly.value !== null) void replaceWaiting(uci);
+    else playInTree(uci);
+  };
+
+  const onDrop = (orig: string, dest: string, meta: { captured: boolean }): void => {
+    const kind = moveRef.current.kind;
+    const view = store.buildView.value;
+    if (kind === 'sending' || kind === 'retry' || !view.canMove) {
+      restore();
+      return;
+    }
+    if (!store.building.value) tg.haptic(meta.captured ? 'medium' : 'light');
+    if (isPromotion(view.position.fen, orig, dest)) {
+      setPromotion({ orig, dest, colour: view.turn, at: dropContext(), tree: store.tree.value });
+      return;
+    }
+    play(`${orig}${dest}`);
   };
   const promote = (piece: PromotionPiece | null): void => {
     const pending = promotion;
     setPromotion(null);
     if (!pending) return;
-    if (!piece) {
-      restore();
-      return;
-    }
-    // The picker opened for the turn it was dropped on; a reply from the stream while it was open
-    // can flip premove mode or advance the ply before the piece is picked. Sending now would land a
+    // The picker opened for the position it was dropped on; a state from the stream (a reply, a
+    // tree from another device) can change it before the piece is picked. Playing now would add a
     // move the player never chose it for (fix round 1), so treat it like Cancel instead.
-    if (pending.premove !== store.premoveMode.value || pending.ply !== store.dto.value.plyCount) {
+    if (!piece || pending.at !== dropContext() || !sameTree(pending.tree, store.tree.value)) {
       restore();
       return;
     }
-    if (pending.premove) {
-      // Likewise a chain changed by another device while the picker was open: the pawn was dropped
-      // onto the old one, so appending to the new chain would queue a premove nobody chose.
-      if (!sameList(store.premoves.value, pending.base)) {
-        restore();
-        return;
-      }
-      void editPremoves([...pending.base, `${pending.orig}${pending.dest}${piece}`], null);
+    play(`${pending.orig}${pending.dest}${piece}`);
+  };
+  /** A tap on the board: back from an earlier position, or a nudge to move first. */
+  const onSelect = (square: string): void => {
+    const current = store.dto.value;
+    if (store.viewingPly.value !== null && !store.buildView.value.canMove) {
+      store.viewPly(null);
+      tg.hapticSelection();
       return;
     }
-    dispatch({
-      type: 'drop',
-      uci: `${pending.orig}${pending.dest}${piece}`,
-      expectedPly: store.dto.value.plyCount,
+    const viewer = current.viewerRole;
+    if (viewer !== 'white' && viewer !== 'black') return;
+    if (store.building.value || !store.canMove.value || moveRef.current.kind !== 'idle') return;
+    const owner = colourAt(current.fen, square);
+    if (owner !== null && owner !== viewer)
+      toast(t('app.game.premove_own_first', { name: opponentName() }));
+  };
+  /** Shows a move of the tree, or its root. */
+  const selectPath = (path: string[]): void => {
+    if (store.viewingPly.value === null && samePath(path, store.selected.value)) return;
+    batch(() => {
+      store.viewingPly.value = null;
+      store.selected.value = path;
     });
+    tg.hapticSelection();
+  };
+  /** ✕ on the selected premove (spec, Building it): asks, then removes it and what follows. */
+  const removeSelected = async (): Promise<void> => {
+    const path = store.selected.value;
+    if (path.length === 0 || store.viewingPly.value !== null) return;
+    const tree = store.tree.value;
+    const ply = store.dto.value.plyCount;
+    let label: string;
+    let after: number;
+    try {
+      label = moveLabel(fenAt(store.rootFen.value, path.slice(0, -1)), path[path.length - 1]!);
+      after = removeAt(tree, path).removedMoves;
+    } catch {
+      return;
+    }
+    const message = removeMessage(label, after);
+    if (
+      !(await confirmDialog(message, { confirmLabel: t('app.game.premove_remove'), danger: true }))
+    )
+      return;
+    // The tree can fire or change on another device while the popup is open; the move asked
+    // about may then be gone or mean something else, so the answer no longer applies.
+    if (
+      store.dto.value.plyCount !== ply ||
+      !sameTree(store.tree.value, tree) ||
+      !samePath(store.selected.value, path)
+    )
+      return;
+    const removed = removeAt(tree, path);
+    edit(removed.tree, removed.path);
+    toast(removedMessage(label, after));
+    completed();
   };
 
   const action = async (path: string, body: unknown = {}): Promise<void> => {
@@ -483,25 +750,6 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
     )
       await action('abort');
   };
-  const removePremove = async (step: number): Promise<void> => {
-    const chain = store.premoves.value;
-    const ply = store.dto.value.plyCount;
-    const after = chain.length - step;
-    const message =
-      after === 0
-        ? t('app.game.premove_remove_confirm')
-        : after === 1
-          ? t('app.game.premove_remove_confirm_next')
-          : t('app.game.premove_remove_confirm_rest', { n: after });
-    if (
-      !(await confirmDialog(message, { confirmLabel: t('app.game.premove_remove'), danger: true }))
-    )
-      return;
-    // The chain can fire or change on another device while the popup is open; step k of that
-    // chain is not the premove that was asked about, so the answer no longer applies.
-    if (!sameList(store.premoves.value, chain) || store.dto.value.plyCount !== ply) return;
-    await editPremoves(chain.slice(0, step - 1), step - 1);
-  };
   const rematch = async (): Promise<void> => {
     try {
       if (dto.engineLevel !== null) {
@@ -552,7 +800,17 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
   // never takes one (spec §8).
   const early = dto.plyCount < 2;
   const drawOpen = canOffer && !early && dto.engineLevel === null;
-  const moveButtons = moveState.kind === 'pendingConfirm' && (inPage.confirm || inPage.cancel);
+  // Unconfirmed changes: with confirmations on, the waiting move, premove edits and an opponent
+  // move still waiting for its reply; with them off, only a change that has not saved.
+  const draftShown = confirmOn
+    ? store.draftDirty.value || hasOpenMove(store.draftTree.value ?? [])
+    : store.premoveDraftChanged.value && !saving;
+  const askOpen = moveState.kind === 'pendingConfirm' || (premoveDraftOpen && !confirmingPremoves);
+  const moveButtons = askOpen && (inPage.confirm || inPage.cancel);
+  const waiting = store.waiting.value;
+  const linesRoot = waiting
+    ? { label: moveLabel(dto.fen, waiting.uci), caption: t('app.game.lines_your_move') }
+    : { label: t('app.game.lines_now'), caption: t('app.game.lines_now_caption') };
 
   // Material counts real moves up to the shown ply: never a pending move or a shown premove.
   const shownFen = store.position.value.fen;
@@ -576,7 +834,7 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
         store={store}
         onMove={onDrop}
         onReady={(adapter) => (adapterRef.current = adapter)}
-        frozen={moveState.kind === 'pendingConfirm'}
+        onSelect={onSelect}
       >
         {slowSend || moveState.kind === 'retry' ? (
           <div class="board-veil" role="status" aria-label={t('app.game.sending')}>
@@ -594,12 +852,12 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
               <button
                 key={piece}
                 data-promote={piece}
-                class={`cg-wrap ${PIECE_CLASS[piece]} ${dto.viewerRole === 'black' ? 'black' : 'white'}`}
+                class={`cg-wrap ${PIECE_CLASS[piece]} ${promotion.colour}`}
                 aria-label={t(PIECE_LABEL[piece])}
                 onClick={() => promote(piece)}
               >
                 {h('piece', {
-                  class: `${PIECE_CLASS[piece]} ${dto.viewerRole === 'black' ? 'black' : 'white'}`,
+                  class: `${PIECE_CLASS[piece]} ${promotion.colour}`,
                 })}
               </button>
             ))}
@@ -614,11 +872,7 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
         ) : null}
       </Board>
       <PlayerBar dto={dto} colour={orientation} fen={shownFen} now={now} />
-      <MoveList
-        store={store}
-        locked={moveState.kind === 'pendingConfirm'}
-        onRemove={() => void removePremove(store.shownStep.value)}
-      />
+      <MoveList store={store} onRemove={() => void removeSelected()} />
       {/* One slider in every game: the real moves, the waiting move, then the premove line viewed. */}
       <div class="replay-controls">
         <button
@@ -648,6 +902,18 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
           ▶
         </button>
       </div>
+      <PremoveStatus store={store} draft={draftShown} />
+      {playing && store.building.value ? (
+        <LinesPanel
+          tree={store.tree.value}
+          rootFen={store.rootFen.value}
+          owner={myColour!}
+          root={linesRoot}
+          selected={store.selected.value}
+          onSelect={selectPath}
+          onRemove={() => void removeSelected()}
+        />
+      ) : null}
       {offerFromOpponent && dto.status === 'active' ? (
         <div class="banner">
           <span class="grow">{t('app.game.draw_offer_from', { name: dto[offer!.by].name })}</span>
@@ -672,21 +938,13 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
       ) : null}
       {moveButtons || claimable ? (
         <div class="toolbar">
-          {moveState.kind === 'pendingConfirm' && inPage.confirm ? (
-            <button
-              class="pill-btn primary"
-              data-action="confirm-move"
-              onClick={() => dispatch({ type: 'confirm' })}
-            >
-              {t('app.game.confirm_move')}
+          {askOpen && inPage.confirm ? (
+            <button class="pill-btn primary" data-action="confirm-move" onClick={onConfirm}>
+              {confirmLabel}
             </button>
           ) : null}
-          {moveState.kind === 'pendingConfirm' && inPage.cancel ? (
-            <button
-              class="pill-btn"
-              data-action="cancel-move"
-              onClick={() => dispatch({ type: 'cancel' })}
-            >
+          {askOpen && inPage.cancel ? (
+            <button class="pill-btn" data-action="cancel-move" onClick={onCancel}>
               {t('app.game.cancel')}
             </button>
           ) : null}

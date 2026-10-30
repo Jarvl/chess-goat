@@ -25,7 +25,7 @@ describe('reduceMove', () => {
     const { state, effects } = run([drop]);
     expect(state).toEqual({
       kind: 'sending',
-      move: { uci: 'e2e4', expectedPly: 0, clientMoveId: 'm-0000000001' },
+      move: { uci: 'e2e4', expectedPly: 0, clientMoveId: 'm-0000000001', premoveTree: '' },
       attempt: 1,
     });
     expect(effects).toEqual(['send']);
@@ -43,7 +43,7 @@ describe('reduceMove', () => {
     const first = run([{ type: 'networkError', now: 1_000 }], sending);
     expect(first.state).toEqual({
       kind: 'retry',
-      move: { uci: 'e2e4', expectedPly: 0, clientMoveId: 'm-0000000001' },
+      move: { uci: 'e2e4', expectedPly: 0, clientMoveId: 'm-0000000001', premoveTree: '' },
       attempt: 1,
       nextAt: 2_000,
     });
@@ -91,15 +91,54 @@ describe('reduceMove', () => {
   });
 
   it('holds a dropped move for confirmation, then sends it exactly once', () => {
-    const move = { uci: 'e2e4', expectedPly: 0, clientMoveId: 'm-0000000001' };
+    const move = { uci: 'e2e4', expectedPly: 0, clientMoveId: 'm-0000000001', premoveTree: '' };
     const pending = run([drop], { kind: 'idle' }, true);
     expect(pending.state).toEqual({ kind: 'pendingConfirm', move });
     expect(pending.effects).toEqual([]);
-    const confirmed = run([{ type: 'confirm' }], pending.state);
+    const confirmed = run([{ type: 'confirm', premoveTree: '' }], pending.state);
     expect(confirmed.state).toEqual({ kind: 'sending', move, attempt: 1 });
     expect(confirmed.effects).toEqual(['send']);
     // A second Confirm before the screen catches up sends nothing more.
-    expect(run([{ type: 'confirm' }], confirmed.state).effects).toEqual([]);
+    expect(run([{ type: 'confirm', premoveTree: '' }], confirmed.state).effects).toEqual([]);
+  });
+
+  it('copies the premove tree given at Confirm into the move it sends', () => {
+    const pending = run([drop], { kind: 'idle' }, true).state;
+    const out = reduceMove(pending, { type: 'confirm', premoveTree: 'AQAB' });
+    expect(out.state).toMatchObject({ kind: 'sending', move: { premoveTree: 'AQAB' } });
+    expect(out.effects).toEqual([
+      {
+        type: 'send',
+        move: { uci: 'e2e4', expectedPly: 0, clientMoveId: 'm-0000000001', premoveTree: 'AQAB' },
+      },
+    ]);
+  });
+
+  it('swaps the waiting move on replace, with a new client move id and no effects', () => {
+    const pending = run([drop], { kind: 'idle' }, true).state;
+    const out = reduceMove(pending, { type: 'replace', uci: 'd2d4' });
+    expect(out.effects).toEqual([]);
+    expect(out.state).toMatchObject({
+      kind: 'pendingConfirm',
+      move: { uci: 'd2d4', expectedPly: 0, premoveTree: '' },
+    });
+    const id = (out.state as { move: { clientMoveId: string } }).move.clientMoveId;
+    expect(id).not.toBe('m-0000000001');
+    expect(id).toMatch(/^[A-Za-z0-9_-]{8,64}$/);
+    // Only a waiting move can be replaced.
+    const sending = run([drop]).state;
+    expect(reduceMove(sending, { type: 'replace', uci: 'd2d4' }).state).toBe(sending);
+    expect(reduceMove({ kind: 'idle' }, { type: 'replace', uci: 'd2d4' }).state).toEqual({
+      kind: 'idle',
+    });
+  });
+
+  it('takes a confirmed move back to waiting when it was too big to send', () => {
+    const pending = run([drop], { kind: 'idle' }, true).state;
+    const sending = reduceMove(pending, { type: 'confirm', premoveTree: 'AQAB' }).state;
+    const out = reduceMove(sending, { type: 'tooBig' });
+    expect(out.state).toMatchObject({ kind: 'pendingConfirm', move: { uci: 'e2e4' } });
+    expect(out.effects).toEqual([]);
   });
 
   it('puts the piece back on cancel and sends nothing', () => {

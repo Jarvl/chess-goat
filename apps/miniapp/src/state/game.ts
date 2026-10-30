@@ -5,8 +5,6 @@ import {
   imaginedBoard,
   INITIAL_FEN,
   legalDests,
-  placementOf,
-  premoveTargets,
   sideToMove,
   type Colour,
   type DraftNode,
@@ -15,7 +13,7 @@ import {
 } from '@group-chess/shared';
 import { batch, computed, signal, type ReadonlySignal, type Signal } from '@preact/signals';
 import { Chess } from 'chess.js';
-import { fenAt, isPrefix } from './premoveDraft';
+import { fenAt, isPrefix, nodeAt } from './premoveDraft';
 import { buildTimeline, timelineTarget, type Timeline } from './premoveTimeline';
 import { premoveLabel, sameList } from './premoves';
 
@@ -46,12 +44,30 @@ export type BuildView = {
 /** The player's own move, played but waiting for Confirm move. */
 export type WaitingMove = { uci: string; san: string };
 
+/** The draft as a replace popup found it, so Cancel can put it back exactly. */
+export type DraftSnapshot = {
+  waiting: WaitingMove | null;
+  draftTree: DraftNode[] | null;
+  selected: string[];
+  trail: string[];
+  viewingPly: number | null;
+};
+
 /** A tree the server sent; one that does not decode reads as empty rather than breaking the view. */
 function readTree(text: string): PremoveNode[] {
   try {
     return decodePremoveTree(text);
   } catch {
     return [];
+  }
+}
+
+/** The tree's wire form, or null when the codec refuses it. */
+function encodeOrNull(tree: readonly DraftNode[]): string | null {
+  try {
+    return encodePremoveTree(tree);
+  } catch {
+    return null;
   }
 }
 
@@ -223,6 +239,13 @@ export class GameStore {
   readonly premoveDraftChanged: ReadonlySignal<boolean>;
   readonly timeline: ReadonlySignal<Timeline>;
   readonly buildView: ReadonlySignal<BuildView>;
+  /**
+   * The board shows the draft but takes no drops: the player's move, or the draft confirmed with
+   * Confirm premoves, is on its way to the server.
+   */
+  readonly locked: Signal<boolean> = signal(false);
+  /** The selected premove's squares, for chessground's custom highlights. */
+  readonly highlights: ReadonlySignal<string[]>;
 
   constructor(initial: GameDto) {
     this.dto = signal(initial);
@@ -266,16 +289,10 @@ export class GameStore {
     };
     const imagined = (count: number) =>
       imaginedBoard(this.dto.value.fen, this.premoves.value.slice(0, count), owner());
-    this.boardView = computed(() => {
-      const real = this.position.value;
-      if (!this.premoveMode.value || this.shownStep.value === 0) return real;
-      const side = this.dto.value.viewerRole === 'black' ? 'b' : 'w';
-      const placement = placementOf(imagined(this.shownStep.value).pieces);
-      return { ...real, fen: `${placement} ${side} - - 0 1`, check: false };
-    });
-    this.boardTurn = computed(() =>
-      this.premoveMode.value ? (this.dto.value.viewerRole as Colour) : this.sideToMove.value,
-    );
+    // The board shows what buildView shows: the real position, an earlier one, or a position in
+    // the premove tree while building (conditional premoves spec, Mini App: Board).
+    this.boardView = computed(() => this.buildView.value.position);
+    this.boardTurn = computed(() => this.buildView.value.turn);
     this.premoveSquares = computed(() => {
       const step = this.shownStep.value;
       const uci = this.premoveMode.value && step > 0 ? this.premoves.value[step - 1] : undefined;
@@ -284,24 +301,11 @@ export class GameStore {
     this.premoveLabels = computed(() =>
       this.premoves.value.map((uci, index) => premoveLabel(imagined(index), uci, owner())),
     );
-    this.canMove = computed(() => {
-      const dto = this.dto.value;
-      if (this.premoveMode.value) return this.atChainEnd.value;
-      return (
-        dto.status === 'active' &&
-        this.isLatest.value &&
-        (dto.viewerRole === 'white' || dto.viewerRole === 'black') &&
-        sideToMove(dto.fen) === dto.viewerRole
-      );
-    });
-    this.dests = computed(() => {
-      if (!this.canMove.value) return new Map<string, string[]>();
-      if (this.premoveMode.value)
-        return premoveTargets(
-          imagined(this.premoves.value.length),
-          this.dto.value.viewerRole as Colour,
-        );
-      return legalDests(this.dto.value.fen);
+    this.canMove = computed(() => this.buildView.value.canMove);
+    this.dests = computed(() => this.buildView.value.dests);
+    this.highlights = computed(() => {
+      const last = this.selected.value.at(-1);
+      return this.building.value && this.viewingPly.value === null && last ? squares(last) : [];
     });
 
     this.serverTree = computed(() => readTree(this.dto.value.premoveTree));
@@ -323,10 +327,13 @@ export class GameStore {
       const result = applyMove(fen, [], waiting.uci);
       return result.legal ? result.fenAfter : fen;
     });
-    const encodedServerTree = computed(() => encodePremoveTree(this.serverTree.value));
+    const encodedServerTree = computed(() => encodeOrNull(this.serverTree.value) ?? '');
     this.premoveDraftChanged = computed(() => {
       const draft = this.draftTree.value;
-      return draft !== null && encodePremoveTree(draft) !== encodedServerTree.value;
+      if (draft === null) return false;
+      // A draft the codec refuses (too many siblings) cannot equal what the server holds.
+      const text = encodeOrNull(draft);
+      return text === null || text !== encodedServerTree.value;
     });
     this.draftDirty = computed(() => this.waiting.value !== null || this.premoveDraftChanged.value);
     this.timeline = computed(() =>
@@ -339,7 +346,12 @@ export class GameStore {
         earlierPly: this.viewingPly.value,
       }),
     );
-    this.buildView = computed(() => this.computeBuildView());
+    this.buildView = computed(() => {
+      const view = this.computeBuildView();
+      return this.locked.value && view.canMove
+        ? { ...view, canMove: false, dests: new Map<string, string[]>() }
+        : view;
+    });
   }
 
   private computeBuildView(): BuildView {
@@ -409,6 +421,12 @@ export class GameStore {
     ) {
       return false;
     }
+    // One batch, so no effect sees the new state beside the old draft, selection or view.
+    batch(() => this.applyNext(current, next));
+    return true;
+  }
+
+  private applyNext(current: GameDto, next: GameDto): void {
     const viewing = this.viewingPly.value;
     this.dto.value = next;
     const samePly = next.plyCount === current.plyCount && next.status === current.status;
@@ -428,7 +446,6 @@ export class GameStore {
     if (viewing !== null && next.plyCount > current.plyCount && next.viewerRole !== 'spectator') {
       this.viewingPly.value = null;
     }
-    return true;
   }
 
   viewPly(ply: number | null): void {
@@ -471,6 +488,54 @@ export class GameStore {
       const viewing = this.viewingPly.value;
       if (viewing !== null && viewing >= this.dto.value.plyCount) this.viewingPly.value = null;
     });
+  }
+
+  /** Starts (or swaps) the waiting move: the tree is rooted after it, so the draft starts over. */
+  setWaiting(move: WaitingMove): void {
+    batch(() => {
+      this.waiting.value = move;
+      this.draftTree.value = null;
+      this.selected.value = [];
+      this.trail.value = [];
+      this.viewingPly.value = null;
+    });
+  }
+
+  snapshotDraft(): DraftSnapshot {
+    return {
+      waiting: this.waiting.value,
+      draftTree: this.draftTree.value,
+      selected: this.selected.value,
+      trail: this.trail.value,
+      viewingPly: this.viewingPly.value,
+    };
+  }
+
+  restoreDraft(snapshot: DraftSnapshot): void {
+    batch(() => {
+      this.waiting.value = snapshot.waiting;
+      this.draftTree.value = snapshot.draftTree;
+      this.selected.value = snapshot.selected;
+      this.trail.value = snapshot.trail;
+      this.viewingPly.value = snapshot.viewingPly;
+    });
+  }
+
+  /** Shows the server tree again (a confirmed or refused draft), keeping what still exists of the selection. */
+  dropDraftTree(): void {
+    batch(() => {
+      this.draftTree.value = null;
+      this.clampSelection();
+    });
+  }
+
+  /** Cuts the selection back to the longest part of it that is still in the tree. */
+  clampSelection(): void {
+    const tree = this.tree.value;
+    const path = this.selected.value;
+    let length = path.length;
+    while (length > 0 && nodeAt(tree, path.slice(0, length)).node === null) length -= 1;
+    if (length < path.length) this.selected.value = path.slice(0, length);
   }
 
   /**

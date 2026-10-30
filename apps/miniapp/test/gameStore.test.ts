@@ -1,4 +1,5 @@
 import { INITIAL_FEN, legalDests, type MoveDto } from '@group-chess/shared';
+import { effect } from '@preact/signals';
 import { describe, expect, it } from 'vitest';
 import { diffNotices, GameStore, positionAt } from '../src/state/game';
 import { afterPlies, gameDto, pair, treeText } from './support/gameFixtures';
@@ -129,35 +130,6 @@ describe('GameStore premoves', () => {
     expect(reading.canMove.value).toBe(false);
   });
 
-  it('offers pattern targets for the viewer’s pieces at the end of the chain', () => {
-    const store = new GameStore(waiting());
-    expect(store.canMove.value).toBe(true);
-    expect(store.boardTurn.value).toBe('white');
-    expect([...(store.dests.value.get('g1') ?? [])].sort()).toEqual(['e2', 'f3', 'h3']);
-    expect(store.dests.value.has('e7')).toBe(false);
-  });
-
-  it('shows the imagined board and labels for each step, and targets only at the end', () => {
-    const store = new GameStore(waiting(['g1h3', 'h3g5']));
-    expect(store.shownStep.value).toBe(2);
-    expect(store.atChainEnd.value).toBe(true);
-    expect(store.premoveLabels.value).toEqual(['Nh3', 'Ng5']);
-    expect(store.boardView.value.fen.split(' ')[0]).toBe(
-      'rnbqkbnr/pppppppp/8/6N1/8/5P2/PPPPP1PP/RNBQKB1R',
-    );
-    expect(store.premoveSquares.value).toEqual(['h3', 'g5']);
-    expect(store.viewPremove(1)).toBe(true);
-    expect(store.premoveSquares.value).toEqual(['g1', 'h3']);
-    expect(store.canMove.value).toBe(false);
-    expect(store.dests.value.size).toBe(0);
-    store.viewPremove(0);
-    expect(store.boardView.value).toEqual(store.position.value);
-    expect(store.premoveSquares.value).toEqual([]);
-    expect(store.viewPremove(0)).toBe(false);
-    expect(store.viewPremove(9)).toBe(true);
-    expect(store.premoveStep.value).toBeNull();
-  });
-
   it('applies a same-version state whose chain changed, and it replaces an optimistic chain', () => {
     const store = new GameStore(waiting());
     store.optimisticPremoves.value = ['g1h3'];
@@ -191,26 +163,6 @@ describe('GameStore premoves', () => {
     expect(store.dests.value.size).toBe(0);
     store.moveBusy.value = false;
     expect(store.premoveMode.value).toBe(true);
-  });
-
-  it('shows a leftover premove the opponent made impossible as raw UCI, moving nothing', () => {
-    // 1.Rxb8+ took the knight Black's queued Nb8-c6 would move, and Black's Kd7 fired. The server
-    // keeps b8c6 until it comes up; White's rook now stands on its from square.
-    const store = new GameStore(
-      gameDto({
-        fen: '1R6/3k4/8/8/8/8/P7/4K3 w - - 1 12',
-        plyCount: 12,
-        version: 12,
-        viewerRole: 'black',
-        premoves: ['b8c6'],
-      }),
-    );
-    expect(store.premoveMode.value).toBe(true);
-    expect(store.premoveLabels.value).toEqual(['b8c6']);
-    expect(store.boardView.value.fen.split(' ')[0]).toBe('1R6/3k4/8/8/8/8/P7/4K3');
-    expect(store.premoveSquares.value).toEqual(['b8', 'c6']);
-    expect(store.dests.value.get('d7')).toEqual(expect.arrayContaining(['c6', 'e8']));
-    expect(store.dests.value.has('b8')).toBe(false);
   });
 
   it('keeps the board live while a premove edit is being saved', () => {
@@ -500,5 +452,53 @@ describe('GameStore premove drafts', () => {
     expect(store.viewingPly.value).toBeNull();
     expect(store.buildView.value.canMove).toBe(true); // the player's own move, as before
     expect(store.buildView.value.turn).toBe('white');
+  });
+
+  it('applies a new state in one batch, so no effect sees it beside the old draft', () => {
+    const store = ownTurn();
+    store.waiting.value = { uci: 'g1f3', san: 'Nf3' };
+    const seen: [number, string | null][] = [];
+    const dispose = effect(() => {
+      seen.push([store.dto.value.plyCount, store.waiting.value?.uci ?? null]);
+    });
+    store.apply(afterPlies(3, { viewerRole: 'white' }));
+    dispose();
+    expect(seen).toEqual([
+      [2, 'g1f3'],
+      [3, null],
+    ]);
+  });
+
+  it('reads a draft the codec refuses as changed instead of throwing', () => {
+    const store = opponentsTurn();
+    // More siblings than one count byte holds: encodePremoveTree throws on it.
+    const wide = Array.from({ length: 219 }, () => pair('e7e5', 'g2g4'));
+    store.draftTree.value = wide;
+    expect(store.premoveDraftChanged.value).toBe(true);
+    expect(store.draftDirty.value).toBe(true);
+  });
+
+  it('starts, snapshots and restores the waiting move with its draft', () => {
+    const store = ownTurn();
+    store.setWaiting({ uci: 'g1f3', san: 'Nf3' });
+    store.draftTree.value = [pair('d8h4', 'f3h4')];
+    store.selected.value = ['d8h4'];
+    const snapshot = store.snapshotDraft();
+    store.setWaiting({ uci: 'g1h3', san: 'Nh3' });
+    expect(store.draftTree.value).toBeNull();
+    expect(store.selected.value).toEqual([]);
+    store.restoreDraft(snapshot);
+    expect(store.waiting.value?.uci).toBe('g1f3');
+    expect(store.selected.value).toEqual(['d8h4']);
+  });
+
+  it('keeps what still exists of the selection when the draft is dropped', () => {
+    const store = opponentsTurn(treeText(pair('e7e5', 'g2g4')));
+    store.draftTree.value = [
+      { move: 'e7e5', reply: 'g2g4', children: [{ move: 'd8h4', reply: null, children: [] }] },
+    ];
+    store.selected.value = ['e7e5', 'g2g4', 'd8h4'];
+    store.dropDraftTree();
+    expect(store.selected.value).toEqual(['e7e5', 'g2g4']);
   });
 });
