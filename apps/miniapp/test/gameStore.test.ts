@@ -200,7 +200,7 @@ describe('diffNotices premoves', () => {
     ]);
   });
 
-  it('reports a discarded draft only when the game moved on', () => {
+  it('reports a discarded draft only when the game moved on to a new ply and goes on', () => {
     const before = afterPlies(1, { viewerRole: 'white' });
     expect(
       diffNotices(before, afterPlies(2, { viewerRole: 'white' }), { discardedDraft: true }),
@@ -212,11 +212,17 @@ describe('diffNotices premoves', () => {
         { discardedDraft: true },
       ),
     ).not.toContain('premove_draft_discarded');
+    // The result screen explains a game end.
     expect(
       diffNotices(before, afterPlies(1, { viewerRole: 'white', status: 'finished' }), {
         discardedDraft: true,
       }),
-    ).toEqual(['finished', 'premove_draft_discarded']);
+    ).toEqual(['finished']);
+    expect(
+      diffNotices(before, afterPlies(2, { viewerRole: 'white', status: 'finished' }), {
+        discardedDraft: true,
+      }),
+    ).toEqual(['finished']);
     expect(diffNotices(before, afterPlies(2, { viewerRole: 'white' }))).not.toContain(
       'premove_draft_discarded',
     );

@@ -139,7 +139,8 @@ function premoveNotices(prev: GameDto, next: GameDto): Notice[] {
 /**
  * Spec §6.4: banners come from the diff between consecutive states, never from separate events.
  * `discardedDraft` says the store held unconfirmed premove changes before `next` was applied:
- * a new ply or a game end throws them away (conditional premoves spec, Sending it).
+ * a new ply or a game end throws them away (conditional premoves spec, Sending it). Only a new ply
+ * in a game still being played says so; a game end has its result screen to explain it.
  */
 export function diffNotices(
   prev: GameDto,
@@ -148,10 +149,10 @@ export function diffNotices(
 ): Notice[] {
   const notices: Notice[] = [];
   const viewer = next.viewerRole;
-  const movedOn = next.plyCount !== prev.plyCount || next.status !== prev.status;
+  const movedOn = next.plyCount !== prev.plyCount && next.status === 'active';
   const discarded: Notice[] = options.discardedDraft && movedOn ? ['premove_draft_discarded'] : [];
   if (prev.status === 'active' && next.status === 'finished') {
-    notices.push('finished', ...discarded);
+    notices.push('finished');
     return notices;
   }
   if (next.drawOffer && !prev.drawOffer && next.drawOffer.by !== viewer)

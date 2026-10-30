@@ -197,18 +197,20 @@ export function GameView(props: { initial: GameDto; onReload: () => Promise<Game
     });
   }, [store]);
 
-  /** A refused premove request: reload, and say so when another device changed the tree. */
+  /**
+   * A refused premove request, which always carried changes the player confirmed or completed:
+   * reload, and say why they are gone when another device changed the tree or the opponent moved.
+   */
   const reloadAfterRefusal = async (error: unknown, expectedPly: number): Promise<void> => {
     try {
       const fresh = await props.onReload();
       applyState(fresh);
+      // A finished game has its result screen to explain it.
+      if (fresh.status !== 'active') return;
       // The server keeps why it refused to itself; an unchanged ply means the tree changed under us.
-      if (
-        error instanceof ApiError &&
-        error.code === 'stale_state' &&
-        fresh.status === 'active' &&
-        fresh.plyCount === expectedPly
-      )
+      if (fresh.plyCount !== expectedPly)
+        toast(t('app.game.premove_draft_discarded', { name: opponentName() }));
+      else if (error instanceof ApiError && error.code === 'stale_state')
         toast(t('app.game.premoves_changed'));
     } catch {
       // The stream brings the state back when the connection does.

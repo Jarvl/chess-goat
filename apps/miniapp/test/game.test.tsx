@@ -1375,6 +1375,52 @@ describe('Game premoves with move confirmations on', () => {
     expect(window.__tg!.mainButton.visible).toBe(false);
   });
 
+  it('says the draft went when the opponent moved while Confirm premoves was on its way', async () => {
+    const r = mount(played(['e2e4']), (call) => {
+      if (call.method === 'PUT')
+        return {
+          status: 409,
+          body: { error: { code: 'stale_state', message: 'the position has changed' } },
+        };
+      if (call.method === 'GET') return { status: 200, body: played(['e2e4', 'c7c5']) };
+      return okRoute(played(['e2e4']))(call);
+    });
+    await r.flush();
+    adapter.drop('e7', 'e5');
+    await r.flush();
+    adapter.drop('g1', 'f3');
+    await r.flush();
+    window.__tg!.clickMain();
+    await r.flush();
+    expect(toastText()).toBe('Dana moved. Your unconfirmed premoves were discarded.');
+    expect(tokens(r)).toEqual([]);
+    expect(window.__tg!.mainButton.visible).toBe(false);
+  });
+
+  it('says nothing about the draft when the game ended while Confirm premoves was on its way', async () => {
+    const r = mount(played(['e2e4']), (call) => {
+      if (call.method === 'PUT')
+        return {
+          status: 409,
+          body: { error: { code: 'stale_state', message: 'the game is over' } },
+        };
+      if (call.method === 'GET')
+        return {
+          status: 200,
+          body: played(['e2e4'], { status: 'finished', result: '1-0', endReason: 'resignation' }),
+        };
+      return okRoute(played(['e2e4']))(call);
+    });
+    await r.flush();
+    adapter.drop('e7', 'e5');
+    await r.flush();
+    adapter.drop('g1', 'f3');
+    await r.flush();
+    window.__tg!.clickMain();
+    await r.flush();
+    expect(toastText()).toBeUndefined();
+  });
+
   it('keeps an oversize draft on screen and sends nothing', async () => {
     limits.maxChars = 4;
     const r = mount(played([]));
@@ -1712,7 +1758,7 @@ describe('Game premoves with move confirmations off', () => {
     expect(tokens(r)).toEqual(['d5', 'exd5']);
   });
 
-  it('does not blame another device when the opponent moved first', async () => {
+  it('says the change went, not another device, when the opponent moved first', async () => {
     const r = mount(played(['e2e4']), (call) => {
       if (call.method === 'PUT')
         return {
@@ -1727,7 +1773,7 @@ describe('Game premoves with move confirmations off', () => {
     await r.flush();
     adapter.drop('g1', 'f3');
     await r.flush();
-    expect(toastText()).toBeUndefined();
+    expect(toastText()).toBe('Dana moved. Your unconfirmed premoves were discarded.');
     expect(tokens(r)).toEqual([]);
     expect(r.root.querySelectorAll('.move-list [data-ply]')).toHaveLength(2);
   });
