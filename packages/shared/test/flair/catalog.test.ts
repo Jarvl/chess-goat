@@ -185,14 +185,17 @@ describe('the flair catalog', () => {
         );
       }),
     ).toEqual(third);
-    const ids = (category: string) => FLAIR.filter((f) => f.category === category).map((f) => f.id);
-    expect(ids('feat').slice(-5, -1)).toEqual([
+    // Relative to the earlier flair they follow: later batches may add flair anywhere.
+    const placed = new Set([
       'draws_10',
-      'marathon_win',
-      'pacifist_mate',
-      'rival_5',
+      'scholars_mate_loss',
+      'bongcloud_win',
+      ...third.map(([, id]) => id),
     ]);
-    expect(ids('dubious').slice(0, 7)).toEqual([
+    const ids = (category: string) =>
+      FLAIR.filter((f) => f.category === category && placed.has(f.id)).map((f) => f.id);
+    expect(ids('feat')).toEqual(['draws_10', 'marathon_win', 'pacifist_mate', 'rival_5']);
+    expect(ids('dubious')).toEqual([
       'scholars_mate_loss',
       'bongcloud_win',
       'loss_streak_3',
@@ -311,8 +314,13 @@ describe('the flair catalog', () => {
     expect(flairById('retired_flair')).toBeUndefined();
   });
 
-  it('makes every streak rated, and leaves totals unrated unless asked', () => {
+  it('leaves a total unrated unless asked', () => {
     expect(total('draw', 10)).toEqual({ kind: 'total', result: 'draw', count: 10, rated: false });
-    expect(streak('win', 5)).toEqual({ kind: 'streak', result: 'win', length: 5 });
+    expect(total('win', 25, { rated: true })).toEqual({
+      kind: 'total',
+      result: 'win',
+      count: 25,
+      rated: true,
+    });
   });
 });

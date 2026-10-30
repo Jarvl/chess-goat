@@ -121,7 +121,9 @@ describe('GameStore building', () => {
     expect(new GameStore(waiting()).building.value).toBe(true);
     expect(new GameStore(afterPlies(2, { viewerRole: 'white' })).building.value).toBe(false);
     expect(new GameStore(afterPlies(1, { viewerRole: 'spectator' })).building.value).toBe(false);
-    const reading = new GameStore(afterPlies(3, { viewerRole: 'black' }));
+    // White waits after 2. g4; looking back at 1. f3 builds nothing there.
+    const reading = new GameStore(afterPlies(3, { viewerRole: 'white' }));
+    expect(reading.building.value).toBe(true);
     reading.viewPly(1);
     expect(reading.canMove.value).toBe(false);
   });

@@ -280,11 +280,15 @@ describe('premoveTreeCheck', () => {
     });
   });
 
-  it('accepts castling and promotion', () => {
+  it('refuses a move from an empty square', () => {
+    // The Italian's bishop has left f1.
     expect(checkPremoveTree(ITALIAN, [node('f1e2', 'g8f6')])).toEqual({
       ok: false,
       path: ['f1e2'],
     });
+  });
+
+  it('accepts castling and promotion', () => {
     expect(checkPremoveTree(ITALIAN, [node('e1g1', 'g8f6', [node('d2d3', 'e8g8')])])).toEqual({
       ok: true,
     });

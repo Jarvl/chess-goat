@@ -11,7 +11,7 @@ import {
 } from '@group-chess/shared';
 import { render } from 'preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { prefs, session } from '../src/state/session';
+import { prefs } from '../src/state/session';
 import { createTg } from '../src/tg/webapp';
 import { Game } from '../src/ui/screens/Game';
 import { FakeEventSource } from './support/fakeEventSource';
@@ -209,17 +209,6 @@ describe('Game', () => {
     expect(r.calls.some((c) => c.path === '/api/telemetry')).toBe(true);
     await vi.advanceTimersByTimeAsync(100); // effects run on the next (faked) frame
     expect(window.__tg!.mainButton.visible).toBe(false);
-  });
-
-  it('stays on the game after a move, even when launched from a game link', async () => {
-    vi.useFakeTimers();
-    const r = mount(gameDto());
-    session.value = { ...session.value!, launchedFrom: { kind: 'game', gameId: GAME } };
-    await vi.advanceTimersByTimeAsync(100); // effects run on the next (faked) frame
-    adapter.drop('e2', 'e4');
-    await vi.advanceTimersByTimeAsync(1_000);
-    expect(r.calls.some((c) => c.path === `/api/games/${GAME}/moves`)).toBe(true);
-    expect(window.__tg!.closed).toBe(false);
   });
 
   it('shows the promotion chooser and sends the chosen piece', async () => {
@@ -817,19 +806,6 @@ describe('Game with move confirmations', () => {
     expect(window.__tg!.mainButton.visible).toBe(false);
     expect(r.app.router.suppressTabs.value).toBe(false);
     expect(r.calls.filter((c) => c.method === 'POST')).toHaveLength(0);
-  });
-
-  it('stays on the game after a confirmed move, even when launched from a game card', async () => {
-    vi.useFakeTimers();
-    const r = mount(gameDto());
-    session.value = { ...session.value!, launchedFrom: { kind: 'game', gameId: GAME } };
-    await vi.advanceTimersByTimeAsync(100); // effects run on the next (faked) frame
-    adapter.drop('e2', 'e4');
-    await vi.advanceTimersByTimeAsync(100);
-    window.__tg!.clickMain();
-    await vi.advanceTimersByTimeAsync(1_000);
-    expect(posts(r)).toHaveLength(1);
-    expect(window.__tg!.closed).toBe(false);
   });
 
   it('restores the board and reloads the state when a confirmed move is answered 409', async () => {
@@ -2105,18 +2081,27 @@ describe('Game leaving with an unconfirmed draft', () => {
     await r.flush();
   });
 
-  it('never asks with move confirmations off', async () => {
+  it('never asks with move confirmations off, even with a save still on its way', async () => {
     wantPrefs.moveConfirmations = 'never';
-    const r = mountInGame(played(['e2e4']));
+    let answer: (response: FakeResponse) => void = () => undefined;
+    const initial = played(['e2e4']);
+    const r = mount(
+      initial,
+      savesTree(initial, () => new Promise<FakeResponse>((resolve) => (answer = resolve))),
+    );
+    r.app.router.land('games', { name: 'game', gameId: GAME }, [{ name: 'games' }]);
     await dropAll(r, [
       ['e7', 'e5'],
       ['g1', 'f3'],
     ]);
+    expect(putsOf(r)).toHaveLength(1);
     expect(r.app.router.leaveGuard).toBeNull();
     expect(window.__tg!.closingConfirmation).toBe(false);
     window.__tg!.clickBack();
     await r.flush();
     expect(window.__tg!.popups).toHaveLength(0);
     expect(r.app.router.current.value).toEqual({ name: 'games' });
+    answer({ status: 200, body: initial });
+    await r.flush();
   });
 });

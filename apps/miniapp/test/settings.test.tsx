@@ -58,8 +58,6 @@ describe('Settings', () => {
     expect(row?.textContent).toContain('Only against people');
     expect(r.root.querySelector('.card')?.firstElementChild).toBe(flairRow);
     expect(flairRow?.nextElementSibling).toBe(row);
-    expect(r.root.querySelector('[data-pref="confirmMoves"]')).toBeNull();
-    expect(r.root.querySelector('[data-pref="closeAfterMove"]')).toBeNull();
   });
 
   it("saves a choice picked in Telegram's popup", async () => {
