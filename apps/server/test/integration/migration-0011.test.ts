@@ -23,14 +23,18 @@ let scratch: postgres.Sql;
 
 type Journal = { entries: { tag: string }[] };
 
-/** The real migrations up to, not including, 0011: the database a running release has. */
+/**
+ * The real migrations up to, not including, 0011: the database a release before it has. Later
+ * migrations are cut too, so the test keeps meaning that once they exist.
+ */
 function migrationsBefore0011(): string {
   const folder = join(tempDir, 'before');
   cpSync(REAL_FOLDER, folder, { recursive: true });
-  rmSync(join(folder, `${TAG}.sql`));
   const journalPath = join(folder, 'meta', '_journal.json');
   const journal = JSON.parse(readFileSync(journalPath, 'utf8')) as Journal;
-  journal.entries = journal.entries.filter((entry) => entry.tag !== TAG);
+  const at = journal.entries.findIndex((entry) => entry.tag === TAG);
+  if (at < 0) throw new Error(`no ${TAG} in the journal`);
+  journal.entries = journal.entries.slice(0, at);
   writeFileSync(journalPath, JSON.stringify(journal));
   return folder;
 }

@@ -234,6 +234,26 @@ describe('games', () => {
     expect(resigned.analysisUrl).toBeUndefined();
   });
 
+  it('accepts a draw offer, and refuses an accept with no offer to answer', async () => {
+    const { group, alice, bob, tokens } = await world();
+    const game = await insertGame(db, group.id, alice.id, bob.id);
+    const accept = () =>
+      api.request('POST', `/api/games/${game.publicId}/draw/accept`, { token: tokens.bob });
+    const early = await accept();
+    expect(early.status).toBe(403);
+    expect(await early.json()).toMatchObject({ error: { code: 'forbidden' } });
+    expect(
+      (await api.request('POST', `/api/games/${game.publicId}/draw/offer`, { token: tokens.alice }))
+        .status,
+    ).toBe(200);
+    const accepted = GameDtoSchema.parse(await (await accept()).json());
+    expect(accepted).toMatchObject({
+      status: 'finished',
+      result: '1/2-1/2',
+      endReason: 'draw_agreement',
+    });
+  });
+
   it('shares up to twenty positions a minute and serves the PGN', async () => {
     const { group, alice, bob, tokens } = await world();
     const game = await insertGame(db, group.id, alice.id, bob.id, { fen: AFTER_E4, plyCount: 1 });
