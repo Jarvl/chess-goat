@@ -84,6 +84,35 @@ describe('Lobby', () => {
     expect(r.text()).toContain('Bob challenges you');
   });
 
+  it('names a username challenge @bob, and says "you" to bob', async () => {
+    const named: LobbyDto = {
+      ...lobby,
+      challenges: [
+        {
+          ...lobby.challenges[0]!,
+          challenger: ref('9', 'Alice'),
+          opponent: null,
+          opponentUsername: 'bob',
+          viewer: { canAccept: false, canDecline: false, canCancel: false },
+        },
+      ],
+    };
+    const other = open(named);
+    await other.flush();
+    expect(other.text()).toContain('Alice challenges @bob');
+    const bob = open({
+      ...named,
+      challenges: [
+        {
+          ...named.challenges[0]!,
+          viewer: { canAccept: true, canDecline: true, canCancel: false },
+        },
+      ],
+    });
+    await bob.flush();
+    expect(bob.text()).toContain('Alice challenges you');
+  });
+
   it('heads the games with Yours and Others, yours first', async () => {
     const r = open(lobby);
     await r.flush();

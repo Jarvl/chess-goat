@@ -7,7 +7,8 @@ import {
 } from '@chess-goat/shared';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { adminActions, groupMembers, jobs, shares } from '../../src/db/schema';
+import { adminActions, groupMembers, jobs, shares, users } from '../../src/db/schema';
+import { createChallenge } from '../../src/domain/challenges';
 
 import { avatarUrl, photoHash, storePhoto } from '../../src/domain/photos';
 import { MAX_SHARES_PER_MINUTE } from '../../src/domain/sharing';
@@ -80,6 +81,42 @@ describe('challenges and lobby', () => {
     );
     expect(lobby.active.map((g) => [g.id, g.yourTurn])).toEqual([[game.id, true]]);
     expect(lobby.challenges).toEqual([]);
+  });
+
+  it('shows a username challenge as @bob and lets only bob answer it', async () => {
+    const { group, alice, bob, tokens } = await members();
+    await db.update(users).set({ username: 'Bob' }).where(eq(users.id, bob.id));
+    const made = await createChallenge(api.ctx.deps, {
+      groupId: group.id,
+      challengerId: alice.id,
+      opponentId: null,
+      opponentUsername: 'bob',
+      timePerMove: 3600,
+      colour: 'white',
+      rated: true,
+      threadId: null,
+    });
+    const lobbyFor = async (token: string) =>
+      LobbyDtoSchema.parse(
+        await (await api.request('GET', `/api/groups/${group.publicId}`, { token })).json(),
+      ).challenges;
+    const [asBob] = await lobbyFor(tokens.bob);
+    const [asCarol] = await lobbyFor(tokens.carol);
+    expect(asBob).toMatchObject({ opponent: null, opponentUsername: 'bob' });
+    expect(asBob!.viewer).toEqual({ canAccept: true, canDecline: true, canCancel: false });
+    expect(asCarol).toMatchObject({ opponent: null, opponentUsername: 'bob' });
+    expect(asCarol!.viewer).toEqual({ canAccept: false, canDecline: false, canCancel: false });
+    const id = asBob!.id;
+    expect(made.publicId).toBe(id);
+    const refused = await api.request('POST', `/api/challenges/${id}/accept`, {
+      token: tokens.carol,
+    });
+    expect(refused.status).toBe(403);
+    expect(await refused.json()).toMatchObject({ error: { code: 'forbidden' } });
+    const accepted = await api.request('POST', `/api/challenges/${id}/accept`, {
+      token: tokens.bob,
+    });
+    expect(accepted.status).toBe(200);
   });
 
   it('refuses the lobby to a non-member and lists known players for the picker', async () => {

@@ -100,7 +100,7 @@ export function gamesRoutes(api: Hono<ApiEnv>, ctx: ApiContext): void {
     const game = await accessible(c);
     const challenge = await createRematch(ctx.deps, { gameId: game.id, userId: userId(c) });
     const [row] = await challengeDtoRows(db, eq(challenges.id, challenge.id), 1);
-    return c.json(challengeToDto(row!, userId(c)));
+    return c.json(challengeToDto(row!, c.get('user')));
   });
 
   // The app asks for a link and hands that to the browser or downloader, never its session token.

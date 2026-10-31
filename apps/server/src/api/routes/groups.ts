@@ -84,7 +84,7 @@ export function groupsRoutes(api: Hono<ApiEnv>, ctx: ApiContext): void {
       threadId: settings.cardTopicMode === 'fixed' ? settings.fixedTopicId : null,
     });
     const [row] = await challengeDtoRows(db, eq(challenges.id, challenge.id), 1);
-    return c.json(challengeToDto(row!, c.get('user').id));
+    return c.json(challengeToDto(row!, c.get('user')));
   });
 
   api.post('/groups/:g/engine-games', validate('json', EngineGameRequestSchema), async (c) => {

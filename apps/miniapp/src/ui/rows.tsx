@@ -13,11 +13,18 @@ export function ChallengeCard(props: {
   const { challenge } = props;
   const challenger = challenge.challenger.name;
   const line =
-    challenge.opponent === null
-      ? t('app.lobby.challenge.open', { challenger })
-      : challenge.opponent.id === props.viewerId
+    challenge.opponentUsername !== null
+      ? challenge.viewer.canAccept
         ? t('app.lobby.challenge.you', { challenger })
-        : t('app.lobby.challenge.direct', { challenger, opponent: challenge.opponent.name });
+        : t('app.lobby.challenge.direct', {
+            challenger,
+            opponent: `@${challenge.opponentUsername}`,
+          })
+      : challenge.opponent === null
+        ? t('app.lobby.challenge.open', { challenger })
+        : challenge.opponent.id === props.viewerId
+          ? t('app.lobby.challenge.you', { challenger })
+          : t('app.lobby.challenge.direct', { challenger, opponent: challenge.opponent.name });
   return (
     <div class="challenge">
       <div class="challenge-who">
