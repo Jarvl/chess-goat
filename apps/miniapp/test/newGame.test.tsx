@@ -28,6 +28,7 @@ const challenge = {
   id: 'ChalAaaaaa',
   challenger: playerRef('1', 'Alice', { username: 'alice' }),
   opponent: null,
+  opponentUsername: null,
   timePerMove: 28800,
   challengerColour: 'white',
   rated: false,

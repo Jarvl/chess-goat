@@ -201,7 +201,8 @@ export async function createBot(deps: Deps, config: Config): Promise<Bot> {
 
   bot.on('callback_query:data', async (ctx) => {
     const data = decodeCallbackData(ctx.callbackQuery.data);
-    if (!data) return ctx.answerCallbackQuery();
+    // The private /challenge prompt's buttons are handled in its own task.
+    if (!data || data.action === 'prompt') return ctx.answerCallbackQuery();
     const user = await ensureUser(deps.db, userInfo(ctx.from));
     const chat = ctx.callbackQuery.message?.chat;
     if (chat && isGroupChat(chat)) {

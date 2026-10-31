@@ -47,6 +47,7 @@ const lobby: LobbyDto = {
       id: 'ChalAaaaaa',
       challenger: ref('2', 'Bob'),
       opponent: ref('1', 'Alice'),
+      opponentUsername: null,
       timePerMove: 86400,
       challengerColour: 'random',
       rated: true,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ChallengeDtoSchema,
   GROUP_SETTINGS_DEFAULTS,
   GameDtoSchema,
   GameSummarySchema,
@@ -266,5 +267,36 @@ describe('GameDtoSchema premoveTree', () => {
     expect(GameDtoSchema.parse(withoutTree).premoveTree).toBe('');
     expect(GameDtoSchema.parse({ ...activeGame, premoveTree: 'AQwH' }).premoveTree).toBe('AQwH');
     expect(GameDtoSchema.safeParse({ ...activeGame, premoveTree: 'AQ+H' }).success).toBe(false);
+  });
+});
+
+describe('ChallengeDtoSchema', () => {
+  const player = {
+    id: '1',
+    name: 'Alice',
+    username: 'alice',
+    rating: 1520,
+    provisional: false,
+    isBot: false,
+    photoUrl: null,
+    flair: [],
+  };
+  const challenge = {
+    id: 'aZ09bY18cX',
+    challenger: player,
+    opponent: null,
+    timePerMove: 259200,
+    challengerColour: 'random',
+    rated: true,
+    status: 'pending',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    expiresAt: '2026-01-02T00:00:00.000Z',
+    viewer: { canAccept: true, canDecline: false, canCancel: false },
+  };
+
+  it.each(['bob', null])('parses opponentUsername %j', (opponentUsername) => {
+    expect(ChallengeDtoSchema.parse({ ...challenge, opponentUsername }).opponentUsername).toBe(
+      opponentUsername,
+    );
   });
 });

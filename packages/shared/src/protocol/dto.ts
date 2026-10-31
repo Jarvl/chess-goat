@@ -146,6 +146,8 @@ export const ChallengeDtoSchema = z.object({
   id: PublicIdSchema,
   challenger: PlayerRefSchema,
   opponent: PlayerRefSchema.nullable(),
+  /** Who a pending challenge is addressed to, as typed, before they have joined. */
+  opponentUsername: z.string().nullable(),
   timePerMove: TimePerMoveSchema,
   challengerColour: ColourChoiceSchema,
   rated: z.boolean(),

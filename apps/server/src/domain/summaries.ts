@@ -152,6 +152,7 @@ export function challengeToDto(row: ChallengeDtoRow, viewerId: number): Challeng
     id: challenge.publicId,
     challenger: toPlayerRef(row.challenger, row.challengerRating),
     opponent: row.opponent ? toPlayerRef(row.opponent, row.opponentRating) : null,
+    opponentUsername: null,
     timePerMove: challenge.timePerMove as TimePerMove,
     challengerColour: challenge.challengerColour,
     rated: challenge.rated,

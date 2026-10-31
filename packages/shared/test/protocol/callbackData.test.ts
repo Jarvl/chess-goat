@@ -23,10 +23,32 @@ describe('callback data codec', () => {
       { action: 'accept_challenge', challengeId: 'aZ09bY18cX' },
       { action: 'decline_challenge', challengeId: 'aZ09bY18cX' },
       { action: 'rematch', gameId: 'aZ09bY18cX' },
+      {
+        action: 'prompt',
+        op: 'main',
+        ownerTelegramId: 1,
+        settings: { timePerMove: 86400, colour: 'random', rated: true },
+      },
     ];
     for (const data of all) {
       expect(decodeCallbackData(encodeCallbackData(data))).toEqual(data);
     }
+  });
+
+  it('round-trips a prompt callback with its full state', () => {
+    const data = {
+      action: 'prompt',
+      op: 'settings',
+      ownerTelegramId: 256228126,
+      settings: { timePerMove: 604800, colour: 'black', rated: false },
+    } as const;
+    expect(encodeCallbackData(data)).toBe('cp/s/256228126/7/b/0');
+    expect(decodeCallbackData('cp/s/256228126/7/b/0')).toEqual(data);
+  });
+
+  it('rejects prompt callbacks outside the three times', () => {
+    expect(decodeCallbackData('cp/m/1/2/r/1')).toBeNull();
+    expect(decodeCallbackData('cp/x/1/3/r/1')).toBeNull();
   });
 
   it.each([
