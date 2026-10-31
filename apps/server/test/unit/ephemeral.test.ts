@@ -45,6 +45,13 @@ describe('sendEphemeral', () => {
     expect(body).not.toHaveProperty('reply_parameters');
   });
 
+  it('sends with no trigger at all, as an admin bot may', async () => {
+    await sendEphemeral(api, { ...base, trigger: { kind: 'none' } });
+    const body = fake.callsTo('sendMessage')[0]!.body;
+    expect(body.ephemeral_message_parameters).toEqual({ receiver_user_id: 7 });
+    expect(body).not.toHaveProperty('reply_parameters');
+  });
+
   it('returns null on any 4xx', async () => {
     fake.failNext('sendMessage', { error_code: 400, description: 'Bad Request' });
     expect(await sendEphemeral(api, { ...base, trigger: { ephemeralMessageId: 1 } })).toBeNull();

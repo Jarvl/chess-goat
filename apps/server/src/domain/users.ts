@@ -44,6 +44,18 @@ export async function getUserById(tx: DbOrTx, id: number): Promise<UserRow | nul
   return row ?? null;
 }
 
+export async function getUserByTelegramId(
+  tx: DbOrTx,
+  telegramUserId: number,
+): Promise<UserRow | null> {
+  const [row] = await tx
+    .select()
+    .from(users)
+    .where(eq(users.telegramUserId, telegramUserId))
+    .limit(1);
+  return row ?? null;
+}
+
 export async function requireUser(tx: DbOrTx, id: number): Promise<UserRow> {
   const row = await getUserById(tx, id);
   if (!row) throw new DomainError('not_found', 'user not found', { userId: id });

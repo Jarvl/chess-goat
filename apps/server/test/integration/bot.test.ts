@@ -1,10 +1,13 @@
 import { eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import type { Bot } from 'grammy';
+import type { InlineKeyboardMarkup, MessageEntity } from 'grammy/types';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createBot } from '../../src/bot/bot';
+import { promptView } from '../../src/bot/challengePrompt';
 import { webhookRoutes } from '../../src/bot/webhook';
 import {
+  challengePrompts,
   challenges,
   games,
   groupMembers,
@@ -26,6 +29,7 @@ import {
   commandUpdate,
   myChatMemberUpdate,
   privateChat,
+  promptReplyUpdate,
   serviceUpdate,
   supergroup,
   tgUser,
@@ -116,6 +120,48 @@ describe('webhook', () => {
   });
 });
 
+const PROMPT = 'Who do you want to play? Type @ and pick them from the list, or tap Anyone.';
+const sends = () => fake.callsTo('sendMessage').map((call) => call.body);
+const texts = () => sends().map((body) => body.text);
+const makeAdmin = () =>
+  post(myChatMemberUpdate({ chat, from: alice, oldStatus: 'left', newStatus: 'administrator' }));
+const promptRows = () => db.select().from(challengePrompts);
+const userId = async (telegramUserId: number) =>
+  (await db.select().from(users).where(eq(users.telegramUserId, telegramUserId)))[0]!.id;
+/** The prompt's keyboard as first sent, which Telegram may still hand back after edits. */
+const staleMarkup = (owner = alice.id) =>
+  promptView('main', owner, { timePerMove: 259200, colour: 'random', rated: true })
+    .replyMarkup as InlineKeyboardMarkup;
+const tap = (data: string, from = alice, extra: { threadId?: number } = {}) =>
+  post(
+    callbackUpdate({
+      from,
+      chat,
+      data,
+      ephemeralMessageId: 300,
+      markup: staleMarkup(),
+      ...extra,
+    }),
+  );
+/** A reply to the private prompt, which arrives as an ephemeral message. */
+const promptReply = (
+  text: string,
+  entities: MessageEntity[] = [],
+  options: { from?: typeof alice; threadId?: number } = {},
+) =>
+  promptReplyUpdate({
+    chat,
+    from: options.from ?? alice,
+    text,
+    entities,
+    prompt: { markup: staleMarkup(), ephemeralMessageId: 300 },
+    ephemeral: true,
+    ...(options.threadId ? { threadId: options.threadId } : {}),
+  });
+const mentionAt0 = (name: string): MessageEntity[] => [
+  { type: 'mention', offset: 0, length: name.length },
+];
+
 describe('/challenge', () => {
   it('creates a direct challenge from a reply inside the topic and records both members', async () => {
     await post(
@@ -149,42 +195,401 @@ describe('/challenge', () => {
     expect((await db.select().from(groups))[0]?.telegramChatId).toBe(chat.id);
   });
 
-  it('creates an open challenge without a reply, or explains when the group forbids them', async () => {
-    await post(commandUpdate({ chat, from: alice, text: '/challenge' }));
-    expect((await db.select().from(challenges))[0]?.opponentId).toBeNull();
-    const [group] = await db.select().from(groups);
-    await updateGroupSettings(db, group!.id, { allowOpenChallenges: false });
+  it('opens a private prompt for a bare /challenge from an admin bot, and deletes the command', async () => {
+    await makeAdmin();
     const update = commandUpdate({ chat, from: alice, text: '/challenge' });
     await post(update);
-    expect(await db.select().from(challenges)).toHaveLength(1);
-    expect(await messagesSent()).toEqual([
-      expect.objectContaining({
-        chatId: chat.id,
-        text: 'Open challenges are off in this group.',
-        replyToMessageId: update.message!.message_id,
-      }),
+    expect(sends()).toHaveLength(1);
+    const body = sends()[0]!;
+    expect(body).toMatchObject({
+      chat_id: chat.id,
+      ephemeral_message_parameters: { receiver_user_id: alice.id },
+      reply_markup: { force_reply: true },
+    });
+    expect(body).not.toHaveProperty('reply_parameters');
+    expect(body.text).toBe(`${PROMPT}\n3 days per move · Random colour · Rated`);
+    expect(
+      (body.reply_markup as InlineKeyboardMarkup).inline_keyboard[0]!.map((b) => [
+        b.text,
+        (b as { callback_data: string }).callback_data,
+      ]),
+    ).toEqual([
+      ['Anyone', 'cp/a/11/3/r/1'],
+      ['Game settings', 'cp/s/11/3/r/1'],
+    ]);
+    expect(fake.callsTo('deleteMessage').map((call) => call.body)).toEqual([
+      { chat_id: chat.id, message_id: update.message!.message_id },
+    ]);
+    expect(await db.select().from(challenges)).toHaveLength(0);
+    expect(await messagesSent()).toEqual([]);
+    expect(await promptRows()).toEqual([
+      expect.objectContaining({ timePerMove: 259200, colour: 'random', rated: true }),
     ]);
   });
 
-  it('replies with one line for a self-challenge, a bot or an anonymous author', async () => {
-    await post(commandUpdate({ chat, from: alice, text: '/challenge', replyTo: { from: alice } }));
+  it('posts the prompt in the group, naming its owner, when the bot is no admin', async () => {
+    await post(commandUpdate({ chat, from: alice, text: '/challenge', threadId: 77 }));
+    await post(commandUpdate({ chat, from: bob, text: '/challenge' }));
+    const [forAlice, forBob] = sends();
+    expect(forAlice).not.toHaveProperty('ephemeral_message_parameters');
+    expect(forAlice).toMatchObject({
+      chat_id: chat.id,
+      message_thread_id: 77,
+      text: `@alice\n${PROMPT}\n3 days per move · Random colour · Rated`,
+      reply_markup: { force_reply: true },
+    });
+    expect((forAlice!.reply_markup as InlineKeyboardMarkup).inline_keyboard[0]![0]).toMatchObject({
+      callback_data: 'cp/a/11/3/r/1',
+    });
+    // Bob has no username: his name links to him instead.
+    expect(forBob).toMatchObject({
+      text: `Bob\n${PROMPT}\n3 days per move · Random colour · Rated`,
+      entities: [{ type: 'text_mention', offset: 0, length: 3, user: { id: bob.id } }],
+    });
+    expect(fake.callsTo('deleteMessage')).toHaveLength(0);
+    expect(await db.select().from(challenges)).toHaveLength(0);
+  });
+
+  it('posts the prompt in the group when Telegram refuses the private one', async () => {
+    await makeAdmin();
+    fake.failNext('sendMessage', { error_code: 400, description: 'Bad Request: not supported' });
+    await post(commandUpdate({ chat, from: alice, text: '/challenge' }));
+    expect(sends()).toHaveLength(2);
+    expect(sends()[1]).not.toHaveProperty('ephemeral_message_parameters');
+    expect(sends()[1]?.text).toBe(`@alice\n${PROMPT}\n3 days per move · Random colour · Rated`);
+  });
+
+  it('opens the prompt in a forum topic, where Telegram marks the topic root as the reply', async () => {
+    const update = commandUpdate({
+      chat,
+      from: alice,
+      text: '/challenge',
+      replyTo: { from: bob },
+      threadId: 77,
+    });
+    Object.assign(update.message!.reply_to_message!, {
+      message_id: 77,
+      forum_topic_created: { name: 'Games', icon_color: 1 },
+    });
+    await post(update);
+    expect(await db.select().from(challenges)).toHaveLength(0);
+    expect(sends()[0]?.text).toContain(PROMPT);
+  });
+
+  it('edits the prompt to the settings view and back, carrying the chosen settings', async () => {
+    await makeAdmin();
+    await post(commandUpdate({ chat, from: alice, text: '/challenge' }));
+    await tap('cp/s/11/3/r/1');
+    let edit = fake.callsTo('editEphemeralMessageText').at(-1)!.body;
+    expect(edit).toMatchObject({
+      chat_id: chat.id,
+      receiver_user_id: alice.id,
+      ephemeral_message_id: 300,
+      reply_markup: { force_reply: true },
+    });
+    expect(
+      (edit.reply_markup as InlineKeyboardMarkup).inline_keyboard.map((row) =>
+        row.map((b) => b.text),
+      ),
+    ).toEqual([
+      ['1 day', '3 days', '7 days'],
+      ['Random', 'White', 'Black'],
+      ['Rated', 'Casual'],
+      ['Done'],
+    ]);
+    await tap('cp/s/11/7/b/1');
+    edit = fake.callsTo('editEphemeralMessageText').at(-1)!.body;
+    expect(edit.text).toBe(`${PROMPT}\n7 days per move · You play Black · Rated`);
+    expect(await promptRows()).toEqual([
+      expect.objectContaining({ timePerMove: 604800, colour: 'black', rated: true }),
+    ]);
+    await tap('cp/m/11/7/b/1');
+    edit = fake.callsTo('editEphemeralMessageText').at(-1)!.body;
+    expect(
+      (edit.reply_markup as InlineKeyboardMarkup).inline_keyboard[0]!.map(
+        (b) => (b as { callback_data: string }).callback_data,
+      ),
+    ).toEqual(['cp/a/11/7/b/1', 'cp/s/11/7/b/1']);
+    expect(fake.callsTo('answerCallbackQuery')).toHaveLength(3);
+    expect(fake.callsTo('answerCallbackQuery').at(-1)?.body).not.toHaveProperty('text');
+    expect(await db.select().from(challenges)).toHaveLength(0);
+  });
+
+  it('creates an open challenge from Anyone with the prompt settings and deletes the prompt', async () => {
+    await makeAdmin();
+    await post(commandUpdate({ chat, from: alice, text: '/challenge' }));
+    await tap('cp/s/11/7/b/0');
+    await tap('cp/a/11/7/b/0');
+    expect(await db.select().from(challenges)).toEqual([
+      expect.objectContaining({
+        opponentId: null,
+        opponentUsername: null,
+        timePerMove: 604800,
+        challengerColour: 'black',
+        rated: false,
+      }),
+    ]);
+    expect(fake.callsTo('deleteEphemeralMessage').map((call) => call.body)).toEqual([
+      { chat_id: chat.id, receiver_user_id: alice.id, ephemeral_message_id: 300 },
+    ]);
+    expect(await promptRows()).toEqual([]);
+    expect((await effectJobs()).map((job) => job.kind)).toContain('send_challenge_card');
+  });
+
+  it("tells a member who taps someone else's prompt whose it is", async () => {
+    await makeAdmin();
+    await post(commandUpdate({ chat, from: alice, text: '/challenge' }));
+    await tap('cp/a/11/3/r/1', carol);
+    expect(fake.callsTo('answerCallbackQuery').at(-1)?.body).toMatchObject({
+      text: 'Only @alice can use this.',
+      show_alert: true,
+    });
+    await tap('cp/s/99/3/r/1', carol);
+    expect(fake.callsTo('answerCallbackQuery').at(-1)?.body).toMatchObject({
+      text: 'Only the person who asked can use this.',
+    });
+    expect(fake.callsTo('editEphemeralMessageText')).toHaveLength(0);
+    expect(await db.select().from(challenges)).toHaveLength(0);
+  });
+
+  it('challenges the member picked in a reply, known, unseen (by username) or without a username', async () => {
+    await makeAdmin();
+    await post(serviceUpdate(chat, alice, { new_chat_members: [carol] }));
+    await post(commandUpdate({ chat, from: alice, text: '/challenge' }));
+    await tap('cp/s/11/1/w/0');
+    // The reply's copy of the prompt still shows the starting keyboard; the stored settings win.
+    const reply = promptReply('@carol', mentionAt0('@carol'));
+    await post(reply);
+    expect(await db.select().from(challenges)).toEqual([
+      expect.objectContaining({
+        opponentId: await userId(carol.id),
+        timePerMove: 86400,
+        challengerColour: 'white',
+        rated: false,
+      }),
+    ]);
+    expect(fake.callsTo('deleteEphemeralMessage').map((call) => call.body)).toEqual([
+      { chat_id: chat.id, receiver_user_id: alice.id, ephemeral_message_id: 300 },
+    ]);
+    expect(await promptRows()).toEqual([]);
+
+    // No row any more: the starting settings apply.
+    await post(promptReply('hi @Dave', [{ type: 'mention', offset: 3, length: 5 }]));
+    await post(promptReply('Bob', [{ type: 'text_mention', offset: 0, length: 3, user: bob }]));
+    const [, byUsername, byTextMention] = await db.select().from(challenges).orderBy(challenges.id);
+    expect(byUsername).toMatchObject({
+      opponentId: null,
+      opponentUsername: 'dave',
+      timePerMove: 259200,
+      challengerColour: 'random',
+      rated: true,
+    });
+    expect(byTextMention?.opponentId).toBe(await userId(bob.id));
+    expect(await messagesSent()).toEqual([]);
+  });
+
+  it('refuses a bot or yourself picked in a reply, privately, and keeps the prompt', async () => {
+    await makeAdmin();
+    await post(commandUpdate({ chat, from: alice, text: '/challenge' }));
+    const replies = [
+      promptReply('@TestChessBot', mentionAt0('@TestChessBot')),
+      promptReply('@helper_bot', mentionAt0('@helper_bot')),
+      promptReply('@Alice', mentionAt0('@Alice')),
+      promptReply('Helper', [
+        { type: 'text_mention', offset: 0, length: 6, user: { ...bob, is_bot: true } },
+      ]),
+      promptReply('Alice', [{ type: 'text_mention', offset: 0, length: 5, user: alice }]),
+    ];
+    for (const reply of replies) await post(reply);
+    const answers = sends().slice(1);
+    expect(answers.map((body) => body.text)).toEqual([
+      "Bots don't play here.",
+      "Bots don't play here.",
+      "You can't challenge yourself.",
+      "Bots don't play here.",
+      "You can't challenge yourself.",
+    ]);
+    answers.forEach((body, i) =>
+      expect(body).toMatchObject({
+        reply_parameters: {
+          ephemeral_message_id: (replies[i]!.message as { ephemeral_message_id: number })
+            .ephemeral_message_id,
+        },
+        ephemeral_message_parameters: { receiver_user_id: alice.id },
+      }),
+    );
+    expect(fake.callsTo('deleteEphemeralMessage')).toHaveLength(0);
+    expect(await db.select().from(challenges)).toHaveLength(0);
+    expect(await promptRows()).toHaveLength(1);
+  });
+
+  it('tells the owner privately to pick someone when the reply names nobody', async () => {
+    await makeAdmin();
+    await post(commandUpdate({ chat, from: alice, text: '/challenge' }));
+    await post(promptReply('carol'));
+    expect(sends().at(-1)).toMatchObject({
+      text: 'Type @ in your reply and pick who you want to play from the list.',
+      ephemeral_message_parameters: { receiver_user_id: alice.id },
+    });
+    // Someone else replying to Alice's prompt is ignored.
+    await post(promptReply('@carol', mentionAt0('@carol'), { from: carol }));
+    expect(sends()).toHaveLength(2);
+    expect(await db.select().from(challenges)).toHaveLength(0);
+  });
+
+  it('answers a reply to the group prompt with a normal reply', async () => {
+    await post(commandUpdate({ chat, from: alice, text: '/challenge' }));
+    const reply = promptReplyUpdate({
+      chat,
+      from: alice,
+      text: 'carol',
+      prompt: { markup: staleMarkup(), messageId: 101 },
+    });
+    await post(reply);
+    const answer = sends().at(-1)!;
+    expect(answer).not.toHaveProperty('ephemeral_message_parameters');
+    expect(answer).toMatchObject({
+      text: 'Type @ in your reply and pick who you want to play from the list.',
+      reply_parameters: { message_id: reply.message!.message_id },
+    });
     await post(
+      promptReplyUpdate({
+        chat,
+        from: alice,
+        text: '@dave',
+        entities: mentionAt0('@dave'),
+        prompt: { markup: staleMarkup(), messageId: 101 },
+      }),
+    );
+    expect((await db.select().from(challenges))[0]?.opponentUsername).toBe('dave');
+  });
+
+  it('posts /challenge @name at once with 3 days, random colour and the group rated default', async () => {
+    await post(serviceUpdate(chat, alice, { new_chat_members: [carol] }));
+    const [group] = await db.select().from(groups);
+    await updateGroupSettings(db, group!.id, { defaultTimePerMove: 86400, ratedDefault: false });
+    await post(
+      commandUpdate({
+        chat,
+        from: alice,
+        text: '/challenge @carol',
+        entities: [{ type: 'mention', offset: 11, length: 6 }],
+      }),
+    );
+    expect(await db.select().from(challenges)).toEqual([
+      expect.objectContaining({
+        opponentId: await userId(carol.id),
+        timePerMove: 259200,
+        challengerColour: 'random',
+        rated: false,
+      }),
+    ]);
+    expect(sends()).toEqual([]);
+    expect(await promptRows()).toEqual([]);
+  });
+
+  it('ignores replies to cards and to other bot messages', async () => {
+    await post(commandUpdate({ chat, from: alice, text: '/challenge', replyTo: { from: bob } }));
+    fake.reset();
+    const card: InlineKeyboardMarkup = {
+      inline_keyboard: [[{ text: 'Accept', callback_data: 'ch/acc/AAAAAAAAAA' }]],
+    };
+    for (const markup of [card, { inline_keyboard: [] }]) {
+      await post(
+        promptReplyUpdate({
+          chat,
+          from: alice,
+          text: '@carol',
+          entities: mentionAt0('@carol'),
+          prompt: { markup, messageId: 900 },
+        }),
+      );
+    }
+    expect(await db.select().from(challenges)).toHaveLength(1);
+    expect(fake.calls).toEqual([]);
+  });
+
+  it('posts the card in the reply topic, or the fixed topic when configured', async () => {
+    await makeAdmin();
+    await post(commandUpdate({ chat, from: alice, text: '/challenge', threadId: 77 }));
+    await post(promptReply('@dave', mentionAt0('@dave'), { threadId: 77 }));
+    const [group] = await db.select().from(groups);
+    await updateGroupSettings(db, group!.id, { cardTopicMode: 'fixed', fixedTopicId: 5 });
+    await post(promptReply('@erin', mentionAt0('@erin'), { threadId: 77 }));
+    await tap('cp/a/11/3/r/1');
+    expect(
+      (await db.select().from(challenges).orderBy(challenges.id)).map((row) => row.threadId),
+    ).toEqual([77, 5, 5]);
+  });
+
+  it('keeps the prompt and answers privately when Anyone hits the pending limit or open challenges are off', async () => {
+    await makeAdmin();
+    await post(commandUpdate({ chat, from: alice, text: '/challenge' }));
+    const [group] = await db.select().from(groups);
+    await updateGroupSettings(db, group!.id, { allowOpenChallenges: false });
+    await tap('cp/a/11/3/r/1');
+    expect(fake.callsTo('answerCallbackQuery').at(-1)?.body).toMatchObject({
+      text: 'Open challenges are off in this group.',
+      show_alert: true,
+    });
+    await updateGroupSettings(db, group!.id, { allowOpenChallenges: true });
+    const a = await userId(alice.id);
+    for (let i = 0; i < 3; i += 1) await insertChallenge(db, group!.id, a, null);
+    await tap('cp/a/11/3/r/1');
+    expect(fake.callsTo('answerCallbackQuery').at(-1)?.body).toMatchObject({
+      text: 'You already have 3 pending challenges here.',
+    });
+    expect(fake.callsTo('deleteEphemeralMessage')).toHaveLength(0);
+    expect(await db.select().from(challenges)).toHaveLength(3);
+    expect(await promptRows()).toHaveLength(1);
+  });
+
+  it('refuses a self-challenge, a bot or an anonymous author in a normal reply to the command', async () => {
+    const updates = [
+      commandUpdate({ chat, from: alice, text: '/challenge', replyTo: { from: alice } }),
       commandUpdate({
         chat,
         from: alice,
         text: '/challenge',
         replyTo: { from: { ...bob, is_bot: true } },
       }),
-    );
-    await post(
       commandUpdate({ chat, from: alice, text: '/challenge', replyTo: { senderChat: true } }),
-    );
-    expect((await messagesSent()).map((p) => (p as { text: string }).text)).toEqual([
+    ];
+    for (const update of updates) await post(update);
+    expect(texts()).toEqual([
       "You can't challenge yourself.",
       "Bots don't play here.",
       'Reply to a message from a person to challenge them.',
     ]);
+    sends().forEach((body, i) => {
+      expect(body).not.toHaveProperty('ephemeral_message_parameters');
+      expect(body).toMatchObject({
+        reply_parameters: { message_id: updates[i]!.message!.message_id },
+      });
+    });
     expect(await db.select().from(challenges)).toHaveLength(0);
+    expect(await messagesSent()).toEqual([]);
+  });
+
+  it('refuses privately, and deletes the command, when the bot is an admin', async () => {
+    await makeAdmin();
+    const update = commandUpdate({
+      chat,
+      from: alice,
+      text: '/challenge',
+      replyTo: { from: alice },
+    });
+    await post(update);
+    expect(sends()).toEqual([
+      expect.objectContaining({
+        text: "You can't challenge yourself.",
+        ephemeral_message_parameters: { receiver_user_id: alice.id },
+      }),
+    ]);
+    expect(sends()[0]).not.toHaveProperty('reply_parameters');
+    expect(fake.callsTo('deleteMessage').map((call) => call.body.message_id)).toEqual([
+      update.message!.message_id,
+    ]);
   });
 
   it('ignores commands addressed to another bot', async () => {
@@ -245,7 +650,7 @@ describe('/challenge', () => {
     expect((await db.select().from(challenges))[0]?.opponentId).toBe(carolRow!.id);
   });
 
-  it('explains a mention it cannot place, and refuses the bot and yourself by name', async () => {
+  it('challenges a username it has not seen, and refuses bots and yourself by name', async () => {
     // Dan was here once and has left, which is as good as never seen.
     const dan = tgUser(44, 'Dan', 'dan');
     await post(serviceUpdate(chat, alice, { new_chat_members: [dan] }));
@@ -257,17 +662,25 @@ describe('/challenge', () => {
         text: `/challenge ${name}`,
         entities: [{ type: 'mention', offset: 11, length: name.length }],
       });
-    await post(mention('@nobody'));
+    await post(mention('@Nobody'));
     await post(mention('@dan'));
     await post(mention('@TestChessBot'));
+    await post(mention('@other_bot'));
     await post(mention('@alice'));
-    expect((await messagesSent()).map((p) => (p as { text: string }).text)).toEqual([
-      "I haven't seen @nobody in this group yet. Reply to one of their messages with /challenge instead.",
-      "I haven't seen @dan in this group yet. Reply to one of their messages with /challenge instead.",
+    expect(texts()).toEqual([
+      "Bots don't play here.",
       "Bots don't play here.",
       "You can't challenge yourself.",
     ]);
-    expect(await db.select().from(challenges)).toHaveLength(0);
+    expect(
+      (await db.select().from(challenges).orderBy(challenges.id)).map((row) => [
+        row.opponentId,
+        row.opponentUsername,
+      ]),
+    ).toEqual([
+      [null, 'nobody'],
+      [null, 'dan'],
+    ]);
   });
 });
 
@@ -291,6 +704,65 @@ describe('/chess, /settings and /start', () => {
         },
       ],
     });
+  });
+
+  it('sends /chess and /settings privately', async () => {
+    const chess = commandUpdate({
+      chat,
+      from: alice,
+      text: '/chess',
+      ephemeral: true,
+      threadId: 9,
+    });
+    await post(chess);
+    await post(commandUpdate({ chat, from: alice, text: '/settings', ephemeral: true }));
+    const [group] = await db.select().from(groups);
+    expect(sends()[0]).toMatchObject({
+      chat_id: chat.id,
+      message_thread_id: 9,
+      text: 'Challenge someone in this group, or open the lobby for games and ratings.',
+      reply_parameters: {
+        ephemeral_message_id: (chess.message as { ephemeral_message_id: number })
+          .ephemeral_message_id,
+      },
+      ephemeral_message_parameters: { receiver_user_id: alice.id },
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: '⚔️ Challenge someone',
+              url: `https://t.me/TestChessBot/chess?startapp=n_${group!.publicId}`,
+            },
+          ],
+          [
+            {
+              text: '♟ Group lobby',
+              url: `https://t.me/TestChessBot/chess?startapp=l_${group!.publicId}`,
+            },
+          ],
+        ],
+      },
+    });
+    expect(sends()[1]).toMatchObject({
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: 'Open settings',
+              url: `https://t.me/TestChessBot/chess?startapp=s_${group!.publicId}`,
+            },
+          ],
+        ],
+      },
+    });
+    expect(await messagesSent()).toEqual([]);
+
+    // Refused: the usual message goes out instead.
+    fake.failNext('sendMessage', { error_code: 400, description: 'Bad Request' });
+    await post(commandUpdate({ chat, from: alice, text: '/settings', ephemeral: true }));
+    expect(await messagesSent()).toEqual([
+      expect.objectContaining({ text: 'Group chess settings (admins only).' }),
+    ]);
   });
 
   it('allows 20 links per person per group per minute, shared with /settings', async () => {

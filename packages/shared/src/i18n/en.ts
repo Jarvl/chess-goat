@@ -154,8 +154,6 @@ export const en = {
   'reply.self': "You can't challenge yourself.",
   'reply.bot': "Bots don't play here.",
   'reply.anonymous': 'Reply to a message from a person to challenge them.',
-  'reply.unknown_mention':
-    "I haven't seen {name} in this group yet. Reply to one of their messages with /challenge instead.",
   'reply.blocked': "That challenge isn't possible in this group.",
   'reply.pending_limit': 'You already have {count} pending challenges here.',
   'reply.open_disabled': 'Open challenges are off in this group.',

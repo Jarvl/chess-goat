@@ -64,6 +64,20 @@ describe('startServer', () => {
       all_group_chats: ['challenge', 'chess', 'settings'],
       all_private_chats: ['start', 'paysupport'],
     });
+    // /challenge stays a normal message: an ephemeral command loses the message it replies to.
+    const group = calls.find(
+      (call) => (call.body.scope as { type: string }).type === 'all_group_chats',
+    );
+    expect(
+      (group?.body.commands as { command: string; is_ephemeral?: boolean }[]).map((c) => [
+        c.command,
+        c.is_ephemeral ?? false,
+      ]),
+    ).toEqual([
+      ['challenge', false],
+      ['chess', true],
+      ['settings', true],
+    ]);
   });
 
   it('makes the private-chat menu button open the Mini App', () => {

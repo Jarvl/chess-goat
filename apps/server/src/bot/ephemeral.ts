@@ -12,7 +12,8 @@ export type EphemeralMarkup = Omit<InlineKeyboardMarkup, 'inline_keyboard'> & {
 
 export type EphemeralTrigger =
   | { ephemeralMessageId: number } // the user's ephemeral command or reply
-  | { callbackQueryId: string }; // a tap
+  | { callbackQueryId: string } // a tap
+  | { kind: 'none' }; // nothing: only an admin bot may send unprompted
 
 type RawCalls = Record<string, (payload: object) => Promise<unknown>>;
 const raw = (api: Api) => api.raw as unknown as RawCalls;
