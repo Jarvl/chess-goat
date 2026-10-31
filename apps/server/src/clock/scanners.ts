@@ -1,4 +1,4 @@
-import { sideToMove } from '@group-chess/shared';
+import { sideToMove } from '@chess-goat/shared';
 import { and, asc, eq, isNotNull, lte, sql } from 'drizzle-orm';
 import { dbNow } from '../db/client';
 import { games } from '../db/schema';

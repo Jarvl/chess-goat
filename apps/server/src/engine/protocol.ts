@@ -1,4 +1,4 @@
-import type { EngineLevel } from '@group-chess/shared';
+import type { EngineLevel } from '@chess-goat/shared';
 import type { BestMove } from './engine';
 
 export type UciOption = { name: string; value: string | number };

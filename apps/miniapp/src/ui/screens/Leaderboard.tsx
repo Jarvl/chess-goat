@@ -1,4 +1,4 @@
-import { LobbyDtoSchema, t } from '@group-chess/shared';
+import { LobbyDtoSchema, t } from '@chess-goat/shared';
 import { session } from '../../state/session';
 import { useApp } from '../context';
 import { useResource } from '../hooks';

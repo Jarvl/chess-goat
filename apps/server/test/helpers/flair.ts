@@ -1,4 +1,4 @@
-import { INITIAL_FEN, type GameResult } from '@group-chess/shared';
+import { INITIAL_FEN, type GameResult } from '@chess-goat/shared';
 import { eq } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../src/db/client';
 import { userFlair, users, type GameRow } from '../../src/db/schema';

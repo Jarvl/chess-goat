@@ -1,4 +1,4 @@
-import { t, type MessageKey, type MessageParams } from '@group-chess/shared';
+import { t, type MessageKey, type MessageParams } from '@chess-goat/shared';
 import type { Deps } from '../domain/deps';
 import { isDomainError } from '../domain/errors';
 import { displayName, getUserById } from '../domain/users';

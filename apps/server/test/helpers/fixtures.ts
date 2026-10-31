@@ -1,4 +1,4 @@
-import { INITIAL_FEN, type TimePerMove } from '@group-chess/shared';
+import { INITIAL_FEN, type TimePerMove } from '@chess-goat/shared';
 import { eq, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../../src/db/client';
 import { generatePublicId } from '../../src/db/ids';

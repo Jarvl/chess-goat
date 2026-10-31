@@ -1,5 +1,5 @@
 {
-  "name": "@group-chess/server",
+  "name": "@chess-goat/server",
   "version": "0.0.0",
   "private": true,
   "license": "GPL-3.0-or-later",
@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@grammyjs/transformer-throttler": "^1.2.1",
-    "@group-chess/shared": "workspace:*",
+    "@chess-goat/shared": "workspace:*",
     "@hono/node-server": "^2.1.5",
     "@hono/zod-validator": "^0.9.1",
     "@resvg/resvg-js": "^2.6.2",

@@ -1,5 +1,5 @@
 // Snapshot spec §6 "By eye": writes sample cards to compare with the Claude Design prototype.
-// Usage: pnpm --filter @group-chess/server exec tsx test/visual/render-samples.ts <out-dir>
+// Usage: pnpm --filter @chess-goat/server exec tsx test/visual/render-samples.ts <out-dir>
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Chess } from 'chess.js';

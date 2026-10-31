@@ -1,5 +1,5 @@
 {
-  "name": "@group-chess/miniapp",
+  "name": "@chess-goat/miniapp",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     "e2e": "vite build && playwright test"
   },
   "dependencies": {
-    "@group-chess/shared": "workspace:*",
+    "@chess-goat/shared": "workspace:*",
     "@preact/signals": "^2.11.3",
     "chess.js": "1.4.0",
     "chessground": "^9.2.1",

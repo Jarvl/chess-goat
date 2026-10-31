@@ -4,7 +4,7 @@ import {
   type GameDto,
   type MoveDto,
   type PremoveNode,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 
 export const AFTER_E4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
 export const AFTER_E4_E5 = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2';

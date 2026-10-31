@@ -5,7 +5,7 @@ import {
   flairById,
   type FlairEntry,
   type Prefs,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { eq, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client';
 import { users, type UserRow } from '../db/schema';

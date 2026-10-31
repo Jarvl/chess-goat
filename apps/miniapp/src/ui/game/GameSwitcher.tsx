@@ -1,4 +1,4 @@
-import { sideToMove, t, type GameDto } from '@group-chess/shared';
+import { sideToMove, t, type GameDto } from '@chess-goat/shared';
 import { useEffect, useRef } from 'preact/hooks';
 import { session } from '../../state/session';
 import {

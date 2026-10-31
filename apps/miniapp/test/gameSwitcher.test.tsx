@@ -1,4 +1,4 @@
-import type { GameSummary, MeGamesDto } from '@group-chess/shared';
+import type { GameSummary, MeGamesDto } from '@chess-goat/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';

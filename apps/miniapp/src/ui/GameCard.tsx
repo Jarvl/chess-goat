@@ -1,4 +1,4 @@
-import { ratingLabel, t, type GameSummary } from '@group-chess/shared';
+import { ratingLabel, t, type GameSummary } from '@chess-goat/shared';
 import { session } from '../state/session';
 import { Avatar } from './Avatar';
 import { Flair } from './Flair';

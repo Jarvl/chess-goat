@@ -1,4 +1,4 @@
-import { flairById, flairDescriptionKey, t } from '@group-chess/shared';
+import { flairById, flairDescriptionKey, t } from '@chess-goat/shared';
 
 /**
  * The emoji a player wears beside their name (flair spec §5.1), or nothing. An id this build's

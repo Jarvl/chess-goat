@@ -18,7 +18,7 @@ export default defineConfig({
     launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined },
   },
   webServer: {
-    command: 'pnpm --filter @group-chess/server exec tsx test/e2e/harness.ts',
+    command: 'pnpm --filter @chess-goat/server exec tsx test/e2e/harness.ts',
     url: `${HARNESS}/health`,
     timeout: 90_000,
     reuseExistingServer: !process.env.CI,

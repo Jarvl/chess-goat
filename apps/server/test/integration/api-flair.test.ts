@@ -1,4 +1,4 @@
-import { FlairDtoSchema } from '@group-chess/shared';
+import { FlairDtoSchema } from '@chess-goat/shared';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { userFlair, users, type UserRow } from '../../src/db/schema';

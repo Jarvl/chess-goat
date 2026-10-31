@@ -35,7 +35,7 @@ importers:
 
   apps/miniapp:
     dependencies:
-      '@group-chess/shared':
+      '@chess-goat/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       '@preact/signals':
@@ -69,12 +69,12 @@ importers:
 
   apps/server:
     dependencies:
+      '@chess-goat/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@grammyjs/transformer-throttler':
         specifier: ^1.2.1
         version: 1.2.1(grammy@1.46.0)
-      '@group-chess/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
       '@hono/node-server':
         specifier: ^2.1.5
         version: 2.1.5(hono@4.13.14)

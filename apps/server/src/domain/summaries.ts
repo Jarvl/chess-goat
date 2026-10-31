@@ -3,7 +3,7 @@ import {
   type ChallengeDto,
   type GameSummary,
   type TimePerMove,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { and, eq, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { DbOrTx } from '../db/client';

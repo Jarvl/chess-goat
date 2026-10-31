@@ -1,5 +1,5 @@
-import type { DraftNode } from '@group-chess/shared';
-import { INITIAL_FEN } from '@group-chess/shared';
+import type { DraftNode } from '@chess-goat/shared';
+import { INITIAL_FEN } from '@chess-goat/shared';
 import { describe, expect, it } from 'vitest';
 import {
   extendLine,

@@ -1,4 +1,4 @@
-import { t } from '@group-chess/shared';
+import { t } from '@chess-goat/shared';
 import { eq, sql } from 'drizzle-orm';
 import type { Bot } from 'grammy';
 import { tips } from '../db/schema';

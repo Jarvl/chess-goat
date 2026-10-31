@@ -1,8 +1,8 @@
-# Group Chess — Product Requirements Document
+# Chess Goat — Product Requirements Document
 
 | | |
 |---|---|
-| **Product** | Group Chess (working title) — a Telegram bot for playing and watching 1v1 chess with the people in a group chat |
+| **Product** | Chess Goat — a Telegram bot for playing and watching 1v1 chess with the people in a group chat |
 | **Status** | Draft v0.2, for review |
 | **Date** | 2026-09-20 |
 | **Next step** | Technical requirements and architecture document: [docs/superpowers/specs/2026-09-20-group-chess-technical-design.md](superpowers/specs/2026-09-20-group-chess-technical-design.md) |
@@ -11,7 +11,7 @@
 
 ## 1. Summary
 
-Group Chess lets the members of a Telegram group play chess against each other and watch each other's games. Games are played on a fully interactive board (hold-and-drag pieces, like Lichess or Chess.com) inside a Telegram Mini App. The group chat itself stays quiet: one card per game, results when a game ends, and board positions that a player or spectator deliberately shares so the group can talk about them.
+Chess Goat lets the members of a Telegram group play chess against each other and watch each other's games. Games are played on a fully interactive board (hold-and-drag pieces, like Lichess or Chess.com) inside a Telegram Mini App. The group chat itself stays quiet: one card per game, results when a game ends, and board positions that a player or spectator deliberately shares so the group can talk about them.
 
 The bot is not a chess server and does not try to replace Chess.com or Lichess. It is the simplest way for a group of friends to play each other, keep a record, and argue about the games. Analysis is handed off to Lichess after a game is over.
 

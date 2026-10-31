@@ -1,4 +1,4 @@
-import { encodePremoveBytes } from '@group-chess/shared';
+import { encodePremoveBytes } from '@chess-goat/shared';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { boardImages, games, jobs, shares, users } from '../../src/db/schema';

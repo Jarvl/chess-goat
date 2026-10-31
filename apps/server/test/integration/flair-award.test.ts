@@ -1,4 +1,4 @@
-import { INITIAL_FEN } from '@group-chess/shared';
+import { INITIAL_FEN } from '@chess-goat/shared';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { games, jobs, userFlair, users, type GameRow } from '../../src/db/schema';

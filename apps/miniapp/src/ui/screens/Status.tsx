@@ -1,4 +1,4 @@
-import { t, type GroupRef } from '@group-chess/shared';
+import { t, type GroupRef } from '@chess-goat/shared';
 import { BRAND } from '../../brand';
 import { useApp } from '../context';
 

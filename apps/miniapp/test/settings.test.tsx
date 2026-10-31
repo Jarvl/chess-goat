@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { FLAIR, t } from '@group-chess/shared';
+import { FLAIR, t } from '@chess-goat/shared';
 import { myFlair } from '../src/state/flair';
 import { prefs } from '../src/state/session';
 import { Settings } from '../src/ui/screens/Settings';
@@ -187,7 +187,7 @@ describe('Settings', () => {
     await r.click('[data-action="author"]');
     await r.click('[data-action="source"]');
     expect(window.__tg!.telegramLinks).toEqual(['https://t.me/Jarvl']);
-    expect(window.__tg!.links).toEqual(['https://github.com/Jarvl/telegram-chess-bot']);
+    expect(window.__tg!.links).toEqual(['https://github.com/Jarvl/chess-goat']);
     await r.click('[data-action="about"]');
     expect(window.__tg!.popups.at(-1)).toMatchObject({
       title: 'About Chess Goat',

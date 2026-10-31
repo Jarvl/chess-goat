@@ -5,7 +5,7 @@ import {
   ratingLabel,
   t,
   type Colour,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { Chess } from 'chess.js';
 import { and, eq, isNull } from 'drizzle-orm';
 import { InputFile } from 'grammy';

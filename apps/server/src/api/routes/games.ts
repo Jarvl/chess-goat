@@ -3,7 +3,7 @@ import {
   PremoveTreeRequestSchema,
   ShareRequestSchema,
   type PgnLinkDto,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { eq } from 'drizzle-orm';
 import type { Context, Hono } from 'hono';
 import { challenges } from '../../db/schema';

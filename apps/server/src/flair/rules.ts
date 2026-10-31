@@ -4,7 +4,7 @@ import {
   type EndReason,
   type FlairRule,
   type PlayerResult,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { gaveMate, madePattern, type StoredMove } from './patterns';
 
 /** One of a player's counted games (flair spec §1.3), reduced to the columns flair reads. */

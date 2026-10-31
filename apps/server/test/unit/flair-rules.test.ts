@@ -10,7 +10,7 @@ import {
   total,
   won,
   type PlayerResult,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { describe, expect, it } from 'vitest';
 import { ruleHolds, type CountedGame, type RuleContext } from '../../src/flair/rules';
 import { countedGame, LINES, PROMOTION_FEN, QUEEN_MATE_FEN, play } from '../helpers/chess';

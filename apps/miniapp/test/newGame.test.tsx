@@ -1,4 +1,4 @@
-import { ENGINE_LEVELS, type GameDto } from '@group-chess/shared';
+import { ENGINE_LEVELS, type GameDto } from '@chess-goat/shared';
 import { describe, expect, it } from 'vitest';
 import { App } from '../src/ui/App';
 import { NewGame } from '../src/ui/screens/NewGame';

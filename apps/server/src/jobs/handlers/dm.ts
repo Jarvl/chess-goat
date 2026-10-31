@@ -6,7 +6,7 @@ import {
   timePerMoveLabel,
   type Colour,
   type TimePerMove,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { and, eq } from 'drizzle-orm';
 import type { InlineKeyboardButton } from 'grammy/types';
 import { z } from 'zod';

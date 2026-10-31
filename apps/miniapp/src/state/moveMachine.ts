@@ -1,4 +1,4 @@
-import type { EngineLevel, MoveConfirmations } from '@group-chess/shared';
+import type { EngineLevel, MoveConfirmations } from '@chess-goat/shared';
 
 export type PendingMove = {
   uci: string;

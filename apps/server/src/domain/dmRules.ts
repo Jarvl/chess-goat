@@ -1,4 +1,4 @@
-import type { Colour, EndReason } from '@group-chess/shared';
+import type { Colour, EndReason } from '@chess-goat/shared';
 
 /** Telegram lets a bot delete its own messages for 48 hours; an hour short leaves room for queue lag. */
 export const DM_DELETE_WINDOW_MS = 47 * 60 * 60 * 1000;

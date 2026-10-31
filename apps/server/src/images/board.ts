@@ -1,4 +1,4 @@
-import { sideToMove, type Colour } from '@group-chess/shared';
+import { sideToMove, type Colour } from '@chess-goat/shared';
 import { PIECE_VIEWBOX, PIECES, type PieceCode } from './pieces';
 
 export const IMAGE_SIZE = 1024;

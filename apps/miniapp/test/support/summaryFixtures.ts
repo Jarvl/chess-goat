@@ -1,4 +1,4 @@
-import { INITIAL_FEN, type GameSummary, type PlayerRef } from '@group-chess/shared';
+import { INITIAL_FEN, type GameSummary, type PlayerRef } from '@chess-goat/shared';
 
 export function playerRef(id: string, name: string, overrides: Partial<PlayerRef> = {}): PlayerRef {
   return {

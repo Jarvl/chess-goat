@@ -1,14 +1,72 @@
-# Group Chess
+<p align="center">
+  <img src="apps/miniapp/src/assets/goat-banner.jpg" alt="Chess Goat" width="640">
+</p>
 
-A Telegram bot and Mini App for playing correspondence chess inside group chats. People challenge each other with `/challenge @name` or from the app, play on a real board inside Telegram (drag and drop or tap-tap), and the group sees only cards, results and shared positions. Rules and clocks are enforced on the server; every finished game gets a Lichess analysis link.
+<p align="center">
+  <strong>Correspondence chess for Telegram group chats.</strong><br>
+  Challenge your friends, play on a real board without leaving the chat, and argue about the result.
+</p>
 
-- Product requirements: [docs/PRD.md](docs/PRD.md)
-- Technical design: [docs/superpowers/specs/2026-09-20-group-chess-technical-design.md](docs/superpowers/specs/2026-09-20-group-chess-technical-design.md)
-- Implementation plans: [docs/superpowers/plans/2026-09-20-group-chess.md](docs/superpowers/plans/2026-09-20-group-chess.md)
-- Setting it up in Telegram to try it: [docs/running.md](docs/running.md)
-- Self-hosting it on Dokploy: [docs/deploy-dokploy.md](docs/deploy-dokploy.md)
-- Deploying and running it: [docs/operations.md](docs/operations.md)
-- How it is tested, and what is left before alpha: [docs/testing.md](docs/testing.md)
+<p align="center">
+  <a href="https://github.com/Jarvl/chess-goat/actions/workflows/ci.yml"><img src="https://github.com/Jarvl/chess-goat/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="https://github.com/Jarvl/chess-goat/actions/workflows/e2e.yml"><img src="https://github.com/Jarvl/chess-goat/actions/workflows/e2e.yml/badge.svg?branch=main" alt="End-to-end"></a>
+  <a href="https://github.com/Jarvl/chess-goat/actions/workflows/release.yml"><img src="https://github.com/Jarvl/chess-goat/actions/workflows/release.yml/badge.svg" alt="Release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/licence-GPL--3.0--or--later-blue" alt="Licence: GPL-3.0-or-later"></a>
+  <br>
+  <img src="https://img.shields.io/badge/Telegram-Mini_App-26A5E4?logo=telegram&logoColor=white" alt="Telegram Mini App">
+  <img src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white" alt="TypeScript">
+  <img src="https://img.shields.io/badge/Node-22-5FA04E?logo=nodedotjs&logoColor=white" alt="Node 22">
+  <img src="https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql&logoColor=white" alt="PostgreSQL 18">
+  <img src="https://img.shields.io/badge/Preact-673AB8?logo=preact&logoColor=white" alt="Preact">
+  <img src="https://img.shields.io/badge/pnpm-10-F69220?logo=pnpm&logoColor=white" alt="pnpm 10">
+</p>
+
+---
+
+Chess Goat is a Telegram bot and Mini App for playing chess with the people in your group chats. Challenge someone with `/challenge @name` or from the app, then move by dragging or tapping on a real board that opens inside Telegram. The group only sees game cards, results and the positions people choose to share. The server enforces the rules and the clocks, and every finished game gets a Lichess analysis link.
+
+## Features
+
+- **A real board.** Drag-and-drop or tap-tap moves with legal-move hints, promotion picker, move list, haptics, and light and dark themes that follow Telegram. Built on [chessground](https://github.com/lichess-org/chessground), the board Lichess uses.
+- **Correspondence clocks.** Time per move from 1 hour to 7 days, or no clock. Clocks are kept on the server and survive restarts.
+- **A quiet group chat.** One card per game, edited in place as the game goes on. No board image on every move and no command chatter.
+- **Watch and replay.** Every game in the group can be watched live and replayed later. Share any position to the chat as a rendered snapshot card.
+- **Ratings and a leaderboard.** Each group has its own Glicko-2 ratings, W/D/L records, head-to-head stats and player pages.
+- **Conditional premoves.** Queue replies to the moves you expect, as a tree of lines that plays itself out.
+- **Play the bot.** A Stockfish opponent at four levels. Bot games are unrated and never post to the group.
+- **Flair.** Earn emoji in play and wear them beside your name.
+- **Notifications that respect you.** A private "your move" message, a reminder before your time runs out, and nothing in the group.
+- **Lichess analysis.** Finished games are imported to Lichess automatically, and the PGN is one tap away.
+- **Group admin controls.** Default time controls, forum-topic routing, voiding games and blocking users.
+- **Private by design.** The bot keeps privacy mode on and never stores chat content. Users can delete their own data.
+
+## How it works
+
+```mermaid
+flowchart LR
+    G[Telegram group] -- /challenge, button taps --> B
+    B[Bot · grammY] -- game cards, shared positions --> G
+    M[Mini App · Preact + chessground] -- moves over HTTPS --> A[API · Hono]
+    A -- live updates over SSE --> M
+    B & A --- D[(PostgreSQL 18)]
+    J[Jobs + clock scanners] --- D
+    J -- imports finished games --> L[Lichess]
+    J -- bot moves --> S[Stockfish]
+```
+
+The whole server runs as one Node process with four roles (`api`, `bot`, `jobs`, `clock`). You can split the roles across processes with `ROLES`.
+
+## Documentation
+
+| Read this                                                                             | For                                             |
+| ------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| [Running it in Telegram](docs/running.md)                                             | Setting up BotFather and trying it out          |
+| [Self-hosting on Dokploy](docs/deploy-dokploy.md)                                     | A step-by-step deploy on your own VPS           |
+| [Operations](docs/operations.md)                                                      | Deployment checklist, metrics and alerts        |
+| [Testing](docs/testing.md)                                                            | How it is tested, and what is left before alpha |
+| [Product requirements](docs/PRD.md)                                                   | What the product does and deliberately does not |
+| [Technical design](docs/superpowers/specs/2026-09-20-group-chess-technical-design.md) | Architecture, data model and protocols          |
+| [Specs](docs/superpowers/specs) and [implementation plans](docs/superpowers/plans)    | The design record of each feature               |
 
 ## Layout
 
@@ -30,9 +88,9 @@ A Telegram bot and Mini App for playing correspondence chess inside group chats.
 ```bash
 pnpm install
 cp .env.example .env            # fill in BOT_TOKEN, BOT_USERNAME, MINI_APP_SHORT_NAME, PUBLIC_URL, secrets
-scripts/local-postgres.sh start  # creates group_chess and group_chess_test on :54329 and prints both URLs
-export DATABASE_URL=postgres://postgres@127.0.0.1:54329/group_chess
-# or: docker compose up -d db  →  DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/group_chess
+scripts/local-postgres.sh start  # creates chess_goat and chess_goat_test on :54329 and prints both URLs
+export DATABASE_URL=postgres://postgres@127.0.0.1:54329/chess_goat
+# or: docker compose up -d db  →  DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/chess_goat
 pnpm dev:server                  # migrations run at boot; the bot long-polls when TELEGRAM_POLLING=true
 pnpm dev:app                     # Vite on :5173, proxying /api to :3000
 ```
@@ -43,14 +101,14 @@ Telegram must load the Mini App over public HTTPS: point BotFather's app URL at 
 
 ```bash
 pnpm lint && pnpm format:check && pnpm typecheck
-export TEST_DATABASE_URL=postgres://postgres@127.0.0.1:54329/group_chess_test
+export TEST_DATABASE_URL=postgres://postgres@127.0.0.1:54329/chess_goat_test
 pnpm test                        # unit + integration (PostgreSQL); without TEST_DATABASE_URL only unit tests run
 pnpm build && pnpm check:budget  # Mini App bundle inside the §6.5 budget
 pnpm check:licences              # every dependency inside the licence allow-list
 pnpm e2e                         # builds the app and runs Playwright against the real server + a fake Bot API
 ```
 
-The end-to-end suite needs Chromium: `pnpm --filter @group-chess/miniapp exec playwright install chromium`, or point `PLAYWRIGHT_CHROMIUM_PATH` at an existing binary.
+The end-to-end suite needs Chromium: `pnpm --filter @chess-goat/miniapp exec playwright install chromium`, or point `PLAYWRIGHT_CHROMIUM_PATH` at an existing binary.
 
 ## Configuration
 
@@ -80,8 +138,19 @@ Everything is an environment variable, validated at boot (`apps/server/src/confi
 
 ## Deployment in one paragraph
 
-Build the image (`docker build -t group-chess .` or take `ghcr.io/<owner>/<repo>:<version>` from a release), run it with the variables above and a PostgreSQL 18 database, put an HTTPS reverse proxy in front that does not buffer `/api/games/*/events`, register the Mini App in BotFather with `<PUBLIC_URL>/app/`, and open the bot. Migrations, the webhook, the command menu and the DM's Open button are set up by the server at boot. The full checklist, the metrics and the alerts are in [docs/operations.md](docs/operations.md).
+Build the image (`docker build -t chess-goat .` or pull `ghcr.io/jarvl/chess-goat:<version>` from a release), run it with the variables above and a PostgreSQL 18 database, put an HTTPS reverse proxy in front that does not buffer `/api/games/*/events`, register the Mini App in BotFather with `<PUBLIC_URL>/app/`, and open the bot. Migrations, the webhook, the command menu and the DM's Open button are set up by the server at boot. The full checklist, the metrics and the alerts are in [docs/operations.md](docs/operations.md).
 
 ## Licence
 
 GPL-3.0-or-later (see `LICENSE`): the board is [chessground](https://github.com/lichess-org/chessground). The chess piece glyphs are the cburnett set by Colin M.L. Burnett, CC BY-SA 3.0 (`apps/server/src/images/ATTRIBUTION.md`). Every dependency is checked against the allow-list in `scripts/check-licences.mjs`.
+
+## Contributing
+
+Issues and pull requests are welcome. Before you open a PR, run the [checks](#checks) above. CI runs the same checks, plus the end-to-end suite and a Docker image smoke test.
+
+---
+
+<p align="center">
+  <img src="apps/miniapp/src/assets/goat-mark.png" alt="Chess Goat logo" width="72"><br>
+  <sub>Made by <a href="https://t.me/Jarvl">@Jarvl</a> · Free software under the GPL-3.0-or-later</sub>
+</p>

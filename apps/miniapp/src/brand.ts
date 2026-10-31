@@ -5,7 +5,7 @@ import markUrl from './assets/goat-mark.png';
 export const BRAND = {
   name: 'Chess Goat',
   author: 'Jarvl',
-  repository: 'Jarvl/telegram-chess-bot',
+  repository: 'Jarvl/chess-goat',
   markUrl,
   bannerUrl,
 } as const;

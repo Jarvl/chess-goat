@@ -1,4 +1,4 @@
-import { t } from '@group-chess/shared';
+import { t } from '@chess-goat/shared';
 import { serve, type ServerType } from '@hono/node-server';
 import type { Bot } from 'grammy';
 import type { Hono } from 'hono';

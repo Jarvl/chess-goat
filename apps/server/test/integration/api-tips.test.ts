@@ -1,4 +1,4 @@
-import { TipInvoiceDtoSchema } from '@group-chess/shared';
+import { TipInvoiceDtoSchema } from '@chess-goat/shared';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { tips } from '../../src/db/schema';

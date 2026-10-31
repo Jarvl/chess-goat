@@ -1,4 +1,4 @@
-import { t, type MessageKey } from '@group-chess/shared';
+import { t, type MessageKey } from '@chess-goat/shared';
 import type { JSX } from 'preact';
 import { TABS, type TabName } from '../router';
 import { yourMoveCount } from '../state/yourMove';

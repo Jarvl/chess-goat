@@ -4,7 +4,7 @@ import {
   isProvisional,
   sideToMove,
   type TimePerMove,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import type { Config } from '../config';
 import type { DbOrTx } from '../db/client';
 import type { ChallengeRow, GameRow, GroupRow, UserRow } from '../db/schema';

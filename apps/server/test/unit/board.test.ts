@@ -1,4 +1,4 @@
-import { INITIAL_FEN } from '@group-chess/shared';
+import { INITIAL_FEN } from '@chess-goat/shared';
 import { describe, expect, it } from 'vitest';
 import { parsePlacement, renderBoardSvg } from '../../src/images/board';
 import { AFTER_E4 } from '../helpers/chess';

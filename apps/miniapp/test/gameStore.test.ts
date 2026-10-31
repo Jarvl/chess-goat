@@ -1,4 +1,4 @@
-import { INITIAL_FEN, legalDests, type MoveDto } from '@group-chess/shared';
+import { INITIAL_FEN, legalDests, type MoveDto } from '@chess-goat/shared';
 import { effect } from '@preact/signals';
 import { describe, expect, it } from 'vitest';
 import { diffNotices, GameStore, positionAt } from '../src/state/game';

@@ -1,4 +1,4 @@
-import { t, TIP_MAX_STARS, TIP_MIN_STARS } from '@group-chess/shared';
+import { t, TIP_MAX_STARS, TIP_MIN_STARS } from '@chess-goat/shared';
 import type { Api } from 'grammy';
 
 /** Tip jar spec §2.1: the invoice payload names the amount, so pre-checkout can check it. */

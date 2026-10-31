@@ -1,4 +1,4 @@
-import { ApiErrorBodySchema, type ErrorCode } from '@group-chess/shared';
+import { ApiErrorBodySchema, type ErrorCode } from '@chess-goat/shared';
 import type { ZodType } from 'zod';
 
 export class ApiError extends Error {

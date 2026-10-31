@@ -4,10 +4,10 @@
 // mate score or a strength claim, because those are Stockfish's behaviour, not ours, and they
 // change between versions (spec §11). Legality is judged by this project's own arbiter, the same
 // one that governs real games, not by asserting anything about the engine's choice.
-// Imported by relative path, not the `@group-chess/shared` package name: this script lives in
+// Imported by relative path, not the `@chess-goat/shared` package name: this script lives in
 // `scripts/`, outside every workspace package, so the bare specifier has nothing to resolve
 // against. `apps/server/src/engine/uci.ts` is imported the same way, but it is a real workspace
-// module and resolves its own `@group-chess/shared` and `chess.js` imports normally once loaded.
+// module and resolves its own `@chess-goat/shared` and `chess.js` imports normally once loaded.
 import { applyMove, positionKey } from '../packages/shared/src/index.ts';
 import { uciEngine } from '../apps/server/src/engine/uci.ts';
 

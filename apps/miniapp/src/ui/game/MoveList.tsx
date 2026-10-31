@@ -1,4 +1,4 @@
-import { t } from '@group-chess/shared';
+import { t } from '@chess-goat/shared';
 import { Chess } from 'chess.js';
 import { useEffect, useRef } from 'preact/hooks';
 import type { GameStore } from '../../state/game';

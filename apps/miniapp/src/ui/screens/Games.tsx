@@ -1,4 +1,4 @@
-import { MeGamesDtoSchema, t } from '@group-chess/shared';
+import { MeGamesDtoSchema, t } from '@chess-goat/shared';
 import { useEffect } from 'preact/hooks';
 import { BRAND } from '../../brand';
 import { countYourMove } from '../../state/yourMove';

@@ -4,7 +4,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: group_chess
+      POSTGRES_DB: chess_goat
     ports:
       - '5432:5432'
     volumes:
@@ -21,7 +21,7 @@ services:
       - path: .env
         required: false
     environment:
-      DATABASE_URL: postgres://postgres:postgres@db:5432/group_chess
+      DATABASE_URL: postgres://postgres:postgres@db:5432/chess_goat
       PORT: '3000'
     ports:
       - '3000:3000'

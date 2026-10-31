@@ -1,4 +1,4 @@
-import type { EngineLevel } from '@group-chess/shared';
+import type { EngineLevel } from '@chess-goat/shared';
 
 /** A move in UCI notation, or `none` when the engine reports the position is terminal. */
 export type BestMove = { uci: string } | { none: true };

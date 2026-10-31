@@ -4,7 +4,7 @@ import {
   EngineGameRequestSchema,
   FinishedQuerySchema,
   type PlayersPickerDto,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { eq } from 'drizzle-orm';
 import { Hono, type Context } from 'hono';
 import { challenges } from '../../db/schema';

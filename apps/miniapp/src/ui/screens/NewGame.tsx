@@ -12,7 +12,7 @@ import {
   type EngineLevel,
   type PlayersPickerDto,
   type TimePerMove,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { h } from 'preact';
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { ApiError } from '../../api/client';

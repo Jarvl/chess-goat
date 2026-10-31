@@ -1,4 +1,4 @@
-import { parseUci, type DraftNode } from '@group-chess/shared';
+import { parseUci, type DraftNode } from '@chess-goat/shared';
 import { Chess } from 'chess.js';
 
 /** Alternating opponent move, reply, opponent move, …, from the tree's root position. */

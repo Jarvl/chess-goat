@@ -1,4 +1,4 @@
-import { formatClock, t, type TimePerMove } from '@group-chess/shared';
+import { formatClock, t, type TimePerMove } from '@chess-goat/shared';
 
 /** Milliseconds until the deadline as seen from the server's clock; never negative. */
 export function remainingMs(deadlineAt: string | null, now: Date): number | null {

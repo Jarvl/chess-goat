@@ -1,4 +1,4 @@
-import { BlockRequestSchema, GroupSettingsUpdateRequestSchema } from '@group-chess/shared';
+import { BlockRequestSchema, GroupSettingsUpdateRequestSchema } from '@chess-goat/shared';
 import type { Context, Hono } from 'hono';
 import {
   adminBlock,

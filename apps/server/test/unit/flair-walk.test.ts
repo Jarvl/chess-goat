@@ -1,4 +1,4 @@
-import { flairById, INITIAL_FEN, type FlairEntry, type PlayerResult } from '@group-chess/shared';
+import { flairById, INITIAL_FEN, type FlairEntry, type PlayerResult } from '@chess-goat/shared';
 import { describe, expect, it, vi } from 'vitest';
 import type { StoredMove } from '../../src/flair/patterns';
 import type { CountedGame } from '../../src/flair/rules';

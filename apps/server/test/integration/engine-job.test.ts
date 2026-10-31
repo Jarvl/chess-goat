@@ -1,4 +1,4 @@
-import { type ColourChoice } from '@group-chess/shared';
+import { type ColourChoice } from '@chess-goat/shared';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { createEngineGame, getEngineUser } from '../../src/domain/engineGames';

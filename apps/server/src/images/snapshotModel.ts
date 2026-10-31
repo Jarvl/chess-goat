@@ -10,7 +10,7 @@ import {
   type EngineLevel,
   type GameResult,
   type GameStatus,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import type { BoardRenderInput } from './board';
 import type { PieceCode } from './pieces';
 

@@ -7,7 +7,7 @@ import {
   type EndReason,
   type GameResult,
   type GameSummary,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { isUrgent, remainingMs } from '../state/clock';
 
 export type Pill = { kind: 'yours' | 'urgent' | 'other'; text: string };

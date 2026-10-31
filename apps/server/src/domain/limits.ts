@@ -2,7 +2,7 @@ import {
   REMINDER_FRACTION,
   REMINDER_MIN_TIME_PER_MOVE,
   type TimePerMove,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { and, eq, sql, type SQL } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client';
 import { challenges } from '../db/schema';

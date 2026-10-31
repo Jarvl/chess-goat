@@ -7,7 +7,7 @@ import {
   encodePremoveTree,
   premoveTreeHash,
   type PremoveNode,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { Chess, type Move } from 'chess.js';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';

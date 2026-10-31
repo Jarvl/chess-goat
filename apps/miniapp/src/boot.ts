@@ -1,4 +1,4 @@
-import type { LaunchRoute } from '@group-chess/shared';
+import type { LaunchRoute } from '@chess-goat/shared';
 import { launch } from './api/launch';
 import type { Route, TabName } from './router';
 import { applyLaunch } from './state/session';

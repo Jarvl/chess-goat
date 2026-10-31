@@ -2,7 +2,7 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { INITIAL_FEN } from '@group-chess/shared';
+import { INITIAL_FEN } from '@chess-goat/shared';
 import type postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { runMigrations } from '../../src/db/migrate';
@@ -35,7 +35,7 @@ function migrationsBefore0011(): string {
 }
 
 beforeAll(async () => {
-  tempDir = mkdtempSync(join(tmpdir(), 'group-chess-0011-'));
+  tempDir = mkdtempSync(join(tmpdir(), 'chess-goat-0011-'));
   database = await scratchDatabase('migration_0011');
   ({ sql: scratch, url: scratchUrl } = database);
 });

@@ -23,7 +23,7 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: group_chess_e2e
+          POSTGRES_DB: chess_goat_e2e
         ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U postgres"
@@ -31,7 +31,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/group_chess_e2e
+      TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/chess_goat_e2e
       CI: '1'
     steps:
       - uses: actions/checkout@v7
@@ -41,7 +41,7 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @group-chess/miniapp exec playwright install --with-deps chromium
+      - run: pnpm --filter @chess-goat/miniapp exec playwright install --with-deps chromium
       - uses: actions/cache@v6
         with:
           path: |
@@ -70,7 +70,7 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: group_chess
+          POSTGRES_DB: chess_goat
         ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U postgres"
@@ -84,7 +84,7 @@ jobs:
         with:
           context: .
           load: true
-          tags: group-chess:ci
+          tags: chess-goat:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Start the image
@@ -96,9 +96,9 @@ jobs:
             -e PUBLIC_URL=https://chess.example.com \
             -e WEBHOOK_SECRET=ci-only-webhook-secret-0123456789 \
             -e SESSION_SECRET=ci-only-session-secret-0123456789abcdef \
-            -e DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/group_chess \
+            -e DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/chess_goat \
             -e ROLES=api,jobs,clock \
-            group-chess:ci
+            chess-goat:ci
       - name: Smoke test
         run: |
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:3000/readyz && break; sleep 2; done

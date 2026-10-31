@@ -3,7 +3,7 @@ import {
   TelemetryRequestSchema,
   type OkDto,
   type Prefs,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { Hono } from 'hono';
 import { RateLimiter } from '../../bot/rateLimit';
 import { deleteMyData } from '../../domain/account';

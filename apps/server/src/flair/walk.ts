@@ -1,4 +1,4 @@
-import type { FlairEntry, FlairId } from '@group-chess/shared';
+import type { FlairEntry, FlairId } from '@chess-goat/shared';
 import type { StoredMove } from './patterns';
 import { ruleHolds, type CountedGame } from './rules';
 

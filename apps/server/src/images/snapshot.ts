@@ -1,4 +1,4 @@
-import { t } from '@group-chess/shared';
+import { t } from '@chess-goat/shared';
 import { Resvg } from '@resvg/resvg-js';
 import satori from 'satori';
 import { IMAGE_SIZE, parsePlacement, renderBoardSvg, squarePixel } from './board';

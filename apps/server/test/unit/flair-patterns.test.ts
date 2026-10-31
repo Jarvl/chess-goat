@@ -1,4 +1,4 @@
-import { INITIAL_FEN, type Colour } from '@group-chess/shared';
+import { INITIAL_FEN, type Colour } from '@chess-goat/shared';
 import { describe, expect, it } from 'vitest';
 import { gaveMate, madePattern, type StoredMove } from '../../src/flair/patterns';
 import {

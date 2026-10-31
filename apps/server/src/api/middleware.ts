@@ -1,4 +1,4 @@
-import { PublicIdSchema, UserIdSchema } from '@group-chess/shared';
+import { PublicIdSchema, UserIdSchema } from '@chess-goat/shared';
 import type { Context, MiddlewareHandler } from 'hono';
 import { DomainError } from '../domain/errors';
 import { getUserById } from '../domain/users';

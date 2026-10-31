@@ -5,9 +5,9 @@
 set -euo pipefail
 
 PORT="${PGPORT_LOCAL:-54329}"
-DIR="${PGDIR_LOCAL:-/tmp/group-chess-pg}"
+DIR="${PGDIR_LOCAL:-/tmp/chess-goat-pg}"
 BIN="${PGBIN:-$(ls -d /usr/lib/postgresql/18/bin 2>/dev/null || dirname "$(command -v pg_ctl)")}"
-DBS="group_chess group_chess_test"
+DBS="chess_goat chess_goat_test"
 
 run_as_pg() {
   if [ "$(id -u)" = "0" ]; then su postgres -s /bin/bash -c "$1"; else bash -c "$1"; fi
@@ -29,8 +29,8 @@ case "${1:-}" in
       "$BIN/psql" -h 127.0.0.1 -p "$PORT" -U postgres -tAc "select 1 from pg_database where datname='$DB'" | grep -q 1 \
         || "$BIN/psql" -h 127.0.0.1 -p "$PORT" -U postgres -qc "create database $DB"
     done
-    echo "export DATABASE_URL=postgres://postgres@127.0.0.1:$PORT/group_chess"
-    echo "export TEST_DATABASE_URL=postgres://postgres@127.0.0.1:$PORT/group_chess_test"
+    echo "export DATABASE_URL=postgres://postgres@127.0.0.1:$PORT/chess_goat"
+    echo "export TEST_DATABASE_URL=postgres://postgres@127.0.0.1:$PORT/chess_goat_test"
     ;;
   stop)
     run_as_pg "'$BIN/pg_ctl' -D '$DIR/data' stop >/dev/null" || true

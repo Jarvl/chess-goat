@@ -1,4 +1,4 @@
-import type { Colour } from '@group-chess/shared';
+import type { Colour } from '@chess-goat/shared';
 import { Chess } from 'chess.js';
 
 export type PromotionPiece = 'q' | 'r' | 'b' | 'n';

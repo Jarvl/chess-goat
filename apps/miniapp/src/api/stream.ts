@@ -1,4 +1,4 @@
-import { GameDtoSchema, type GameDto } from '@group-chess/shared';
+import { GameDtoSchema, type GameDto } from '@chess-goat/shared';
 
 export type EventSourceLike = {
   readonly readyState: number;

@@ -1,4 +1,4 @@
-import { encodeStartParam, type StartParam } from '@group-chess/shared';
+import { encodeStartParam, type StartParam } from '@chess-goat/shared';
 import type { Config } from '../config';
 
 /** The only Mini App button that works inside groups (spec §5.3). */

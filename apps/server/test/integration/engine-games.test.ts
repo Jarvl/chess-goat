@@ -1,4 +1,4 @@
-import type { EngineLevel } from '@group-chess/shared';
+import type { EngineLevel } from '@chess-goat/shared';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { challenges, games, jobs, users } from '../../src/db/schema';

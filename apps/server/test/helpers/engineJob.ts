@@ -2,7 +2,7 @@ import type { Db } from '../../src/db/client';
 import type { JobRow } from '../../src/db/schema';
 import type { Config } from '../../src/config';
 import type { Deps } from '../../src/domain/deps';
-import type { EngineLevel } from '@group-chess/shared';
+import type { EngineLevel } from '@chess-goat/shared';
 import type { Engine } from '../../src/engine/engine';
 import { createEngineGame } from '../../src/domain/engineGames';
 import { playMove } from '../../src/domain/games';

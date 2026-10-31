@@ -1,4 +1,4 @@
-import { decodeStartParam, LaunchRequestSchema, type LaunchResponse } from '@group-chess/shared';
+import { decodeStartParam, LaunchRequestSchema, type LaunchResponse } from '@chess-goat/shared';
 import { Hono } from 'hono';
 import { dbNow } from '../../db/client';
 import { DomainError } from '../../domain/errors';

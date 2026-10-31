@@ -14,7 +14,7 @@ const bobNoHandle = { name: 'Bob', username: null, telegramUserId: 2, flair: '' 
 // Flair emoji are two UTF-16 units each, which is what Telegram counts entity offsets in.
 const aliceFlair = { ...alice, flair: '👑' };
 const bobFlair = { ...bob, flair: '🔥🤝' };
-const lobbyLink = 'https://t.me/GroupChessBot/chess?startapp=l_grp0000001';
+const lobbyLink = 'https://t.me/ChessGoatBot/chess?startapp=l_grp0000001';
 const lobbyRow = [{ text: '♟ Group lobby', url: lobbyLink }];
 
 const challenge = (over: Partial<ChallengeCardView> = {}): ChallengeCardView => ({
@@ -46,7 +46,7 @@ const game = (over: Partial<GameCardView> = {}): GameCardView => ({
   abortedBy: null,
   analysisUrl: null,
   lichessUrl: null,
-  openLink: 'https://t.me/GroupChessBot/chess?startapp=g_game000001',
+  openLink: 'https://t.me/ChessGoatBot/chess?startapp=g_game000001',
   lobbyLink,
   ...over,
 });
@@ -109,7 +109,7 @@ describe('renderGameCard', () => {
     );
     expect(card.reply_markup).toEqual({
       inline_keyboard: [
-        [{ text: '♟ Open game', url: 'https://t.me/GroupChessBot/chess?startapp=g_game000001' }],
+        [{ text: '♟ Open game', url: 'https://t.me/ChessGoatBot/chess?startapp=g_game000001' }],
         lobbyRow,
       ],
     });
@@ -303,7 +303,7 @@ describe('flair beside names', () => {
 describe('welcome and share', () => {
   it('renders the welcome card with how to challenge and the Challenge and lobby buttons', () => {
     const card = renderWelcomeCard({
-      challenge: 'https://t.me/GroupChessBot/chess?startapp=n_grp0000001',
+      challenge: 'https://t.me/ChessGoatBot/chess?startapp=n_grp0000001',
       lobby: lobbyLink,
     });
     expect(card.text).toBe(
@@ -313,7 +313,7 @@ describe('welcome and share', () => {
       [
         {
           text: '⚔️ Challenge someone',
-          url: 'https://t.me/GroupChessBot/chess?startapp=n_grp0000001',
+          url: 'https://t.me/ChessGoatBot/chess?startapp=n_grp0000001',
         },
       ],
       [{ text: '♟ Group lobby', url: lobbyLink }],

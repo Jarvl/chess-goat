@@ -1,4 +1,4 @@
-import { INITIAL_FEN } from '@group-chess/shared';
+import { INITIAL_FEN } from '@chess-goat/shared';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { challenges, jobs } from '../../src/db/schema';
 import { createRematch } from '../../src/domain/challenges';

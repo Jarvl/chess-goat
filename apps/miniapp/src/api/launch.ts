@@ -1,4 +1,4 @@
-import { LaunchResponseSchema, type LaunchResponse } from '@group-chess/shared';
+import { LaunchResponseSchema, type LaunchResponse } from '@chess-goat/shared';
 import { ApiError, type ApiClient } from './client';
 
 export type LaunchOutcome =

@@ -8,7 +8,7 @@ import {
   t,
   type FlairEarned,
   type FlairEntry,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { Fragment } from 'preact';
 import { useState } from 'preact/hooks';
 import { loadMyFlair, myFlair, saveWornFlair, wearFlair } from '../../state/flair';

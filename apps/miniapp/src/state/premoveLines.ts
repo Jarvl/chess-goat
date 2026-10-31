@@ -1,4 +1,4 @@
-import { parseUci, type Colour, type DraftNode } from '@group-chess/shared';
+import { parseUci, type Colour, type DraftNode } from '@chess-goat/shared';
 import { Chess } from 'chess.js';
 
 export type LineToken = {

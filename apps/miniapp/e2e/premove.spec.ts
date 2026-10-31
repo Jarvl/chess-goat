@@ -1,5 +1,5 @@
 import { expect, type Page, type Request } from '@playwright/test';
-import { decodePremoveTree } from '@group-chess/shared';
+import { decodePremoveTree } from '@chess-goat/shared';
 import {
   clickBack,
   clickMain,

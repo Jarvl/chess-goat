@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { groupMessageLink, miniAppLink } from '../../src/telegram/links';
 
-const config = { BOT_USERNAME: 'GroupChessBot', MINI_APP_SHORT_NAME: 'chess' };
+const config = { BOT_USERNAME: 'ChessGoatBot', MINI_APP_SHORT_NAME: 'chess' };
 
 describe('miniAppLink', () => {
   it('builds direct links with and without a payload', () => {
-    expect(miniAppLink(config)).toBe('https://t.me/GroupChessBot/chess');
+    expect(miniAppLink(config)).toBe('https://t.me/ChessGoatBot/chess');
     expect(miniAppLink(config, { kind: 'game', gameId: 'aZ09bY18cX' })).toBe(
-      'https://t.me/GroupChessBot/chess?startapp=g_aZ09bY18cX',
+      'https://t.me/ChessGoatBot/chess?startapp=g_aZ09bY18cX',
     );
   });
 });

@@ -1,4 +1,4 @@
-import { LaunchResponseSchema, LobbyDtoSchema, MeGamesDtoSchema } from '@group-chess/shared';
+import { LaunchResponseSchema, LobbyDtoSchema, MeGamesDtoSchema } from '@chess-goat/shared';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { challenges, games, groupMembers, users } from '../../src/db/schema';

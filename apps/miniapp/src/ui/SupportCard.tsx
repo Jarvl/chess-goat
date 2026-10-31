@@ -1,4 +1,4 @@
-import { t, TIP_MAX_STARS, TIP_MIN_STARS, TipInvoiceDtoSchema } from '@group-chess/shared';
+import { t, TIP_MAX_STARS, TIP_MIN_STARS, TipInvoiceDtoSchema } from '@chess-goat/shared';
 import { useRef, useState } from 'preact/hooks';
 import { AUTHOR_URL, BRAND } from '../brand';
 import { useApp } from './context';

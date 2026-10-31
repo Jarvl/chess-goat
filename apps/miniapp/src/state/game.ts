@@ -9,7 +9,7 @@ import {
   type DraftNode,
   type GameDto,
   type PremoveNode,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { batch, computed, signal, type ReadonlySignal, type Signal } from '@preact/signals';
 import { Chess } from 'chess.js';
 import { fenAt, isPrefix, nodeAt } from './premoveDraft';

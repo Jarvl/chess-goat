@@ -1,4 +1,4 @@
-import type { EngineLevel } from '@group-chess/shared';
+import type { EngineLevel } from '@chess-goat/shared';
 import type { BestMove, Engine } from '../../src/engine/engine';
 
 export type EngineCall = { fen: string; level: EngineLevel; deadlineMs: number };

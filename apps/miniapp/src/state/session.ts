@@ -4,7 +4,7 @@ import {
   type LaunchResponse,
   type Prefs,
   type StartParam,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { signal } from '@preact/signals';
 import { setYourMoveCount } from './yourMove';
 

@@ -12,7 +12,7 @@ beforeAll(async () => {
   parent = await mkdtemp(join(tmpdir(), 'static-'));
   const dir = join(parent, 'dist');
   await mkdir(join(dir, 'assets'), { recursive: true });
-  await writeFile(join(dir, 'index.html'), '<!doctype html><title>Group Chess</title>');
+  await writeFile(join(dir, 'index.html'), '<!doctype html><title>Chess Goat</title>');
   await writeFile(join(dir, 'assets', 'app-1a2b3c.js'), 'console.log(1)');
   await writeFile(join(dir, 'favicon.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>');
   await writeFile(join(parent, 'secret.txt'), 'nope');
@@ -27,7 +27,7 @@ describe('staticAppRoutes', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('text/html; charset=utf-8');
     expect(response.headers.get('cache-control')).toBe('no-store');
-    expect(await response.text()).toContain('Group Chess');
+    expect(await response.text()).toContain('Chess Goat');
   });
 
   it('serves hashed assets as immutable', async () => {
@@ -47,7 +47,7 @@ describe('staticAppRoutes', () => {
     const response = await app.request('/app/g/AbCdEfGhIj');
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toBe('no-store');
-    expect(await response.text()).toContain('Group Chess');
+    expect(await response.text()).toContain('Chess Goat');
   });
 
   it('answers 404 for a missing asset or file instead of falling back', async () => {

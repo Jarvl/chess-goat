@@ -5,7 +5,7 @@ import {
   personInitial,
   type GroupRef,
   type PlayerRef,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { useState } from 'preact/hooks';
 import { BRAND } from '../brand';
 

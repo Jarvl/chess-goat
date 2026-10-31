@@ -1,4 +1,4 @@
-import { INITIAL_FEN } from '@group-chess/shared';
+import { INITIAL_FEN } from '@chess-goat/shared';
 import type { SnapshotInput } from '../../src/images/snapshotModel';
 
 export { AFTER_E4 } from './chess';

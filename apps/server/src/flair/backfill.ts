@@ -1,4 +1,4 @@
-import { FLAIR, flairBackfillVersion, flairById, type FlairEntry } from '@group-chess/shared';
+import { FLAIR, flairBackfillVersion, flairById, type FlairEntry } from '@chess-goat/shared';
 import { and, eq, exists, gt, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../db/client';
 import { flairBackfills, games, userFlair, users } from '../db/schema';
