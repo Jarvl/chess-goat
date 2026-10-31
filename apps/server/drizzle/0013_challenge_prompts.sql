@@ -4,6 +4,7 @@ CREATE TABLE "challenge_prompts" (
 	"time_per_move" integer NOT NULL,
 	"colour" text NOT NULL,
 	"rated" boolean NOT NULL,
+	"thread_id" bigint,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "challenge_prompts_group_id_user_id_pk" PRIMARY KEY("group_id","user_id")
 );

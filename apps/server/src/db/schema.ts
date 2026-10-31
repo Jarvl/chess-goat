@@ -164,6 +164,8 @@ export const challengePrompts = pgTable(
     timePerMove: integer().notNull(),
     colour: text().$type<ColourChoice>().notNull(),
     rated: boolean().notNull(),
+    /** The topic /challenge was sent in, for the card; null for General or a basic group. */
+    threadId: bigint({ mode: 'number' }),
     updatedAt: tz().notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.groupId, t.userId] })],

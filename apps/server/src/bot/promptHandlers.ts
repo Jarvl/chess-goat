@@ -10,7 +10,8 @@ import type { CallbackQuery, InlineKeyboardMarkup, Message, User } from 'grammy/
 import { createChallenge, type CreateChallengeInput } from '../domain/challenges';
 import {
   clearPromptSettings,
-  getPromptSettings,
+  getPrompt,
+  openPromptRow,
   savePromptSettings,
 } from '../domain/challengePrompts';
 import type { Deps } from '../domain/deps';
@@ -120,7 +121,7 @@ export async function openPrompt(
 ): Promise<void> {
   const { group, from } = input;
   const settings = startingSettings(settingsOf(group));
-  await savePromptSettings(deps.db, group.id, input.user.id, settings);
+  await openPromptRow(deps.db, group.id, input.user.id, settings, input.threadId);
   const view = promptView('main', from.id, settings);
   // Only an admin bot may send an ephemeral message that answers nothing ephemeral.
   if (
@@ -235,7 +236,10 @@ export async function handlePromptTap(
     await answer();
     return;
   }
-  const originThread = 'message_thread_id' in message ? threadOf(message) : null;
+  // The topic comes from the command: an ephemeral tap may not say which topic it was in.
+  const stored = await getPrompt(deps.db, group.id, user.id);
+  const tappedThread = 'message_thread_id' in message ? threadOf(message) : null;
+  const originThread = stored ? stored.threadId : tappedThread;
   try {
     await createChallenge(deps, {
       groupId: group.id,
@@ -299,8 +303,8 @@ export function registerPromptReplies(
     if (choice.kind === 'none') return sayPrivately(api, answer, 'reply.pick_someone');
     if (choice.kind === 'refuse') return sayPrivately(api, answer, choice.key);
     const groupSettings = settingsOf(group);
-    const settings =
-      (await getPromptSettings(deps.db, group.id, user.id)) ?? startingSettings(groupSettings);
+    const stored = await getPrompt(deps.db, group.id, user.id);
+    const settings = stored?.settings ?? startingSettings(groupSettings);
     const created = await challengeOrExplain(deps, api, answer, {
       groupId: group.id,
       challengerId: user.id,
@@ -309,7 +313,7 @@ export function registerPromptReplies(
       timePerMove: settings.timePerMove,
       colour: settings.colour,
       rated: settings.rated,
-      threadId: cardThread(groupSettings, threadId),
+      threadId: cardThread(groupSettings, stored ? stored.threadId : threadId),
     });
     if (!created) return;
     await clearPromptSettings(deps.db, group.id, user.id);

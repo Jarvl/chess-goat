@@ -522,6 +522,20 @@ describe('/challenge', () => {
     ).toEqual([77, 5, 5]);
   });
 
+  it("puts the card in the prompt's topic when the tap or the reply doesn't say which", async () => {
+    await makeAdmin();
+    await post(commandUpdate({ chat, from: alice, text: '/challenge', threadId: 77 }));
+    expect(await promptRows()).toEqual([expect.objectContaining({ threadId: 77 })]);
+    // The tap carries no topic.
+    await tap('cp/a/11/3/r/1');
+    await post(commandUpdate({ chat, from: alice, text: '/challenge', threadId: 77 }));
+    // Nor does this reply.
+    await post(promptReply('@dave', mentionAt0('@dave')));
+    expect(
+      (await db.select().from(challenges).orderBy(challenges.id)).map((row) => row.threadId),
+    ).toEqual([77, 77]);
+  });
+
   it('keeps the prompt and answers privately when Anyone hits the pending limit or open challenges are off', async () => {
     await makeAdmin();
     await post(commandUpdate({ chat, from: alice, text: '/challenge' }));

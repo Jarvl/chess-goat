@@ -1,5 +1,5 @@
 {
-  "id": "1705f70d-c37b-41f0-aa60-4c4909a85e81",
+  "id": "af343877-037d-4786-bccd-8eef7d630dcd",
   "prevId": "90036512-7ff2-4c53-b20e-3c36af15fe83",
   "version": "7",
   "dialect": "postgresql",
@@ -162,6 +162,12 @@
           "type": "boolean",
           "primaryKey": false,
           "notNull": true
+        },
+        "thread_id": {
+          "name": "thread_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
         },
         "updated_at": {
           "name": "updated_at",
