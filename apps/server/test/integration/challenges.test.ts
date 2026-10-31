@@ -427,7 +427,11 @@ describe('challenges by username', () => {
       challengeId: challenge.id,
       userId: bob.id,
     });
-    expect(accepted).toMatchObject({ status: 'accepted', opponentId: bob.id });
+    expect(accepted).toMatchObject({
+      status: 'accepted',
+      opponentId: bob.id,
+      opponentUsername: null,
+    });
   });
 
   it('refuses an accepter whose username differs or who has none, naming @bob', async () => {
@@ -461,6 +465,15 @@ describe('challenges by username', () => {
     expect((await cancelChallenge(deps, { challengeId: second.id, userId: alice.id })).status).toBe(
       'cancelled',
     );
+  });
+
+  it('refuses a challenge to the challenger’s own username, whatever its case', async () => {
+    const { group, alice } = await world(db, { game: false });
+    await db.update(users).set({ username: 'Alice' }).where(eq(users.id, alice.id));
+    await expect(byUsername(group.id, alice.id, '@alice')).rejects.toMatchObject({
+      code: 'validation',
+      details: { reason: 'self' },
+    });
   });
 
   it('rejects both an id and a username', async () => {

@@ -131,6 +131,9 @@ export async function createChallenge(
       });
     }
     const challenger = await requireUser(tx, input.challengerId);
+    if (opponentUsername !== null && opponentUsername === challenger.username?.toLowerCase()) {
+      throw new DomainError('validation', 'cannot challenge yourself', { reason: 'self' });
+    }
     await assertNotBlocked(tx, group.id, challenger);
     const pending = await countPendingChallenges(tx, group.id, challenger.id);
     if (pending >= MAX_PENDING_CHALLENGES) {
@@ -234,11 +237,7 @@ export async function acceptChallenge(
     const challenge = await lockPendingChallenge(tx, input.challengeId);
     const accepter = await requireUser(tx, input.userId);
     assertIsOpponent(challenge, accepter, 'accept');
-    if (
-      challenge.opponentId === null &&
-      challenge.opponentUsername === null &&
-      challenge.challengerId === input.userId
-    ) {
+    if (challenge.challengerId === input.userId) {
       throw new DomainError('forbidden', 'cannot accept your own challenge', {
         reason: 'own_challenge',
       });
@@ -272,7 +271,13 @@ export async function acceptChallenge(
     if (!game) throw new Error('game insert returned no row');
     const [accepted] = await tx
       .update(challenges)
-      .set({ status: 'accepted', opponentId: accepter.id, gameId: game.id, resolvedAt: sql`now()` })
+      .set({
+        status: 'accepted',
+        opponentId: accepter.id,
+        opponentUsername: null,
+        gameId: game.id,
+        resolvedAt: sql`now()`,
+      })
       .where(eq(challenges.id, challenge.id))
       .returning();
     await retireChallengeDm(tx, challenge, 'accepted');
