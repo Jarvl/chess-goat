@@ -7,6 +7,7 @@ import {
 } from '@chess-goat/shared';
 import type { Api, ChatTypeContext, Composer, Context } from 'grammy';
 import type { CallbackQuery, InlineKeyboardMarkup, Message, User } from 'grammy/types';
+import { enqueue } from '../jobs/queue';
 import { createChallenge, type CreateChallengeInput } from '../domain/challenges';
 import {
   clearPromptSettings,
@@ -66,6 +67,7 @@ async function quietly(deps: Deps, step: Promise<unknown>): Promise<void> {
 
 /** One line for one person: private where Telegram allows it, otherwise a public reply. */
 export async function sayPrivately(
+  deps: Deps,
   api: Api,
   answer: Answer,
   key: MessageKey,
@@ -74,12 +76,27 @@ export async function sayPrivately(
   const text = t(key, params);
   if (answer.trigger && (await sendEphemeral(api, { ...answer, trigger: answer.trigger, text })))
     return;
-  await sayPublicly(api, answer, text);
+  await sayPublicly(deps, api, answer, text);
 }
 
-/** The public fallback for a private line. */
-async function sayPublicly(api: Api, answer: Answer, text: string): Promise<void> {
-  await api.sendMessage(answer.chatId, text, {
+/** How long a public stand-in stays: an unanswered prompt, and a refusal line (seconds). */
+const FALLBACK_PROMPT_TTL = 600;
+const FALLBACK_LINE_TTL = 60;
+
+/** Deletes a public stand-in later; a failure to queue it must not fail the update into a retry. */
+const deleteLater = (deps: Deps, chatId: number, messageId: number, delaySeconds: number) =>
+  quietly(
+    deps,
+    enqueue(deps.db, {
+      kind: 'delete_message',
+      payload: { chatId, messageId },
+      delaySeconds,
+    }),
+  );
+
+/** The public fallback for a private line, which deletes itself after a minute. */
+async function sayPublicly(deps: Deps, api: Api, answer: Answer, text: string): Promise<void> {
+  const sent = await api.sendMessage(answer.chatId, text, {
     ...(answer.threadId !== null ? { message_thread_id: answer.threadId } : {}),
     ...(answer.replyToMessageId !== null
       ? {
@@ -90,27 +107,32 @@ async function sayPublicly(api: Api, answer: Answer, text: string): Promise<void
         }
       : {}),
   });
+  await deleteLater(deps, answer.chatId, sent.message_id, FALLBACK_LINE_TTL);
 }
 
 /**
  * The prompt as a normal group message, when it cannot be private. It opens with the owner's name,
- * which `force_reply` needs to open the reply box for them alone; someone without a username is
- * named by a link to them.
+ * so a reply box that opens for others too has someone to answer to; someone without a username is
+ * named by a link to them. Telegram does not restrict the prompt to its owner (an inline keyboard
+ * has no `selective`): the handlers do, by ignoring everyone else's taps and replies.
  */
 async function sendFallbackPrompt(
+  deps: Deps,
   api: Api,
   place: { chatId: number; threadId: number | null; owner: User },
   view: View,
 ): Promise<void> {
   const { owner } = place;
   const name = owner.username ? `@${owner.username}` : owner.first_name;
-  await api.sendMessage(place.chatId, `${name}\n${view.text}`, {
+  const sent = await api.sendMessage(place.chatId, `${name}\n${view.text}`, {
     ...(place.threadId !== null ? { message_thread_id: place.threadId } : {}),
     ...(owner.username
       ? {}
       : { entities: [{ type: 'text_mention', offset: 0, length: name.length, user: owner }] }),
     reply_markup: view.replyMarkup as InlineKeyboardMarkup,
   });
+  // Nobody may answer it; it should not stay for good.
+  await deleteLater(deps, place.chatId, sent.message_id, FALLBACK_PROMPT_TTL);
 }
 
 /** A bare /challenge: the prompt at its starting settings, private when the bot is an admin. */
@@ -137,6 +159,7 @@ export async function openPrompt(
   )
     return;
   await sendFallbackPrompt(
+    deps,
     api,
     { chatId: input.chatId, threadId: input.threadId, owner: from },
     view,
@@ -156,7 +179,7 @@ export async function challengeOrExplain(
   } catch (error) {
     const line = replyFor(error);
     if (!line) throw error;
-    await sayPrivately(api, answer, line.key, line.params);
+    await sayPrivately(deps, api, answer, line.key, line.params);
     return false;
   }
 }
@@ -169,15 +192,18 @@ const promptRefOf = (message: { message_id: number }): PromptRef => {
   return ephemeralMessageId !== null ? { ephemeralMessageId } : { messageId: message.message_id };
 };
 
-// A fallback prompt (a normal message) is not edited or deleted here: it is cleaned up with the
-// fallback's own deletion, which comes with its job.
 async function editPrompt(
   api: Api,
   place: { chatId: number; owner: number },
   ref: PromptRef,
   view: View,
 ): Promise<void> {
-  if (!('ephemeralMessageId' in ref)) return;
+  if (!('ephemeralMessageId' in ref)) {
+    await api.editMessageText(place.chatId, ref.messageId, view.text, {
+      reply_markup: view.replyMarkup as InlineKeyboardMarkup,
+    });
+    return;
+  }
   await editEphemeral(api, {
     chatId: place.chatId,
     receiverId: place.owner,
@@ -192,7 +218,10 @@ async function deletePrompt(
   place: { chatId: number; owner: number },
   ref: PromptRef,
 ): Promise<void> {
-  if (!('ephemeralMessageId' in ref)) return;
+  if (!('ephemeralMessageId' in ref)) {
+    await api.deleteMessage(place.chatId, ref.messageId);
+    return;
+  }
   await deleteEphemeral(api, {
     chatId: place.chatId,
     receiverId: place.owner,
@@ -232,14 +261,18 @@ export async function handlePromptTap(
   const ref = promptRefOf(message);
   if (data.op !== 'anyone') {
     await savePromptSettings(deps.db, group.id, user.id, data.settings);
-    await editPrompt(api, place, ref, promptView(data.op, data.ownerTelegramId, data.settings));
+    // Tapping the setting already chosen edits nothing, which Telegram reports as an error.
+    await quietly(
+      deps,
+      editPrompt(api, place, ref, promptView(data.op, data.ownerTelegramId, data.settings)),
+    );
     await answer();
     return;
   }
   // The topic comes from the command: an ephemeral tap may not say which topic it was in.
   const stored = await getPrompt(deps.db, group.id, user.id);
   const tappedThread = 'message_thread_id' in message ? threadOf(message) : null;
-  const originThread = stored ? stored.threadId : tappedThread;
+  const originThread = stored?.threadId ?? tappedThread;
   try {
     await createChallenge(deps, {
       groupId: group.id,
@@ -258,7 +291,7 @@ export async function handlePromptTap(
     await answer({ text: t(line.key, line.params), show_alert: true });
     return;
   }
-  await clearPromptSettings(deps.db, group.id, user.id);
+  await quietly(deps, clearPromptSettings(deps.db, group.id, user.id));
   await quietly(deps, deletePrompt(api, place, ref));
   await quietly(deps, answer());
 }
@@ -300,8 +333,8 @@ export function registerPromptReplies(
       botUsername: ctx.me.username,
       useReplyTarget: false,
     });
-    if (choice.kind === 'none') return sayPrivately(api, answer, 'reply.pick_someone');
-    if (choice.kind === 'refuse') return sayPrivately(api, answer, choice.key);
+    if (choice.kind === 'none') return sayPrivately(deps, api, answer, 'reply.pick_someone');
+    if (choice.kind === 'refuse') return sayPrivately(deps, api, answer, choice.key);
     const groupSettings = settingsOf(group);
     const stored = await getPrompt(deps.db, group.id, user.id);
     const settings = stored?.settings ?? startingSettings(groupSettings);
@@ -313,10 +346,10 @@ export function registerPromptReplies(
       timePerMove: settings.timePerMove,
       colour: settings.colour,
       rated: settings.rated,
-      threadId: cardThread(groupSettings, stored ? stored.threadId : threadId),
+      threadId: cardThread(groupSettings, stored?.threadId ?? threadId),
     });
     if (!created) return;
-    await clearPromptSettings(deps.db, group.id, user.id);
+    await quietly(deps, clearPromptSettings(deps.db, group.id, user.id));
     await quietly(
       deps,
       deletePrompt(api, { chatId: ctx.chat.id, owner: msg.from.id }, promptRefOf(prompt)),

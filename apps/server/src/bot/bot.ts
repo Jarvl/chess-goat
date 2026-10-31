@@ -114,7 +114,7 @@ export async function createBot(deps: Deps, config: Config): Promise<Bot> {
     if (choice.kind === 'none') {
       await openPrompt(deps, directApi, { group, user, from, chatId: ctx.chat.id, threadId });
     } else if (choice.kind === 'refuse') {
-      await sayPrivately(directApi, answer, choice.key);
+      await sayPrivately(deps, directApi, answer, choice.key);
     } else {
       const settings = settingsOf(group);
       await challengeOrExplain(deps, directApi, answer, {

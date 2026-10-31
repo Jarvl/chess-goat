@@ -76,6 +76,7 @@ export function callbackUpdate(options: {
   /** The tap is on an ephemeral message: message_id 0 plus its ephemeral_message_id. */
   ephemeralMessageId?: number;
   markup?: InlineKeyboardMarkup;
+  threadId?: number;
 }): Update {
   return {
     update_id: (updateId += 1),
@@ -92,6 +93,9 @@ export function callbackUpdate(options: {
         date: 1,
         chat: options.chat,
         text: 'card',
+        ...(options.threadId
+          ? { message_thread_id: options.threadId, is_topic_message: true }
+          : {}),
         ...(options.markup ? { reply_markup: options.markup } : {}),
       },
     },

@@ -12,6 +12,7 @@ export const JOB_KINDS = [
   'retire_dm',
   'send_welcome',
   'send_message',
+  'delete_message',
   'engine_move',
   'lichess_import',
   'award_flair',

@@ -125,6 +125,14 @@ const sends = () => fake.callsTo('sendMessage').map((call) => call.body);
 const texts = () => sends().map((body) => body.text);
 const makeAdmin = () =>
   post(myChatMemberUpdate({ chat, from: alice, oldStatus: 'left', newStatus: 'administrator' }));
+/** The newest delete_message job, due about `seconds` from now, for the message the bot just sent. */
+const expectDeletionIn = async (kind: 'delete_message', seconds: number) => {
+  const [row] = (await jobRows()).filter((job) => job.kind === kind);
+  expect(row?.payload).toEqual({ chatId: chat.id, messageId: expect.any(Number) });
+  const due = (row!.runAt.getTime() - Date.now()) / 1000;
+  expect(due).toBeGreaterThan(seconds - 10);
+  expect(due).toBeLessThanOrEqual(seconds);
+};
 const promptRows = () => db.select().from(challengePrompts);
 const userId = async (telegramUserId: number) =>
   (await db.select().from(users).where(eq(users.telegramUserId, telegramUserId)))[0]!.id;
@@ -257,6 +265,112 @@ describe('/challenge', () => {
     expect(sends()).toHaveLength(2);
     expect(sends()[1]).not.toHaveProperty('ephemeral_message_parameters');
     expect(sends()[1]?.text).toBe(`@alice\n${PROMPT}\n3 days per move · Random colour · Rated`);
+    await expectDeletionIn('delete_message', 600);
+  });
+
+  it('works the fallback prompt with normal edits and deletes', async () => {
+    await post(commandUpdate({ chat, from: alice, text: '/challenge' }));
+    await post(
+      callbackUpdate({
+        from: alice,
+        chat,
+        data: 'cp/s/11/3/r/1',
+        cardMessageId: 101,
+        markup: staleMarkup(),
+      }),
+    );
+    const edit = fake.callsTo('editMessageText').at(-1)!.body;
+    expect(edit).toMatchObject({ chat_id: chat.id, message_id: 101 });
+    expect(
+      (edit.reply_markup as InlineKeyboardMarkup).inline_keyboard.map((row) =>
+        row.map((b) => b.text),
+      ),
+    ).toEqual([
+      ['1 day', '3 days', '7 days'],
+      ['Random', 'White', 'Black'],
+      ['Rated', 'Casual'],
+      ['Done'],
+    ]);
+    expect(fake.callsTo('editEphemeralMessageText')).toHaveLength(0);
+    await post(
+      callbackUpdate({
+        from: alice,
+        chat,
+        data: 'cp/a/11/3/r/1',
+        cardMessageId: 101,
+        markup: staleMarkup(),
+      }),
+    );
+    expect(fake.callsTo('deleteMessage').map((call) => call.body)).toEqual([
+      { chat_id: chat.id, message_id: 101 },
+    ]);
+    expect(fake.callsTo('deleteEphemeralMessage')).toHaveLength(0);
+    expect(await db.select().from(challenges)).toHaveLength(1);
+    expect(await promptRows()).toEqual([]);
+  });
+
+  it('ignores another member replying to, or tapping, the fallback prompt', async () => {
+    await post(commandUpdate({ chat, from: alice, text: '/challenge' }));
+    await post(
+      callbackUpdate({
+        from: carol,
+        chat,
+        data: 'cp/a/11/3/r/1',
+        cardMessageId: 101,
+        markup: staleMarkup(),
+      }),
+    );
+    expect(fake.callsTo('answerCallbackQuery').at(-1)?.body).toMatchObject({
+      text: 'Only @alice can use this.',
+      show_alert: true,
+    });
+    await post(
+      promptReplyUpdate({
+        chat,
+        from: carol,
+        text: '@dave',
+        entities: mentionAt0('@dave'),
+        prompt: { markup: staleMarkup(), messageId: 101 },
+      }),
+    );
+    expect(sends()).toHaveLength(1);
+    expect(fake.callsTo('editMessageText')).toHaveLength(0);
+    expect(fake.callsTo('deleteMessage')).toHaveLength(0);
+    expect(await db.select().from(challenges)).toHaveLength(0);
+    expect(await promptRows()).toHaveLength(1);
+  });
+
+  it('falls back to a public refusal that deletes itself after a minute', async () => {
+    await makeAdmin();
+    fake.failNext('sendMessage', { error_code: 400, description: 'Bad Request: not supported' });
+    const update = commandUpdate({
+      chat,
+      from: alice,
+      text: '/challenge',
+      replyTo: { from: alice },
+    });
+    await post(update);
+    expect(sends()[1]).toMatchObject({
+      text: "You can't challenge yourself.",
+      reply_parameters: { message_id: update.message!.message_id },
+    });
+    expect(sends()[1]).not.toHaveProperty('ephemeral_message_parameters');
+    await expectDeletionIn('delete_message', 60);
+  });
+
+  it("keeps a topic-less stored prompt from overriding the tapped message's topic", async () => {
+    await post(commandUpdate({ chat, from: alice, text: '/challenge' }));
+    await post(
+      callbackUpdate({
+        from: alice,
+        chat,
+        data: 'cp/a/11/3/r/1',
+        cardMessageId: 101,
+        markup: staleMarkup(),
+        threadId: 77,
+      }),
+    );
+    expect((await db.select().from(challenges))[0]?.threadId).toBe(77);
   });
 
   it('opens the prompt in a forum topic, where Telegram marks the topic root as the reply', async () => {

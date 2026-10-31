@@ -630,6 +630,21 @@ describe('send_welcome and send_message', () => {
     expect((await db.select().from(groups))[0]?.botStatus).toBe('left');
   });
 
+  it('deletes a message when its delete_message job is due, and finishes when it is already gone', async () => {
+    await people();
+    await enqueue(db, { kind: 'delete_message', payload: { chatId: CHAT, messageId: 55 } });
+    await worker.runOnce();
+    expect(fake.callsTo('deleteMessage')[0]?.body).toMatchObject({ chat_id: CHAT, message_id: 55 });
+    fake.failNext('deleteMessage', {
+      error_code: 400,
+      description: 'Bad Request: message to delete not found',
+    });
+    await enqueue(db, { kind: 'delete_message', payload: { chatId: CHAT, messageId: 56 } });
+    await worker.runOnce();
+    const rows = (await jobRows()).filter((job) => job.kind === 'delete_message');
+    expect(rows.map((job) => job.doneAt !== null)).toEqual([true, true]);
+  });
+
   it("stacks a line's buttons one per row", async () => {
     await people();
     const buttons = [
