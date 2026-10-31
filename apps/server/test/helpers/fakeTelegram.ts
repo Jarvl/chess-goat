@@ -145,6 +145,10 @@ export class FakeTelegram {
         return ok({
           message_id:
             method === 'sendMessage' ? (this.nextMessageId += 1) : Number(body.message_id),
+          // An ephemeral send answers message_id 0 and an ephemeral_message_id instead.
+          ...(method === 'sendMessage' && body.ephemeral_message_parameters
+            ? { message_id: 0, ephemeral_message_id: this.nextMessageId }
+            : {}),
           date: 1,
           chat: { id: Number(body.chat_id), type: 'supergroup', title: 'G' },
           text: String(body.text ?? ''),
