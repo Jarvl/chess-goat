@@ -2,7 +2,7 @@ import {
   GROUP_SETTINGS_DEFAULTS,
   GroupSettingsSchema,
   type GroupSettings,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { eq, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client';
 import { generatePublicId } from '../db/ids';

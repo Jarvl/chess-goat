@@ -1,4 +1,4 @@
-import type { LobbyDto } from '@group-chess/shared';
+import type { LobbyDto } from '@chess-goat/shared';
 import { describe, expect, it } from 'vitest';
 import { App } from '../src/ui/App';
 import { Lobby } from '../src/ui/screens/Lobby';

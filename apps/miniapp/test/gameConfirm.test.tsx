@@ -1,4 +1,4 @@
-import { type GameDto } from '@group-chess/shared';
+import { type GameDto } from '@chess-goat/shared';
 import { render } from 'preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { prefs } from '../src/state/session';

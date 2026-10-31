@@ -4,7 +4,7 @@ import {
   type GroupSettings,
   type MessageKey,
   type MessageParams,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { apiThrottler } from '@grammyjs/transformer-throttler';
 import { Bot, type Context } from 'grammy';
 import type { Chat } from 'grammy/types';

@@ -1,4 +1,4 @@
-import { GameDtoSchema, PlayersPickerDtoSchema } from '@group-chess/shared';
+import { GameDtoSchema, PlayersPickerDtoSchema } from '@chess-goat/shared';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { games, jobs } from '../../src/db/schema';
 import { getEngineUser } from '../../src/domain/engineGames';

@@ -1,5 +1,5 @@
 import { randomInt } from 'node:crypto';
-import { INITIAL_FEN, opposite, type ColourChoice, type TimePerMove } from '@group-chess/shared';
+import { INITIAL_FEN, opposite, type ColourChoice, type TimePerMove } from '@chess-goat/shared';
 import { and, asc, eq, isNull, lte, sql } from 'drizzle-orm';
 import { dbNow, type DbOrTx } from '../db/client';
 import { generatePublicId } from '../db/ids';

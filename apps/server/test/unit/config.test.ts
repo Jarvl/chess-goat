@@ -3,11 +3,11 @@ import { loadConfig } from '../../src/config';
 
 const valid = {
   BOT_TOKEN: '123456:abc',
-  BOT_USERNAME: 'GroupChessBot',
+  BOT_USERNAME: 'ChessGoatBot',
   MINI_APP_SHORT_NAME: 'chess',
   PUBLIC_URL: 'https://chess.example.com',
   WEBHOOK_SECRET: 'x'.repeat(32),
-  DATABASE_URL: 'postgres://postgres@localhost:5432/group_chess',
+  DATABASE_URL: 'postgres://postgres@localhost:5432/chess_goat',
   SESSION_SECRET: 's'.repeat(32),
 };
 

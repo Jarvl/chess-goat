@@ -1,4 +1,4 @@
-import { GLICKO2, isProvisional, type PlayerRef } from '@group-chess/shared';
+import { GLICKO2, isProvisional, type PlayerRef } from '@chess-goat/shared';
 import type { RatingRow, UserRow } from '../db/schema';
 import { avatarUrl } from './photos';
 import { displayName, wornFlair } from './users';

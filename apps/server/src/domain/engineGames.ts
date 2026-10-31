@@ -3,7 +3,7 @@ import {
   INITIAL_FEN,
   type ColourChoice,
   type EngineLevel,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { eq } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client';
 import { games, users, type GameRow, type UserRow } from '../db/schema';

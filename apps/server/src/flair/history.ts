@@ -1,4 +1,4 @@
-import type { GameResult, PlayerResult } from '@group-chess/shared';
+import type { GameResult, PlayerResult } from '@chess-goat/shared';
 import { and, asc, eq, inArray, isNull, lt, lte, or } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client';
 import { games, type GameRow } from '../db/schema';

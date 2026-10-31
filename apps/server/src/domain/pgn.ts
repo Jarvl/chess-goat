@@ -1,4 +1,4 @@
-import { buildPgn, t, type EngineLevel, type TimePerMove } from '@group-chess/shared';
+import { buildPgn, t, type EngineLevel, type TimePerMove } from '@chess-goat/shared';
 import type { DbOrTx } from '../db/client';
 import type { GameRow, UserRow } from '../db/schema';
 import { listMoves } from './games';

@@ -10,7 +10,7 @@ import {
   type GameDto,
   type GamePlayer,
   type TimePerMove,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import type { GameRow, GroupRow, MoveRow, RatingRow, UserRow } from '../db/schema';
 import { toPlayerRef } from './players';
 

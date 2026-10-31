@@ -21,14 +21,14 @@ server will not start its job worker without them.
 That prints the two connection strings. You want the first one:
 
 ```bash
-export DATABASE_URL=postgres://postgres@127.0.0.1:54329/group_chess
+export DATABASE_URL=postgres://postgres@127.0.0.1:54329/chess_goat
 ```
 
 That URL has no password because `local-postgres.sh` sets up trust authentication. If your
 PostgreSQL is not this one — a Docker container, a system service, anything already configured with
 a password — that connection string will fail to authenticate. Use the credentials that instance
 actually has instead; for example, `docker compose up -d db` gives you PostgreSQL on 5432 with
-`DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/group_chess`.
+`DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/chess_goat`.
 
 ### The bot opponent needs Stockfish
 

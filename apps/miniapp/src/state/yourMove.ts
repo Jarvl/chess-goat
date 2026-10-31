@@ -1,4 +1,4 @@
-import { sideToMove, type GameDto, type MeGamesDto } from '@group-chess/shared';
+import { sideToMove, type GameDto, type MeGamesDto } from '@chess-goat/shared';
 import { signal } from '@preact/signals';
 
 /**

@@ -1,4 +1,4 @@
-import type { GameSummary, LeaderboardEntry, LobbyDto } from '@group-chess/shared';
+import type { GameSummary, LeaderboardEntry, LobbyDto } from '@chess-goat/shared';
 
 /** The lobby's two views: the viewer's own games, or the games they are not in. */
 export type LobbyScope = 'mine' | 'others';

@@ -7,7 +7,7 @@ import {
   type GameSummary,
   type GroupSettings as Settings,
   type TimePerMove,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { useMemo, useState } from 'preact/hooks';
 import { Avatar } from '../Avatar';
 import { useApp } from '../context';

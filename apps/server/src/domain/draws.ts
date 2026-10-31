@@ -1,10 +1,4 @@
-import {
-  computeClaims,
-  opposite,
-  sideToMove,
-  type Colour,
-  type GameDto,
-} from '@group-chess/shared';
+import { computeClaims, opposite, sideToMove, type Colour, type GameDto } from '@chess-goat/shared';
 import { eq, sql } from 'drizzle-orm';
 import { games, type GameRow } from '../db/schema';
 import type { Deps } from './deps';

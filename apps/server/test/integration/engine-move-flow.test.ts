@@ -1,4 +1,4 @@
-import { encodePremoveTree, t, type EngineLevel } from '@group-chess/shared';
+import { encodePremoveTree, t, type EngineLevel } from '@chess-goat/shared';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { jobs, ratings } from '../../src/db/schema';
 import { createEngineGame, getEngineUser } from '../../src/domain/engineGames';

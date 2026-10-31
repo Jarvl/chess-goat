@@ -1,4 +1,4 @@
-import type { MeGroupsDto } from '@group-chess/shared';
+import type { MeGroupsDto } from '@chess-goat/shared';
 import { describe, expect, it } from 'vitest';
 import { Groups } from '../src/ui/screens/Groups';
 import { renderApp } from './support/render';

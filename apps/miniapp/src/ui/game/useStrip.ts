@@ -1,4 +1,4 @@
-import { MeGamesDtoSchema, type GameDto } from '@group-chess/shared';
+import { MeGamesDtoSchema, type GameDto } from '@chess-goat/shared';
 import { useEffect, useState } from 'preact/hooks';
 import { arrangeStrip, resetStrip, stripGames, type StripGame } from '../../state/switcher';
 import { countYourMove, turnChangesSeen } from '../../state/yourMove';

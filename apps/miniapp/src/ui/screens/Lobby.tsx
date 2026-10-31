@@ -5,7 +5,7 @@ import {
   ratingLabel,
   t,
   type LobbyDto,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { useState } from 'preact/hooks';
 import { ApiError } from '../../api/client';
 import { rankOf, scopedGames, type LobbyScope } from '../../state/lobby';

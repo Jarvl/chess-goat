@@ -1,4 +1,4 @@
-import { encodePremoveTree } from '@group-chess/shared';
+import { encodePremoveTree } from '@chess-goat/shared';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -40,8 +40,8 @@ vi.mock('../src/board/adapter', async () => {
 });
 // The premove size limit, low enough in a test to be crossed by one pair.
 const limits = vi.hoisted(() => ({ maxChars: 60_000 }));
-vi.mock('@group-chess/shared', async () => {
-  const actual = await vi.importActual<typeof import('@group-chess/shared')>('@group-chess/shared');
+vi.mock('@chess-goat/shared', async () => {
+  const actual = await vi.importActual<typeof import('@chess-goat/shared')>('@chess-goat/shared');
   return {
     ...actual,
     get PREMOVE_TREE_MAX_CHARS() {

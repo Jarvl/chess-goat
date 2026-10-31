@@ -3,7 +3,7 @@ import {
   PREMOVE_TREE_MAX_CHARS,
   encodePremoveTree,
   type PremoveNode,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { describe, expect, it } from 'vitest';
 import { checkTreeYielding, hasUncheckedPairs } from '../../src/domain/premoveCheck';
 import { deepLine } from '../helpers/chess';

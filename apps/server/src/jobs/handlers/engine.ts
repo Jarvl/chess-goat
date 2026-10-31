@@ -1,4 +1,4 @@
-import { legalDests, sideToMove, type EngineLevel } from '@group-chess/shared';
+import { legalDests, sideToMove, type EngineLevel } from '@chess-goat/shared';
 import { z } from 'zod';
 import type { Config } from '../../config';
 import type { Deps } from '../../domain/deps';

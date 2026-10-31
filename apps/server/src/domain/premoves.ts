@@ -4,7 +4,7 @@ import {
   sideToMove,
   type GameDto,
   type PremoveNode,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { eq } from 'drizzle-orm';
 import { games } from '../db/schema';
 import type { Deps } from './deps';

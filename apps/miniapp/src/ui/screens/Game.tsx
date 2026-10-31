@@ -1,4 +1,4 @@
-import { GameDtoSchema } from '@group-chess/shared';
+import { GameDtoSchema } from '@chess-goat/shared';
 import { stripGames } from '../../state/switcher';
 import { useApp } from '../context';
 import { GameSwitcher } from '../game/GameSwitcher';

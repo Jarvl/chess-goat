@@ -1,4 +1,4 @@
-import { t } from '@group-chess/shared';
+import { t } from '@chess-goat/shared';
 import { signal } from '@preact/signals';
 import { useEffect } from 'preact/hooks';
 import type { Tg } from '../tg/webapp';

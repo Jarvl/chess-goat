@@ -7,7 +7,7 @@ import {
   type GameDto,
   type MoveConfirmations,
   type MoveDto,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { vi } from 'vitest';
 import { prefs } from '../../src/state/session';
 import type { Tg } from '../../src/tg/webapp';

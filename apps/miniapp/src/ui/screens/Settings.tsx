@@ -5,7 +5,7 @@ import {
   type MessageKey,
   type MoveConfirmations,
   type Prefs,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { useEffect } from 'preact/hooks';
 import { z } from 'zod';
 import { AUTHOR_URL, BRAND, REPO_URL } from '../../brand';

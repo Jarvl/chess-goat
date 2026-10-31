@@ -1,4 +1,4 @@
-import { countPremovePairs, sideToMove, t, type Colour } from '@group-chess/shared';
+import { countPremovePairs, sideToMove, t, type Colour } from '@chess-goat/shared';
 import type { GameStore } from '../../state/game';
 import { fenAt, moveLabel, nodeAt } from '../../state/premoveDraft';
 

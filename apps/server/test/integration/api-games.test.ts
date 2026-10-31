@@ -4,7 +4,7 @@ import {
   GameDtoSchema,
   LobbyDtoSchema,
   PlayerPageDtoSchema,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { adminActions, groupMembers, jobs, shares } from '../../src/db/schema';

@@ -5,7 +5,7 @@ import {
   premoveTreeCheck,
   type PremoveNode,
   type TreeCheck,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { DomainError } from './errors';
 
 /**

@@ -1,4 +1,4 @@
-import { PlayerPageDtoSchema, ratingLabel, t } from '@group-chess/shared';
+import { PlayerPageDtoSchema, ratingLabel, t } from '@chess-goat/shared';
 import { session } from '../../state/session';
 import { Avatar } from '../Avatar';
 import { useApp } from '../context';

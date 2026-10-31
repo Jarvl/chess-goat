@@ -1,4 +1,4 @@
-import type { PlayerRef } from '@group-chess/shared';
+import type { PlayerRef } from '@chess-goat/shared';
 import { and, desc, eq, isNull, ne, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client';
 import { groupMembers, ratings, users, type GroupMemberRow, type UserRow } from '../db/schema';

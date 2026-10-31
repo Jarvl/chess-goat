@@ -56,7 +56,7 @@ async function markerSurvives(): Promise<boolean> {
 }
 
 beforeAll(() => {
-  tempDir = mkdtempSync(join(tmpdir(), 'group-chess-migrations-'));
+  tempDir = mkdtempSync(join(tmpdir(), 'chess-goat-migrations-'));
 });
 
 afterAll(() => rmSync(tempDir, { recursive: true, force: true }));

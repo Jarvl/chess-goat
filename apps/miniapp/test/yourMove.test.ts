@@ -1,4 +1,4 @@
-import { type MeGamesDto } from '@group-chess/shared';
+import { type MeGamesDto } from '@chess-goat/shared';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   countYourMove,

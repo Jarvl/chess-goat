@@ -1,4 +1,4 @@
-import { decodeStartParam } from '@group-chess/shared';
+import { decodeStartParam } from '@chess-goat/shared';
 import { render } from 'preact';
 import { createApiClient } from './api/client';
 import { boot, relaunch } from './boot';

@@ -1,5 +1,5 @@
 {
-  "name": "group-chess",
+  "name": "chess-goat",
   "private": true,
   "license": "GPL-3.0-or-later",
   "type": "module",
@@ -14,10 +14,10 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "build": "pnpm --filter @group-chess/miniapp build",
-    "dev:server": "pnpm --filter @group-chess/server dev",
-    "dev:app": "pnpm --filter @group-chess/miniapp dev",
-    "e2e": "pnpm --filter @group-chess/miniapp e2e",
+    "build": "pnpm --filter @chess-goat/miniapp build",
+    "dev:server": "pnpm --filter @chess-goat/server dev",
+    "dev:app": "pnpm --filter @chess-goat/miniapp dev",
+    "e2e": "pnpm --filter @chess-goat/miniapp e2e",
     "check:budget": "node scripts/check-bundle-size.mjs",
     "check:licences": "node scripts/check-licences.mjs",
     "fonts": "node scripts/fetch-fonts.mjs"

@@ -1,4 +1,4 @@
-import type { GameDto, GroupSettingsDto, LobbyDto, MeGamesDto } from '@group-chess/shared';
+import type { GameDto, GroupSettingsDto, LobbyDto, MeGamesDto } from '@chess-goat/shared';
 import { createContext } from 'preact';
 import { useContext } from 'preact/hooks';
 import type { ApiClient } from '../api/client';

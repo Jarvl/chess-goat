@@ -1,4 +1,4 @@
-import { TipRequestSchema, type TipInvoiceDto } from '@group-chess/shared';
+import { TipRequestSchema, type TipInvoiceDto } from '@chess-goat/shared';
 import type { Hono } from 'hono';
 import { DomainError } from '../../domain/errors';
 import { createTipInvoiceLink } from '../../telegram/tips';

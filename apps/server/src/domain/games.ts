@@ -13,7 +13,7 @@ import {
   type GameResult,
   type PremoveNode,
   type TimePerMove,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { asc, eq, sql } from 'drizzle-orm';
 import { dbNow, type DbOrTx } from '../db/client';
 import {

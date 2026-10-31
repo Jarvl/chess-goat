@@ -1,4 +1,4 @@
-import type { Colour } from '@group-chess/shared';
+import type { Colour } from '@chess-goat/shared';
 import { read } from 'chessground/fen';
 import type { Key } from 'chessground/types';
 import { h } from 'preact';

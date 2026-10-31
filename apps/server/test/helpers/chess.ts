@@ -1,4 +1,4 @@
-import { applyMove, positionKey, type PlayerResult, type PremoveNode } from '@group-chess/shared';
+import { applyMove, positionKey, type PlayerResult, type PremoveNode } from '@chess-goat/shared';
 import type { StoredMove } from '../../src/flair/patterns';
 import type { CountedGame } from '../../src/flair/rules';
 

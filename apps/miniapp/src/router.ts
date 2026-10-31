@@ -1,4 +1,4 @@
-import type { GroupRef } from '@group-chess/shared';
+import type { GroupRef } from '@chess-goat/shared';
 import { computed, signal, type ReadonlySignal, type Signal } from '@preact/signals';
 import type { LobbyScope } from './state/lobby';
 import type { Tg } from './tg/webapp';

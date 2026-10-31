@@ -17,7 +17,7 @@ import {
   type MessageParams,
   type TimePerMove,
   type TimePerMoveSeconds,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import type { InlineKeyboardButton, InlineKeyboardMarkup, MessageEntity } from 'grammy/types';
 
 export const MAX_BUTTON_URL_LENGTH = 2000;

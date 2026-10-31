@@ -21,7 +21,7 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm install --frozen-lo
 COPY packages ./packages
 COPY apps ./apps
 COPY scripts ./scripts
-RUN pnpm --filter @group-chess/miniapp build && node scripts/check-bundle-size.mjs
+RUN pnpm --filter @chess-goat/miniapp build && node scripts/check-bundle-size.mjs
 
 # Snapshot spec §2.2: the card's fonts are downloaded by pinned URL and sha256, never committed.
 FROM base AS fonts
@@ -45,10 +45,10 @@ COPY apps/server ./apps/server
 COPY --from=fonts /app/apps/server/fonts/ ./apps/server/fonts/
 COPY scripts ./scripts
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    CI=1 pnpm install --frozen-lockfile --prod --filter "@group-chess/server..." \
+    CI=1 pnpm install --frozen-lockfile --prod --filter "@chess-goat/server..." \
     && chown -R node:node /app
 # Run the assertion against the binary that actually ships, with the adapter it actually ships
-# with. `tsx` and `chess.js` are production dependencies of @group-chess/server (see its
+# with. `tsx` and `chess.js` are production dependencies of @chess-goat/server (see its
 # package.json), so the `--prod` install above already has them; asserting here — not in the build
 # stage — is the point: it proves the runtime image, not a different stage's copy.
 RUN cd apps/server && node --import tsx ../../scripts/assert-engine.mjs

@@ -1,4 +1,4 @@
-import type { MeGamesDto } from '@group-chess/shared';
+import type { MeGamesDto } from '@chess-goat/shared';
 import { signal } from '@preact/signals';
 
 /** One of the viewer's active games, as the Games tab lists it. */

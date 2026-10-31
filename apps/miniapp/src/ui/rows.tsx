@@ -1,4 +1,4 @@
-import { ratingLabel, t, type ChallengeDto, type LeaderboardEntry } from '@group-chess/shared';
+import { ratingLabel, t, type ChallengeDto, type LeaderboardEntry } from '@chess-goat/shared';
 import { Avatar } from './Avatar';
 import { Flair } from './Flair';
 import { termsLabel } from './format';

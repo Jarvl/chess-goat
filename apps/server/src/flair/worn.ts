@@ -1,4 +1,4 @@
-import { flairById, MAX_WORN_FLAIR, type FlairId } from '@group-chess/shared';
+import { flairById, MAX_WORN_FLAIR, type FlairId } from '@chess-goat/shared';
 
 /**
  * Flair spec §3.3: the worn list after `fresh` is earned. New flair fills the free slots, whatever

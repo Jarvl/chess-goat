@@ -1,5 +1,5 @@
 import { expect, test as base, type Page } from '@playwright/test';
-import { decodePremoveTree, type PremoveNode } from '@group-chess/shared';
+import { decodePremoveTree, type PremoveNode } from '@chess-goat/shared';
 import { createHmac } from 'node:crypto';
 import {
   installFakeWebApp,

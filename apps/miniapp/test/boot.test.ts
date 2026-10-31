@@ -1,4 +1,4 @@
-import { GROUP_SETTINGS_DEFAULTS } from '@group-chess/shared';
+import { GROUP_SETTINGS_DEFAULTS } from '@chess-goat/shared';
 import { describe, expect, it, vi } from 'vitest';
 import { createApiClient } from '../src/api/client';
 import { boot } from '../src/boot';

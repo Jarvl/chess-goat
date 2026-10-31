@@ -1,4 +1,4 @@
-import { FLAIR, MAX_WORN_FLAIR, flairById, type FlairDto } from '@group-chess/shared';
+import { FLAIR, MAX_WORN_FLAIR, flairById, type FlairDto } from '@chess-goat/shared';
 import { and, eq, or } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { DbOrTx } from '../db/client';

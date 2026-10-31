@@ -6,7 +6,7 @@ import {
   type LeaderboardEntry,
   type PlayerRatingState,
   type RatingSnapshot,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { and, asc, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client';
 import { games, groupMembers, ratings, users, type GameRow, type RatingRow } from '../db/schema';

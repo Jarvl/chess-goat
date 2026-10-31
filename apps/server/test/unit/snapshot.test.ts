@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { FLAIR } from '@group-chess/shared';
+import { FLAIR } from '@chess-goat/shared';
 import { Resvg } from '@resvg/resvg-js';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { snapshotImageKey } from '../../src/images/cache';

@@ -1,4 +1,4 @@
-import type { LaunchRoute, StartParam } from '@group-chess/shared';
+import type { LaunchRoute, StartParam } from '@chess-goat/shared';
 import type { UserRow } from '../db/schema';
 import { groupSettingsDto } from '../domain/admin';
 import { colourOf } from '../domain/gameDto';

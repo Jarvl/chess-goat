@@ -1,4 +1,4 @@
-import type { DraftNode } from '@group-chess/shared';
+import type { DraftNode } from '@chess-goat/shared';
 import { describe, expect, it } from 'vitest';
 import { buildTimeline, timelineTarget } from '../src/state/premoveTimeline';
 

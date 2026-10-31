@@ -1,11 +1,7 @@
 import { blockUser, unblockUser } from './members';
 import { DomainError } from './errors';
 import { type Deps } from './deps';
-import {
-  GroupSettingsSchema,
-  type GroupSettings,
-  type GroupSettingsDto,
-} from '@group-chess/shared';
+import { GroupSettingsSchema, type GroupSettings, type GroupSettingsDto } from '@chess-goat/shared';
 import { and, eq, isNotNull } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client';
 import { adminActions, groupMembers, ratings, users, type GroupRow } from '../db/schema';

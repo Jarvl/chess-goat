@@ -1,4 +1,4 @@
-import { MeGroupsDtoSchema, t } from '@group-chess/shared';
+import { MeGroupsDtoSchema, t } from '@chess-goat/shared';
 import { useApp } from '../context';
 import { useResource } from '../hooks';
 import { GroupAvatar } from '../Avatar';

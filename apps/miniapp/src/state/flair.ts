@@ -4,7 +4,7 @@ import {
   MAX_WORN_FLAIR,
   flairById,
   type FlairDto,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { signal } from '@preact/signals';
 import type { ApiClient } from '../api/client';
 

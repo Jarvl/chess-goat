@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import type { EngineLevel } from '@group-chess/shared';
+import type { EngineLevel } from '@chess-goat/shared';
 import type { Config } from '../config';
 import type { Logger } from '../logger';
 import type { BestMove, Engine } from './engine';

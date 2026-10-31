@@ -1,4 +1,4 @@
-import type { Colour, MovePattern } from '@group-chess/shared';
+import type { Colour, MovePattern } from '@chess-goat/shared';
 import type { MoveRow } from '../db/schema';
 
 /** The columns of a stored move that the detectors read. */

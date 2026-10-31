@@ -1,4 +1,4 @@
-import { PUBLIC_ID_PATTERN } from '@group-chess/shared';
+import { PUBLIC_ID_PATTERN } from '@chess-goat/shared';
 import { describe, expect, it } from 'vitest';
 import { generatePublicId } from '../../src/db/ids';
 

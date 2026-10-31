@@ -1,4 +1,4 @@
-import type { DraftNode } from '@group-chess/shared';
+import type { DraftNode } from '@chess-goat/shared';
 import { Chess } from 'chess.js';
 import { describe, expect, it } from 'vitest';
 import { linesModel, type LineBlock } from '../src/state/premoveLines';

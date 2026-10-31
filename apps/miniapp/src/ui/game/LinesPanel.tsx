@@ -1,4 +1,4 @@
-import { t, type Colour, type DraftNode } from '@group-chess/shared';
+import { t, type Colour, type DraftNode } from '@chess-goat/shared';
 import { Fragment } from 'preact';
 import { useEffect, useMemo, useRef } from 'preact/hooks';
 import { linesModel } from '../../state/premoveLines';

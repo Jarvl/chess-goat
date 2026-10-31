@@ -7,7 +7,7 @@ import {
   t,
   type Colour,
   type DraftNode,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { Chess } from 'chess.js';
 import type { WaitingMove } from '../../state/game';
 import { moveLabel } from '../../state/premoveDraft';

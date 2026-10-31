@@ -1,4 +1,4 @@
-import type { ErrorCode } from '@group-chess/shared';
+import type { ErrorCode } from '@chess-goat/shared';
 
 /** A business-rule failure; the HTTP and bot layers map `code` to a status or a one-line reply. */
 export class DomainError extends Error {

@@ -1,4 +1,4 @@
-import { FLAIR } from '@group-chess/shared';
+import { FLAIR } from '@chess-goat/shared';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createApiClient } from '../src/api/client';
 import {

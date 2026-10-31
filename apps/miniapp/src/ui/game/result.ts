@@ -1,4 +1,4 @@
-import { endReasonLabel, type Colour, type GameDto } from '@group-chess/shared';
+import { endReasonLabel, type Colour, type GameDto } from '@chess-goat/shared';
 
 export type ResultTag = 'won' | 'lost' | 'draw' | 'aborted' | 'voided';
 

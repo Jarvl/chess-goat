@@ -1,4 +1,4 @@
-import type { DraftNode } from '@group-chess/shared';
+import type { DraftNode } from '@chess-goat/shared';
 
 import { describe, expect, it, vi } from 'vitest';
 import { LinesPanel } from '../src/ui/game/LinesPanel';

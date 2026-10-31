@@ -8,7 +8,7 @@ import {
   type EngineGameRequest,
   type GameDto,
   type PremoveTreeRequest,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { batch } from '@preact/signals';
 import { h } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';

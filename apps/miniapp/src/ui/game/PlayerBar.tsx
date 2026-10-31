@@ -6,7 +6,7 @@ import {
   type GameDto,
   type PieceLetter,
   type SideMaterial,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { h } from 'preact';
 import { clockLabel, isUrgent, remainingMs } from '../../state/clock';
 import { Avatar } from '../Avatar';

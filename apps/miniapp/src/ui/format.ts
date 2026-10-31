@@ -8,7 +8,7 @@ import {
   type GameSummary,
   type PlayerRef,
   type TimePerMove,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 
 // en-US on purpose (flair spec §5.5): month first, and "Sep" where en-GB writes "Sept".
 const MONTH_YEAR = new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' });

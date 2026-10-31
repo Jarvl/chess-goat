@@ -1,4 +1,4 @@
-import { FlairUpdateRequestSchema, type FlairDto } from '@group-chess/shared';
+import { FlairUpdateRequestSchema, type FlairDto } from '@chess-goat/shared';
 import type { Hono } from 'hono';
 import { loadFlairDto, setWornFlair } from '../../flair/profile';
 import type { ApiContext, ApiEnv } from '../context';

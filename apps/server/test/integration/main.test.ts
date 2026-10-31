@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { FLAIR, flairBackfillVersion } from '@group-chess/shared';
+import { FLAIR, flairBackfillVersion } from '@chess-goat/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { jobs } from '../../src/db/schema';
 import { backfillDedupKey } from '../../src/flair/backfill';
@@ -21,7 +21,7 @@ beforeAll(async () => {
   fake = await FakeTelegram.start();
   dir = await mkdtemp(join(tmpdir(), 'miniapp-'));
   await mkdir(join(dir, 'assets'));
-  await writeFile(join(dir, 'index.html'), '<!doctype html><title>Group Chess</title>');
+  await writeFile(join(dir, 'index.html'), '<!doctype html><title>Chess Goat</title>');
   await writeFile(join(dir, 'assets', 'app-1a2b3c.js'), 'console.log(1)');
   server = await startServer(
     // ENGINE_ENABLED: false — otherwise startServer's boot probe would spawn a real `stockfish`
@@ -130,13 +130,13 @@ describe('startServer', () => {
     const index = await fetch(`${base}/app/`);
     expect(index.status).toBe(200);
     expect(index.headers.get('cache-control')).toBe('no-store');
-    expect(await index.text()).toContain('Group Chess');
+    expect(await index.text()).toContain('Chess Goat');
     const asset = await fetch(`${base}/app/assets/app-1a2b3c.js`);
     expect(asset.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
     expect(asset.headers.get('content-type')).toContain('text/javascript');
     const route = await fetch(`${base}/app/g/AbCdEfGhIj`);
     expect(route.headers.get('cache-control')).toBe('no-store');
-    expect(await route.text()).toContain('Group Chess');
+    expect(await route.text()).toContain('Chess Goat');
   });
 
   it('mounts the webhook behind the secret header and the API behind a session', async () => {

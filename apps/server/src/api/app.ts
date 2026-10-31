@@ -1,4 +1,4 @@
-import { apiErrorBody, HTTP_STATUS_BY_ERROR_CODE } from '@group-chess/shared';
+import { apiErrorBody, HTTP_STATUS_BY_ERROR_CODE } from '@chess-goat/shared';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';

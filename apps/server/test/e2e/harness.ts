@@ -4,7 +4,7 @@
  */
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
-import { INITIAL_FEN, toBase64Url } from '@group-chess/shared';
+import { INITIAL_FEN, toBase64Url } from '@chess-goat/shared';
 import { eq } from 'drizzle-orm';
 import { games, ratings, userFlair, users } from '../../src/db/schema';
 import { runMigrations } from '../../src/db/migrate';

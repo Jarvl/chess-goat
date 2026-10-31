@@ -4,7 +4,7 @@ import {
   encodePremoveTree,
   premoveTreeHash,
   type PremoveNode,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { dmMessages, games, jobs, moves } from '../../src/db/schema';

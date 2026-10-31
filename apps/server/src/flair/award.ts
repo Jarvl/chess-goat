@@ -1,4 +1,4 @@
-import { FLAIR, type Colour } from '@group-chess/shared';
+import { FLAIR, type Colour } from '@chess-goat/shared';
 import { eq, inArray } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client';
 import { userFlair, users, type GameRow, type UserRow } from '../db/schema';

@@ -1,4 +1,4 @@
-import { FLAIR, FLAIR_CATEGORIES, t } from '@group-chess/shared';
+import { FLAIR, FLAIR_CATEGORIES, t } from '@chess-goat/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { myFlair } from '../src/state/flair';
 import { App } from '../src/ui/App';

@@ -1,4 +1,4 @@
-import { INITIAL_FEN } from '@group-chess/shared';
+import { INITIAL_FEN } from '@chess-goat/shared';
 import { describe, expect, it } from 'vitest';
 import { MiniBoard } from '../src/ui/MiniBoard';
 import { AFTER_E4 } from './support/gameFixtures';

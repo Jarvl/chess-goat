@@ -7,7 +7,7 @@ import type {
   GameStatus,
   GroupSettings,
   Prefs,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { sql } from 'drizzle-orm';
 import {
   bigint,

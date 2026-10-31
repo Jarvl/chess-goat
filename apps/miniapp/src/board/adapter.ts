@@ -1,4 +1,4 @@
-import { sideToMove, type Colour } from '@group-chess/shared';
+import { sideToMove, type Colour } from '@chess-goat/shared';
 import { Chessground } from 'chessground';
 import type { Api } from 'chessground/api';
 import type { Config } from 'chessground/config';

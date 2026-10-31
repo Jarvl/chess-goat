@@ -1,4 +1,4 @@
-import type { DraftNode } from '@group-chess/shared';
+import type { DraftNode } from '@chess-goat/shared';
 import { extendLine, isPrefix, nodeAt, type Path } from './premoveDraft';
 
 /**

@@ -7,7 +7,7 @@ import {
   type MeGroupsDto,
   type PlayerPageDto,
   type WinDrawLoss,
-} from '@group-chess/shared';
+} from '@chess-goat/shared';
 import { and, desc, eq, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client';
 import {

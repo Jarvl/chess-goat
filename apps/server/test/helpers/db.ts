@@ -89,7 +89,7 @@ export async function scratchDatabase(name: string): Promise<ScratchDatabase> {
   const base = process.env.TEST_DATABASE_URL;
   if (!base) throw new Error('TEST_DATABASE_URL must be set for integration tests');
   const admin = postgres(base, { max: 1, onnotice: () => undefined });
-  const database = `group_chess_${name}_${process.pid}`;
+  const database = `chess_goat_${name}_${process.pid}`;
   await admin.unsafe(`drop database if exists ${database} with (force)`);
   await admin.unsafe(`create database ${database}`);
   const url = new URL(base);
