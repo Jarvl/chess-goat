@@ -148,6 +148,27 @@ export const challenges = pgTable(
   ],
 );
 
+/**
+ * The game settings of someone's open /challenge prompt in a group. Kept here, not read back from
+ * the prompt's buttons, because Telegram can hand back a keyboard from before the last edit.
+ */
+export const challengePrompts = pgTable(
+  'challenge_prompts',
+  {
+    groupId: bigint({ mode: 'number' })
+      .notNull()
+      .references(() => groups.id),
+    userId: bigint({ mode: 'number' })
+      .notNull()
+      .references(() => users.id),
+    timePerMove: integer().notNull(),
+    colour: text().$type<ColourChoice>().notNull(),
+    rated: boolean().notNull(),
+    updatedAt: tz().notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.groupId, t.userId] })],
+);
+
 export const games = pgTable(
   'games',
   {

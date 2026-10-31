@@ -92,6 +92,13 @@
       "when": 1793431906912,
       "tag": "0012_challenge_opponent_username",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793474161584,
+      "tag": "0013_challenge_prompts",
+      "breakpoints": true
     }
   ]
 }
