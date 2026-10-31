@@ -160,6 +160,7 @@ export const en = {
   'alert.not_your_challenge': 'Only {name} can accept this challenge.',
   'alert.not_the_challenger': 'Only {name} can withdraw this challenge.',
   'alert.not_your_prompt': 'Only {name} can use this.',
+  'alert.try_again': 'Something went wrong. Try again.',
   'alert.own_challenge': "You can't accept your own challenge.",
   'alert.accepted_first': 'Someone accepted first.',
   'alert.challenge_gone': 'This challenge is no longer open.',

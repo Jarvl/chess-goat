@@ -437,6 +437,51 @@ describe('/challenge', () => {
     expect(await db.select().from(challenges)).toHaveLength(0);
   });
 
+  it('keeps the stored settings when the prompt edit fails, but saves on "not modified"', async () => {
+    await makeAdmin();
+    await post(commandUpdate({ chat, from: alice, text: '/challenge' }));
+    fake.failNext('editEphemeralMessageText', {
+      error_code: 400,
+      description: 'Bad Request: BUTTON_DATA_INVALID',
+    });
+    await tap('cp/s/11/7/b/0');
+    expect(await promptRows()).toEqual([
+      expect.objectContaining({ timePerMove: 259200, colour: 'random', rated: true }),
+    ]);
+    expect(fake.callsTo('answerCallbackQuery').at(-1)?.body).toMatchObject({
+      text: 'Something went wrong. Try again.',
+    });
+    fake.failNext('editEphemeralMessageText', {
+      error_code: 400,
+      description: 'Bad Request: message is not modified',
+    });
+    await tap('cp/s/11/7/b/0');
+    expect(await promptRows()).toEqual([
+      expect.objectContaining({ timePerMove: 604800, colour: 'black', rated: false }),
+    ]);
+    expect(fake.callsTo('answerCallbackQuery').at(-1)?.body).not.toHaveProperty('text');
+  });
+
+  it('keeps the stored settings when the fallback prompt edit fails', async () => {
+    await post(commandUpdate({ chat, from: alice, text: '/challenge' }));
+    fake.failNext('editMessageText', {
+      error_code: 400,
+      description: 'Bad Request: BUTTON_DATA_INVALID',
+    });
+    await post(
+      callbackUpdate({
+        from: alice,
+        chat,
+        data: 'cp/s/11/7/b/0',
+        cardMessageId: 101,
+        markup: staleMarkup(),
+      }),
+    );
+    expect(await promptRows()).toEqual([
+      expect.objectContaining({ timePerMove: 259200, colour: 'random', rated: true }),
+    ]);
+  });
+
   it('creates an open challenge from Anyone with the prompt settings and deletes the prompt', async () => {
     await makeAdmin();
     await post(commandUpdate({ chat, from: alice, text: '/challenge' }));

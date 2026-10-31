@@ -20,6 +20,7 @@ import { getGroupByChatId, settingsOf } from '../domain/groups';
 import { touchMember } from '../domain/members';
 import { displayName, ensureUser, getUserByTelegramId } from '../domain/users';
 import type { GroupRow, UserRow } from '../db/schema';
+import { classifyTelegramError } from '../telegram/client';
 import { promptStateFrom, promptView, startingSettings } from './challengePrompt';
 import { deleteEphemeral, editEphemeral, sendEphemeral, type EphemeralTrigger } from './ephemeral';
 import { resolveOpponent } from './opponent';
@@ -260,12 +261,24 @@ export async function handlePromptTap(
   const place = { chatId: chat.id, owner: query.from.id };
   const ref = promptRefOf(message);
   if (data.op !== 'anyone') {
+    // The row follows what the prompt shows, so it changes only once the edit has.
+    try {
+      await editPrompt(api, place, ref, promptView(data.op, data.ownerTelegramId, data.settings));
+    } catch (error) {
+      const failure = classifyTelegramError(error);
+      // A rate limit, or no answer from Telegram: the update retries.
+      if (!failure || failure.kind === 'retry_after') throw error;
+      // Tapping the setting already chosen edits nothing, which Telegram reports as an error.
+      if (failure.kind !== 'not_modified') {
+        await answer(
+          failure.kind === 'message_gone'
+            ? undefined
+            : { text: t('alert.try_again'), show_alert: false },
+        );
+        return;
+      }
+    }
     await savePromptSettings(deps.db, group.id, user.id, data.settings);
-    // Tapping the setting already chosen edits nothing, which Telegram reports as an error.
-    await quietly(
-      deps,
-      editPrompt(api, place, ref, promptView(data.op, data.ownerTelegramId, data.settings)),
-    );
     await answer();
     return;
   }
