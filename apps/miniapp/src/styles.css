@@ -1744,6 +1744,9 @@ coords.squares:nth-of-type(even) :nth-child(even) {
 }
 
 .mini-board {
+  /* Pieces carry chessground's z-index 2 (from .cg-wrap piece); keep it inside the board so
+     overlays like the switcher's turn dot paint on top. */
+  isolation: isolate;
   display: grid;
   grid-template-columns: repeat(8, 1fr);
   grid-template-rows: repeat(8, 1fr);
