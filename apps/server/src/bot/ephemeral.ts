@@ -1,4 +1,4 @@
-import { GrammyError, type Api } from 'grammy';
+import { GrammyError, HttpError, type Api } from 'grammy';
 import type { InlineKeyboardButton, InlineKeyboardMarkup } from 'grammy/types';
 
 // Ephemeral messages (Bot API 10.2/10.3) are group messages only one user sees. grammY 1.46 has no
@@ -18,7 +18,10 @@ export type EphemeralTrigger =
 type RawCalls = Record<string, (payload: object) => Promise<unknown>>;
 const raw = (api: Api) => api.raw as unknown as RawCalls;
 
-/** Posts a message only `receiverId` sees. Null when Telegram refuses (any 4xx). */
+/**
+ * Posts a message only `receiverId` sees. Null when it fails, so the caller can answer publicly;
+ * a 429 is rethrown, so the update retries instead of going public.
+ */
 export async function sendEphemeral(
   api: Api,
   input: {
@@ -47,8 +50,8 @@ export async function sendEphemeral(
     })) as { ephemeral_message_id: number };
     return { ephemeralMessageId: message.ephemeral_message_id };
   } catch (error) {
-    if (error instanceof GrammyError && error.error_code >= 400 && error.error_code < 500)
-      return null;
+    if (error instanceof GrammyError && error.error_code !== 429) return null;
+    if (error instanceof HttpError) return null;
     throw error;
   }
 }

@@ -52,13 +52,23 @@ describe('sendEphemeral', () => {
     expect(body).not.toHaveProperty('reply_parameters');
   });
 
-  it('returns null on any 4xx', async () => {
+  it('returns null on any API error but 429, and when Telegram cannot be reached', async () => {
     fake.failNext('sendMessage', { error_code: 400, description: 'Bad Request' });
     expect(await sendEphemeral(api, { ...base, trigger: { ephemeralMessageId: 1 } })).toBeNull();
+    fake.failNext('sendMessage', { error_code: 500, description: 'Internal' });
+    expect(await sendEphemeral(api, { ...base, trigger: { ephemeralMessageId: 1 } })).toBeNull();
+    const unreachable = new Api('123:TEST', { apiRoot: 'http://127.0.0.1:1' });
+    expect(
+      await sendEphemeral(unreachable, { ...base, trigger: { ephemeralMessageId: 1 } }),
+    ).toBeNull();
   });
 
-  it('rethrows other failures', async () => {
-    fake.failNext('sendMessage', { error_code: 500, description: 'Internal' });
+  it('rethrows a 429, so the update retries instead of going public', async () => {
+    fake.failNext('sendMessage', {
+      error_code: 429,
+      description: 'Too Many Requests: retry after 1',
+      parameters: { retry_after: 1 },
+    });
     await expect(
       sendEphemeral(api, { ...base, trigger: { ephemeralMessageId: 1 } }),
     ).rejects.toThrow();
