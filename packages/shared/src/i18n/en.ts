@@ -111,8 +111,7 @@ export const en = {
   'button.colour.black': 'Black',
   'button.rated': 'Rated',
   'button.casual': 'Casual',
-  'prompt.challenge':
-    'Who do you want to play? Type @ and pick them from the list, or tap Anyone.',
+  'prompt.challenge': 'Who do you want to play? Type @ and pick them from the list, or tap Anyone.',
   'prompt.summary': '{timePerMove} · {colour} · {rated}',
   'prompt.colour.random': 'Random colour',
   'prompt.colour.white': 'You play White',
