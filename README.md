@@ -23,7 +23,7 @@
 
 ---
 
-Chess Goat is a Telegram bot and Mini App for playing chess with the people in your group chats. Challenge someone with `/challenge @name` or from the app, then move by dragging or tapping on a real board that opens inside Telegram. The group only sees game cards, results and the positions people choose to share. The server enforces the rules and the clocks, and every finished game gets a Lichess analysis link.
+Chess Goat is a Telegram bot and Mini App for playing chess with the people in your group chats. Challenge someone with `/challenge` (pick them from Telegram's @ list), `/challenge @name`, or from the app, then move by dragging or tapping on a real board that opens inside Telegram. The group only sees game cards, results and the positions people choose to share. The server enforces the rules and the clocks, and every finished game gets a Lichess analysis link.
 
 ## Features
 
