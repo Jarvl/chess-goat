@@ -7,10 +7,14 @@ export type LaunchOutcome =
   | { kind: 'failed'; error: ApiError };
 
 /** Spec §6.1 step 3: one request from launch to a painted screen; a 401 here means "reopen". */
-export async function launch(client: ApiClient, initData: string): Promise<LaunchOutcome> {
+export async function launch(
+  client: ApiClient,
+  initData: string,
+  startParam: string | null = null,
+): Promise<LaunchOutcome> {
   try {
     const response = await client.request('POST', '/api/launch', {
-      body: { initData },
+      body: startParam ? { initData, startParam } : { initData },
       schema: LaunchResponseSchema,
       auth: false,
     });

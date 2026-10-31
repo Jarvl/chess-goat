@@ -89,7 +89,7 @@ describe('live DM rows', () => {
           [
             {
               text: '♟ Open game',
-              url: `https://t.me/TestChessBot/chess?startapp=g_${game.publicId}`,
+              web_app: { url: `https://chess.test/app/?startapp=g_${game.publicId}` },
             },
           ],
         ],

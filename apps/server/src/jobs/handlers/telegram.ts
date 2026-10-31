@@ -20,12 +20,19 @@ import type { JobHandler, JobHandlers, JobResult } from '../types';
 const gameCardPayload = z.object({ gameId: z.number().int() });
 const challengePayload = z.object({ challengeId: z.number().int() });
 const cardPayload = z.union([gameCardPayload, challengePayload]);
+/** A direct link for a group, or a `web_app` button for the bot's own private chat. */
+const messageButton = z.union([
+  z.object({ text: z.string(), url: z.string() }),
+  z.object({ text: z.string(), web_app: z.object({ url: z.string() }) }),
+]);
+export type MessageButton = z.infer<typeof messageButton>;
+
 const messagePayload = z.object({
   chatId: z.number().int(),
   threadId: z.number().int().nullable().optional(),
   text: z.string().min(1),
   replyToMessageId: z.number().int().optional(),
-  buttons: z.array(z.object({ text: z.string(), url: z.string() })).optional(),
+  buttons: z.array(messageButton).optional(),
 });
 
 function editGameCardJob(game: Pick<GameRow, 'id' | 'publicId'>) {

@@ -13,7 +13,7 @@ import { validate } from '../validate';
 export function launchRoutes(ctx: ApiContext): Hono<ApiEnv> {
   const app = new Hono<ApiEnv>();
   app.post('/launch', validate('json', LaunchRequestSchema), async (c) => {
-    const { initData } = c.req.valid('json');
+    const { initData, startParam } = c.req.valid('json');
     const parsed = validateInitData(initData, ctx.config.BOT_TOKEN);
     if (parsed.user.is_bot) throw new DomainError('unauthorized', 'bots cannot launch the app');
     let user = await ensureUser(ctx.deps.db, {
@@ -27,7 +27,11 @@ export function launchRoutes(ctx: ApiContext): Hono<ApiEnv> {
       user = { ...user, dmAllowed: true };
     }
     const token = await issueSessionToken(ctx.config.SESSION_SECRET, user.id);
-    const route = await resolveLaunchRoute(ctx, user, decodeStartParam(parsed.startParam));
+    const route = await resolveLaunchRoute(
+      ctx,
+      user,
+      decodeStartParam(parsed.startParam ?? startParam),
+    );
     // A home launch already carries every active game, so the badge is a filter rather than a
     // second query; every other launch pays for the count it cannot derive.
     const yourMove =

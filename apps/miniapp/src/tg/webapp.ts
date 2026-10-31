@@ -213,7 +213,11 @@ export function createTg(
       return raw.initData;
     },
     get startParam() {
-      return raw.initDataUnsafe?.start_param ?? null;
+      // A direct link signs it into initData; a DM's `web_app` button can only put it in the URL.
+      return (
+        raw.initDataUnsafe?.start_param ??
+        new URLSearchParams(window.location.search).get('startapp')
+      );
     },
     get colorScheme() {
       return raw.colorScheme === 'dark' ? 'dark' : 'light';

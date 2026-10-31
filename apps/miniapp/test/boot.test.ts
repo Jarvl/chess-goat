@@ -175,6 +175,21 @@ describe('boot', () => {
     expect(home.record.backButton.visible).toBe(false);
   });
 
+  it("forwards a DM web_app button's startapp query, which initData does not carry", async () => {
+    window.history.replaceState(null, '', '/app/?startapp=g_AbCdEfGhIj');
+    try {
+      const dm = setup('8.0', undefined, () => ({
+        status: 200,
+        body: launchBody({ kind: 'game', game: gameDto() }),
+      }));
+      await boot(dm);
+      expect(dm.calls[0]?.body).toEqual({ initData: 'user=x&hash=y', startParam: 'g_AbCdEfGhIj' });
+      expect(session.value?.launchedFrom).toEqual({ kind: 'game', gameId: 'AbCdEfGhIj' });
+    } finally {
+      window.history.replaceState(null, '', '/');
+    }
+  });
+
   it('lands a group-settings launch in the groups tab', async () => {
     const settings = {
       group: { id: 'GrOuPiDxYz', title: 'Club' },
