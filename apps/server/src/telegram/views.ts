@@ -43,7 +43,16 @@ export async function challengeCardView(
     publicId: challenge.publicId,
     status: challenge.status,
     challenger: personView(challenger),
-    opponent: opponent ? personView(opponent) : null,
+    opponent: opponent
+      ? personView(opponent)
+      : challenge.opponentUsername
+        ? {
+            name: `@${challenge.opponentUsername}`,
+            username: challenge.opponentUsername,
+            telegramUserId: null,
+            flair: '',
+          }
+        : null,
     timePerMove: challenge.timePerMove as TimePerMove,
     rated: challenge.rated,
     challengerColour: challenge.challengerColour,

@@ -24,6 +24,8 @@ export type CreateChallengeInput = {
   challengerId: number;
   /** null for an open challenge. */
   opponentId: number | null;
+  /** A Telegram username (any case, optional `@`) for an opponent the bot has not seen; null otherwise. */
+  opponentUsername: string | null;
   timePerMove: TimePerMove;
   colour: ColourChoice;
   rated: boolean;
@@ -114,10 +116,16 @@ export async function createChallenge(
   return deps.db.transaction(async (tx) => {
     const group = await requireGroup(tx, input.groupId);
     const settings = settingsOf(group);
+    const opponentUsername = input.opponentUsername?.replace(/^@/, '').toLowerCase() || null;
+    if (input.opponentId !== null && opponentUsername !== null) {
+      throw new DomainError('validation', 'name the opponent by id or by username, not both', {
+        reason: 'opponent_ambiguous',
+      });
+    }
     if (input.opponentId !== null && input.opponentId === input.challengerId) {
       throw new DomainError('validation', 'cannot challenge yourself', { reason: 'self' });
     }
-    if (input.opponentId === null && !settings.allowOpenChallenges) {
+    if (input.opponentId === null && opponentUsername === null && !settings.allowOpenChallenges) {
       throw new DomainError('forbidden', 'open challenges are off in this group', {
         reason: 'open_disabled',
       });
@@ -148,6 +156,7 @@ export async function createChallenge(
         groupId: group.id,
         challengerId: challenger.id,
         opponentId: opponent?.id ?? null,
+        opponentUsername,
         timePerMove: input.timePerMove,
         challengerColour: input.colour,
         rated: input.rated,
@@ -195,6 +204,27 @@ async function lockPendingChallenge(tx: DbOrTx, challengeId: number): Promise<Ch
   return challenge;
 }
 
+/** Only the named opponent — by id, or by the username on their stored profile — may answer. */
+function assertIsOpponent(
+  challenge: ChallengeRow,
+  user: UserRow,
+  verb: 'accept' | 'decline',
+): void {
+  if (challenge.opponentUsername !== null) {
+    if (user.username?.toLowerCase() === challenge.opponentUsername) return;
+    throw new DomainError('forbidden', `only the challenged player can ${verb}`, {
+      reason: 'not_your_challenge',
+      opponentUsername: challenge.opponentUsername,
+    });
+  }
+  if (challenge.opponentId !== null && challenge.opponentId !== user.id) {
+    throw new DomainError('forbidden', `only the challenged player can ${verb}`, {
+      reason: 'not_your_challenge',
+      opponentId: challenge.opponentId,
+    });
+  }
+}
+
 /** Spec §7.1 accept: the row lock makes the first committed acceptance of an open challenge win. */
 export async function acceptChallenge(
   deps: Deps,
@@ -202,20 +232,19 @@ export async function acceptChallenge(
 ): Promise<{ challenge: ChallengeRow; game: GameRow }> {
   const result = await deps.db.transaction(async (tx) => {
     const challenge = await lockPendingChallenge(tx, input.challengeId);
-    if (challenge.opponentId !== null && challenge.opponentId !== input.userId) {
-      throw new DomainError('forbidden', 'only the challenged player can accept', {
-        reason: 'not_your_challenge',
-        opponentId: challenge.opponentId,
-      });
-    }
-    if (challenge.opponentId === null && challenge.challengerId === input.userId) {
+    const accepter = await requireUser(tx, input.userId);
+    assertIsOpponent(challenge, accepter, 'accept');
+    if (
+      challenge.opponentId === null &&
+      challenge.opponentUsername === null &&
+      challenge.challengerId === input.userId
+    ) {
       throw new DomainError('forbidden', 'cannot accept your own challenge', {
         reason: 'own_challenge',
       });
     }
     const group = await requireGroup(tx, challenge.groupId);
     const challenger = await requireUser(tx, challenge.challengerId);
-    const accepter = await requireUser(tx, input.userId);
     await assertNotBlocked(tx, group.id, accepter);
     await assertNotBlocked(tx, group.id, challenger);
 
@@ -271,18 +300,13 @@ export async function declineChallenge(
   return deps.db.transaction(async (tx) => {
     const challenge = await lockPendingChallenge(tx, input.challengeId);
     // An open challenge has nobody to decline it: the same button withdraws it, for the challenger.
-    if (challenge.opponentId === null) {
+    if (challenge.opponentId === null && challenge.opponentUsername === null) {
       throw new DomainError('forbidden', 'only the challenger can withdraw an open challenge', {
         reason: 'not_the_challenger',
         challengerId: challenge.challengerId,
       });
     }
-    if (challenge.opponentId !== input.userId) {
-      throw new DomainError('forbidden', 'only the challenged player can decline', {
-        reason: 'not_your_challenge',
-        opponentId: challenge.opponentId,
-      });
-    }
+    assertIsOpponent(challenge, await requireUser(tx, input.userId), 'decline');
     const [declined] = await tx
       .update(challenges)
       .set({ status: 'declined', resolvedAt: sql`now()` })
@@ -366,6 +390,7 @@ export async function createRematch(
     groupId: game.groupId,
     challengerId: input.userId,
     opponentId: colour === 'white' ? game.blackId : game.whiteId,
+    opponentUsername: null,
     timePerMove: game.timePerMove as TimePerMove,
     colour: opposite(colour),
     rated: game.rated,

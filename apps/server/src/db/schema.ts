@@ -129,6 +129,8 @@ export const challenges = pgTable(
       .notNull()
       .references(() => users.id),
     opponentId: bigint({ mode: 'number' }).references(() => users.id),
+    /** Lower-case, no `@`: a challenge to someone the bot has not seen; only that username may answer. */
+    opponentUsername: text(),
     timePerMove: integer(),
     challengerColour: text().$type<ColourChoice>().notNull(),
     rated: boolean().notNull(),

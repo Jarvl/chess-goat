@@ -31,11 +31,16 @@ export async function alertFor(
   if (!isDomainError(error)) return null;
   switch (error.details.reason) {
     case 'not_your_challenge': {
-      const opponentId = error.details.opponentId;
+      const { opponentId, opponentUsername } = error.details;
       const opponent =
         typeof opponentId === 'number' ? await getUserById(deps.db, opponentId) : null;
       return t('alert.not_your_challenge', {
-        name: opponent ? displayName(opponent) : 'the challenged player',
+        name:
+          typeof opponentUsername === 'string'
+            ? `@${opponentUsername}`
+            : opponent
+              ? displayName(opponent)
+              : 'the challenged player',
       });
     }
     case 'not_the_challenger': {

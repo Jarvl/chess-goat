@@ -77,6 +77,7 @@ export function groupsRoutes(api: Hono<ApiEnv>, ctx: ApiContext): void {
       groupId: group.id,
       challengerId: c.get('user').id,
       opponentId: body.opponentId === null ? null : Number(body.opponentId),
+      opponentUsername: null,
       timePerMove: body.timePerMove,
       colour: body.colour,
       rated: body.rated,

@@ -12,6 +12,9 @@ import {
 } from '../../src/domain/challenges';
 import { updateGroupSettings } from '../../src/domain/groups';
 import { blockUser } from '../../src/domain/members';
+import { challengeCardView } from '../../src/telegram/views';
+import { requireGroup } from '../../src/domain/groups';
+import { testConfig } from '../helpers/config';
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
 import { insertChallenge, insertGame, insertUser, world } from '../helpers/fixtures';
 
@@ -26,6 +29,7 @@ const direct = (groupId: number, challengerId: number, opponentId: number | null
     groupId,
     challengerId,
     opponentId,
+    opponentUsername: null,
     timePerMove: 86400,
     colour: 'random',
     rated: true,
@@ -124,6 +128,7 @@ describe('acceptChallenge', () => {
       groupId: group.id,
       challengerId: alice.id,
       opponentId: bob.id,
+      opponentUsername: null,
       timePerMove: 86400,
       colour: 'black',
       rated: true,
@@ -397,5 +402,98 @@ describe('challenge DMs', () => {
       .where(eq(challenges.id, challenge.id));
     await expireChallenges(deps);
     expect(await retired()).toEqual({ rows: [], texts: ['Challenge from Alice expired'] });
+  });
+});
+
+describe('challenges by username', () => {
+  const byUsername = (groupId: number, challengerId: number, opponentUsername: string) =>
+    createChallenge(deps, {
+      groupId,
+      challengerId,
+      opponentId: null,
+      opponentUsername,
+      timePerMove: 86400,
+      colour: 'random',
+      rated: true,
+      threadId: null,
+    });
+
+  it('lets only the named username accept, whatever its case, and fills in the opponent', async () => {
+    const { group, alice, bob } = await world(db, { game: false });
+    const challenge = await byUsername(group.id, alice.id, '@Bob');
+    expect(challenge).toMatchObject({ opponentId: null, opponentUsername: 'bob' });
+    await db.update(users).set({ username: 'BOB' }).where(eq(users.id, bob.id));
+    const { challenge: accepted } = await acceptChallenge(deps, {
+      challengeId: challenge.id,
+      userId: bob.id,
+    });
+    expect(accepted).toMatchObject({ status: 'accepted', opponentId: bob.id });
+  });
+
+  it('refuses an accepter whose username differs or who has none, naming @bob', async () => {
+    const { group, alice, bob } = await world(db, { game: false });
+    const challenge = await byUsername(group.id, alice.id, 'bob');
+    const details = { reason: 'not_your_challenge', opponentUsername: 'bob' };
+    await db.update(users).set({ username: 'robert' }).where(eq(users.id, bob.id));
+    await expect(
+      acceptChallenge(deps, { challengeId: challenge.id, userId: bob.id }),
+    ).rejects.toMatchObject({ code: 'forbidden', details });
+    await db.update(users).set({ username: null }).where(eq(users.id, bob.id));
+    await expect(
+      acceptChallenge(deps, { challengeId: challenge.id, userId: bob.id }),
+    ).rejects.toMatchObject({ code: 'forbidden', details });
+    await expect(
+      declineChallenge(deps, { challengeId: challenge.id, userId: bob.id }),
+    ).rejects.toMatchObject({ code: 'forbidden', details });
+    await expect(
+      acceptChallenge(deps, { challengeId: challenge.id, userId: alice.id }),
+    ).rejects.toMatchObject({ code: 'forbidden', details });
+  });
+
+  it('lets the named username decline and the challenger withdraw', async () => {
+    const { group, alice, bob } = await world(db, { game: false });
+    await db.update(users).set({ username: 'bob' }).where(eq(users.id, bob.id));
+    const first = await byUsername(group.id, alice.id, 'bob');
+    expect((await declineChallenge(deps, { challengeId: first.id, userId: bob.id })).status).toBe(
+      'declined',
+    );
+    const second = await byUsername(group.id, alice.id, 'bob');
+    expect((await cancelChallenge(deps, { challengeId: second.id, userId: alice.id })).status).toBe(
+      'cancelled',
+    );
+  });
+
+  it('rejects both an id and a username', async () => {
+    const { group, alice, bob } = await world(db, { game: false });
+    await expect(
+      createChallenge(deps, {
+        groupId: group.id,
+        challengerId: alice.id,
+        opponentId: bob.id,
+        opponentUsername: 'bob',
+        timePerMove: 86400,
+        colour: 'random',
+        rated: true,
+        threadId: null,
+      }),
+    ).rejects.toMatchObject({ code: 'validation' });
+  });
+
+  it('sends no challenge DM for a username challenge and renders @bob on the card', async () => {
+    const { group, alice } = await world(db, { game: false });
+    const challenge = await byUsername(group.id, alice.id, 'Bob');
+    expect((await jobRows()).map((job) => job.kind)).toEqual(['send_challenge_card']);
+    const view = await challengeCardView(
+      db,
+      challenge,
+      await requireGroup(db, group.id),
+      testConfig(),
+    );
+    expect(view.opponent).toEqual({
+      name: '@bob',
+      username: 'bob',
+      telegramUserId: null,
+      flair: '',
+    });
   });
 });

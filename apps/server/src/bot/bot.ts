@@ -133,6 +133,7 @@ export async function createBot(deps: Deps, config: Config): Promise<Bot> {
         groupId: group.id,
         challengerId: user.id,
         opponentId,
+        opponentUsername: null,
         timePerMove: settings.defaultTimePerMove,
         colour: 'random',
         rated: settings.ratedDefault,
