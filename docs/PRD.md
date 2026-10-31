@@ -138,6 +138,7 @@ Priorities: **P0** = launch, **P1** = fast follow. Almost everything is P0 becau
 - Options: time per move (`1h`, `8h`, `1d` default, `3d`, `7d`, none), colour (random default, or choose), rated or casual (rated default). The chat prompt's **Game settings** offers 1 day, 3 days or 7 days, Random, White or Black, and Rated or Casual, starting at 3 days, random colour and the group's rated default (it ignores the group's default time). `/challenge @name` and reply-to also use 3 days, random colour and the group's rated default.
 - The game card in the group is the challenge card edited in place on accept. Declined and expired (24 h) challenges are edited to say so, not deleted.
 - **Rematch** from the game-end screen in the app or the game-end card creates a reversed-colour challenge already accepted by the presser.
+- Limits: at most 3 pending challenges per person per group (`MAX_PENDING_CHALLENGES`).
 - Because the Bot API has no member list and cannot resolve a `@username` the bot has never seen, the app's opponent picker lists only players who have interacted with the bot in that group. Challenges by username and reply-to-message challenges cover everyone else.
 
 ### 7.3 Gameplay and rules — P0
@@ -286,7 +287,7 @@ The bot has three group commands and no others in the group menu:
 
 | Command | Purpose |
 |---|---|
-| `/challenge` | Tapped in the menu, it opens the private prompt: reply with someone picked from the @ list, or tap **Anyone** or **Game settings**. It is a normal command, because ephemeral commands lose the reply target |
+| `/challenge` | Tapped in the menu, it opens the prompt, private to the sender when the bot is a group admin and otherwise a group message that deletes itself: reply with someone picked from the @ list, or tap **Anyone** or **Game settings**. It is a normal command, because ephemeral commands lose the reply target |
 | `/challenge @name`, or as a reply to someone | Post the challenge card at once (3 days, random colour, the group's rated default) |
 | `/chess` | Show an **♟ Open Chess** button, private to the sender (for groups that did not pin the welcome card) |
 | `/settings` | Show an **Open settings** button, private to the sender (admins) |
