@@ -6,6 +6,12 @@ import { UserIdSchema } from './ids';
 
 export const LaunchRequestSchema = z.object({
   initData: z.string().min(1).max(4096),
+  /**
+   * The `startapp` query of a `web_app` button's URL, for launches whose initData has no
+   * `start_param`. Unsigned, which is fine: it only picks the landing screen, and every screen
+   * checks access itself.
+   */
+  startParam: z.string().max(64).optional(),
 });
 
 export type LaunchRequest = z.infer<typeof LaunchRequestSchema>;

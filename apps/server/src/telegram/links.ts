@@ -1,4 +1,5 @@
 import { encodeStartParam, type StartParam } from '@chess-goat/shared';
+import type { InlineKeyboardButton } from 'grammy/types';
 import type { Config } from '../config';
 
 /** The only Mini App button that works inside groups (spec §5.3). */
@@ -8,6 +9,21 @@ export function miniAppLink(
 ): string {
   const base = `https://t.me/${config.BOT_USERNAME}/${config.MINI_APP_SHORT_NAME}`;
   return param ? `${base}?startapp=${encodeStartParam(param)}` : base;
+}
+
+/**
+ * A Mini App button for the bot's own private chat. Telegram clients ignore a tap on a direct link
+ * to the bot whose chat it is, so DMs use an inline `web_app` button instead. Those carry no
+ * `start_param`; the payload rides in the URL's `startapp` query and the app forwards it at launch.
+ */
+export function miniAppButton(
+  config: Pick<Config, 'PUBLIC_URL'>,
+  text: string,
+  param?: StartParam,
+): InlineKeyboardButton.WebAppButton {
+  const base = `${config.PUBLIC_URL.replace(/\/$/, '')}/app/`;
+  const url = param ? `${base}?startapp=${encodeStartParam(param)}` : base;
+  return { text, web_app: { url } };
 }
 
 /** `https://t.me/c/<supergroup id without -100>/<message id>`; basic groups have no message links (spec §5.7). */

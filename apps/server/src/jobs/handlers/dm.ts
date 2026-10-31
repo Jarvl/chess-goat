@@ -42,7 +42,7 @@ import {
   waitingText,
   type ChallengeOutcome,
 } from '../../domain/dmText';
-import { groupMessageLink, miniAppLink } from '../../telegram/links';
+import { groupMessageLink, miniAppButton } from '../../telegram/links';
 import type { JobHandler, JobResult } from '../types';
 import { call, settle, type CallResult, type TelegramHandlerContext } from './telegramCall';
 
@@ -69,10 +69,13 @@ export const retireDm =
     let result: CallResult<unknown>;
     if (p.action === 'wait') {
       const game = await requireGameById(ctx.deps.db, p.gameId!);
-      const url = miniAppLink(ctx.config, { kind: 'game', gameId: game.publicId });
+      const open = miniAppButton(ctx.config, t('button.open_game'), {
+        kind: 'game',
+        gameId: game.publicId,
+      });
       result = await call(ctx, null, () =>
         ctx.api.editMessageText(p.chatId, p.telegramMessageId, p.text, {
-          reply_markup: { inline_keyboard: [[{ text: t('button.open_game'), url }]] },
+          reply_markup: { inline_keyboard: [[open]] },
         }),
       );
     } else if (canDelete(new Date(p.sentAt), await dbNow(ctx.deps.db))) {
@@ -143,12 +146,7 @@ async function challengeDm(
       rated: ratedLabel(challenge.rated),
     }),
     buttons: [
-      [
-        {
-          text: t('button.open'),
-          url: miniAppLink(ctx.config, { kind: 'lobby', groupId: group.publicId }),
-        },
-      ],
+      [miniAppButton(ctx.config, t('button.open'), { kind: 'lobby', groupId: group.publicId })],
     ],
     kind: 'challenge',
     stub: challengeStub(challenger, 'expired'),
@@ -171,12 +169,7 @@ async function gameDm(
   const groupLink =
     game.cardMessageId !== null ? groupMessageLink(group.telegramChatId, game.cardMessageId) : null;
   const buttons: InlineKeyboardButton[][] = [
-    [
-      {
-        text: t('button.open_game'),
-        url: miniAppLink(ctx.config, { kind: 'game', gameId: game.publicId }),
-      },
-    ],
+    [miniAppButton(ctx.config, t('button.open_game'), { kind: 'game', gameId: game.publicId })],
     ...(groupLink ? [[{ text: t('button.go_to_group'), url: groupLink }]] : []),
   ];
 

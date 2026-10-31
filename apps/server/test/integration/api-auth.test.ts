@@ -229,6 +229,28 @@ describe('POST /api/launch', () => {
     expect(asMember.route).toMatchObject({ kind: 'game', game: { viewerRole: 'spectator' } });
   });
 
+  it('takes the start param from the body for a DM web_app launch, the signed one first', async () => {
+    const group = await insertGroup(db);
+    const white = await insertUser(db, { telegramUserId: 11 });
+    const black = await insertUser(db, { telegramUserId: 22 });
+    const game = await insertGame(db, group.id, white.id, black.id);
+    const launchWith = (fields: Parameters<typeof signInitData>[1], startParam: string) =>
+      api.request('POST', '/api/launch', {
+        body: { initData: signInitData(api.config.BOT_TOKEN, fields), startParam },
+      });
+    const fromDm = LaunchResponseSchema.parse(
+      await (await launchWith({ user: alice }, `g_${game.publicId}`)).json(),
+    );
+    expect(fromDm.route).toMatchObject({ kind: 'game', game: { id: game.publicId } });
+    api.fake.members.set(11, 'member');
+    const signed = LaunchResponseSchema.parse(
+      await (
+        await launchWith({ user: alice, startParam: `l_${group.publicId}` }, `g_${game.publicId}`)
+      ).json(),
+    );
+    expect(signed.route.kind).toBe('lobby');
+  });
+
   it('opens the lobby for a member and the settings for an admin', async () => {
     const group = await insertGroup(db);
     api.fake.members.set(11, 'member');
