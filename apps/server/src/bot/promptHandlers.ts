@@ -10,9 +10,9 @@ import type { CallbackQuery, InlineKeyboardMarkup, Message, User } from 'grammy/
 import { enqueue } from '../jobs/queue';
 import { createChallenge, type CreateChallengeInput } from '../domain/challenges';
 import {
-  clearPromptSettings,
-  getPrompt,
+  claimPrompt,
   openPromptRow,
+  restorePrompt,
   savePromptSettings,
 } from '../domain/challengePrompts';
 import type { Deps } from '../domain/deps';
@@ -282,10 +282,15 @@ export async function handlePromptTap(
     await answer();
     return;
   }
+  // Claimed first: a second tap, or a reply, at the same time finds no prompt and does nothing.
+  const stored = await claimPrompt(deps.db, group.id, user.id);
+  if (!stored) {
+    await answer();
+    return;
+  }
   // The topic comes from the command: an ephemeral tap may not say which topic it was in.
-  const stored = await getPrompt(deps.db, group.id, user.id);
   const tappedThread = 'message_thread_id' in message ? threadOf(message) : null;
-  const originThread = stored?.threadId ?? tappedThread;
+  const originThread = stored.threadId ?? tappedThread;
   try {
     await createChallenge(deps, {
       groupId: group.id,
@@ -298,13 +303,13 @@ export async function handlePromptTap(
       threadId: cardThread(settingsOf(group), originThread),
     });
   } catch (error) {
-    // The prompt stays, so the owner can still pick someone.
+    // The prompt stays, so the owner can still pick someone, or the update can retry.
+    await restorePrompt(deps.db, group.id, user.id, stored);
     const line = replyFor(error);
     if (!line) throw error;
     await answer({ text: t(line.key, line.params), show_alert: true });
     return;
   }
-  await quietly(deps, clearPromptSettings(deps.db, group.id, user.id));
   await quietly(deps, deletePrompt(api, place, ref));
   await quietly(deps, answer());
 }
@@ -349,21 +354,27 @@ export function registerPromptReplies(
     });
     if (choice.kind === 'none') return sayPrivately(deps, api, answer, 'reply.pick_someone');
     if (choice.kind === 'refuse') return sayPrivately(deps, api, answer, choice.key);
-    const groupSettings = settingsOf(group);
-    const stored = await getPrompt(deps.db, group.id, user.id);
-    const settings = stored?.settings ?? startingSettings(groupSettings);
-    const created = await challengeOrExplain(deps, api, answer, {
-      groupId: group.id,
-      challengerId: user.id,
-      opponentId: choice.kind === 'user' ? choice.userId : null,
-      opponentUsername: choice.kind === 'username' ? choice.username : null,
-      timePerMove: settings.timePerMove,
-      colour: settings.colour,
-      rated: settings.rated,
-      threadId: cardThread(groupSettings, stored?.threadId ?? threadId),
-    });
+    // Claimed first, as an Anyone tap does: a prompt already used makes no second challenge.
+    const stored = await claimPrompt(deps.db, group.id, user.id);
+    if (!stored) return;
+    const { settings } = stored;
+    let created = false;
+    try {
+      created = await challengeOrExplain(deps, api, answer, {
+        groupId: group.id,
+        challengerId: user.id,
+        opponentId: choice.kind === 'user' ? choice.userId : null,
+        opponentUsername: choice.kind === 'username' ? choice.username : null,
+        timePerMove: settings.timePerMove,
+        colour: settings.colour,
+        rated: settings.rated,
+        threadId: cardThread(settingsOf(group), stored.threadId ?? threadId),
+      });
+    } finally {
+      // Refused, or failed into a retry: the prompt stays usable.
+      if (!created) await restorePrompt(deps.db, group.id, user.id, stored);
+    }
     if (!created) return;
-    await quietly(deps, clearPromptSettings(deps.db, group.id, user.id));
     await quietly(
       deps,
       deletePrompt(api, { chatId: ctx.chat.id, owner: msg.from.id }, promptRefOf(prompt)),

@@ -482,6 +482,19 @@ describe('/challenge', () => {
     ]);
   });
 
+  it('creates one challenge from two Anyone taps, or an Anyone tap and a reply', async () => {
+    await makeAdmin();
+    await post(commandUpdate({ chat, from: alice, text: '/challenge' }));
+    await Promise.all([tap('cp/a/11/3/r/1'), tap('cp/a/11/3/r/1')]);
+    expect(await db.select().from(challenges)).toHaveLength(1);
+    expect(fake.callsTo('answerCallbackQuery')).toHaveLength(2);
+    await post(commandUpdate({ chat, from: alice, text: '/challenge' }));
+    await tap('cp/a/11/3/r/1');
+    await post(promptReply('@dave', mentionAt0('@dave')));
+    expect(await db.select().from(challenges)).toHaveLength(2);
+    expect(await promptRows()).toEqual([]);
+  });
+
   it('creates an open challenge from Anyone with the prompt settings and deletes the prompt', async () => {
     await makeAdmin();
     await post(commandUpdate({ chat, from: alice, text: '/challenge' }));
@@ -540,8 +553,10 @@ describe('/challenge', () => {
     ]);
     expect(await promptRows()).toEqual([]);
 
-    // No row any more: the starting settings apply.
+    // A fresh prompt each time: the starting settings apply.
+    await post(commandUpdate({ chat, from: alice, text: '/challenge' }));
     await post(promptReply('hi @Dave', [{ type: 'mention', offset: 3, length: 5 }]));
+    await post(commandUpdate({ chat, from: alice, text: '/challenge' }));
     await post(promptReply('Bob', [{ type: 'text_mention', offset: 0, length: 3, user: bob }]));
     const [, byUsername, byTextMention] = await db.select().from(challenges).orderBy(challenges.id);
     expect(byUsername).toMatchObject({
@@ -682,7 +697,9 @@ describe('/challenge', () => {
     await post(promptReply('@dave', mentionAt0('@dave'), { threadId: 77 }));
     const [group] = await db.select().from(groups);
     await updateGroupSettings(db, group!.id, { cardTopicMode: 'fixed', fixedTopicId: 5 });
+    await post(commandUpdate({ chat, from: alice, text: '/challenge', threadId: 77 }));
     await post(promptReply('@erin', mentionAt0('@erin'), { threadId: 77 }));
+    await post(commandUpdate({ chat, from: alice, text: '/challenge', threadId: 77 }));
     await tap('cp/a/11/3/r/1');
     expect(
       (await db.select().from(challenges).orderBy(challenges.id)).map((row) => row.threadId),
@@ -722,7 +739,9 @@ describe('/challenge', () => {
     });
     expect(fake.callsTo('deleteEphemeralMessage')).toHaveLength(0);
     expect(await db.select().from(challenges)).toHaveLength(3);
-    expect(await promptRows()).toHaveLength(1);
+    expect(await promptRows()).toEqual([
+      expect.objectContaining({ timePerMove: 259200, colour: 'random', rated: true }),
+    ]);
   });
 
   it('refuses a self-challenge, a bot or an anonymous author in a normal reply to the command', async () => {

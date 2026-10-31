@@ -47,12 +47,19 @@ export async function savePromptSettings(
     });
 }
 
-export async function getPrompt(
+/** What a prompt holds: the settings it shows, and the topic its card belongs to. */
+export type StoredPrompt = { settings: PromptSettings; threadId: number | null };
+
+/**
+ * Takes someone's prompt to make its challenge. The delete is the claim: of two taps or replies at
+ * once, only one gets the row. Null when there is none, or another update took it first.
+ */
+export async function claimPrompt(
   tx: DbOrTx,
   groupId: number,
   userId: number,
-): Promise<{ settings: PromptSettings; threadId: number | null } | null> {
-  const [row] = await tx.select().from(challengePrompts).where(where(groupId, userId)).limit(1);
+): Promise<StoredPrompt | null> {
+  const [row] = await tx.delete(challengePrompts).where(where(groupId, userId)).returning();
   if (!row) return null;
   return {
     settings: { timePerMove: row.timePerMove as PromptTime, colour: row.colour, rated: row.rated },
@@ -60,10 +67,15 @@ export async function getPrompt(
   };
 }
 
-export async function clearPromptSettings(
+/** Puts back a claimed prompt whose challenge was refused, unless a newer prompt replaced it. */
+export async function restorePrompt(
   tx: DbOrTx,
   groupId: number,
   userId: number,
+  prompt: StoredPrompt,
 ): Promise<void> {
-  await tx.delete(challengePrompts).where(where(groupId, userId));
+  await tx
+    .insert(challengePrompts)
+    .values({ groupId, userId, ...columns(prompt.settings), threadId: prompt.threadId })
+    .onConflictDoNothing();
 }
