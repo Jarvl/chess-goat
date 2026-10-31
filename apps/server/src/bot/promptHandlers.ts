@@ -330,6 +330,7 @@ export function registerPromptReplies(
       groupId: group.id,
       challenger: msg.from,
       message: msg,
+      botId: ctx.me.id,
       botUsername: ctx.me.username,
       useReplyTarget: false,
     });

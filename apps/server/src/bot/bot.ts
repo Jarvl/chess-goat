@@ -108,6 +108,7 @@ export async function createBot(deps: Deps, config: Config): Promise<Bot> {
       groupId: group.id,
       challenger: from,
       message: ctx.msg,
+      botId: ctx.me.id,
       botUsername: ctx.me.username,
       useReplyTarget: true,
     });

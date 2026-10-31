@@ -30,6 +30,7 @@ export async function resolveOpponent(
     groupId: number;
     challenger: User;
     message: Message;
+    botId: number;
     botUsername: string;
     useReplyTarget: boolean;
   },
@@ -61,6 +62,8 @@ export async function resolveOpponent(
   const target = message.reply_to_message;
   // In a forum topic, a message that replies to nothing carries the topic's opening message.
   if (!input.useReplyTarget || !target || target.forum_topic_created) return { kind: 'none' };
+  // The prompt opens the reply box itself, so a /challenge sent again replies to this bot.
+  if (target.from?.id === input.botId) return { kind: 'none' };
   if (target.sender_chat || !target.from) return { kind: 'refuse', key: 'reply.anonymous' };
   if (target.from.is_bot) return { kind: 'refuse', key: 'reply.bot' };
   if (target.from.id === challenger.id) return { kind: 'refuse', key: 'reply.self' };

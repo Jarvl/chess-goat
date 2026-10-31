@@ -373,6 +373,14 @@ describe('/challenge', () => {
     expect((await db.select().from(challenges))[0]?.threadId).toBe(77);
   });
 
+  it("opens a prompt for a bare /challenge that replies to the bot's own message", async () => {
+    // The prompt opens the reply box itself, so a /challenge tapped from the menu replies to it.
+    const me = { id: 424242, is_bot: true, first_name: 'Test Chess', username: 'TestChessBot' };
+    await post(commandUpdate({ chat, from: alice, text: '/challenge', replyTo: { from: me } }));
+    expect(texts()).toEqual([`@alice\n${PROMPT}\n3 days per move · Random colour · Rated`]);
+    expect(await promptRows()).toHaveLength(1);
+  });
+
   it('opens the prompt in a forum topic, where Telegram marks the topic root as the reply', async () => {
     const update = commandUpdate({
       chat,
