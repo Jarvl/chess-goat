@@ -21,9 +21,17 @@ export const test = base.extend({
 });
 
 export const BOT_TOKEN = '123456:TEST-TOKEN';
-export const HARNESS = 'http://127.0.0.1:4181';
+export const HARNESS = `http://127.0.0.1:${requiredPort('E2E_HARNESS_PORT')}`;
+const APP = `http://127.0.0.1:${requiredPort('E2E_APP_PORT')}`;
 /** The harness's METRICS_TOKEN (apps/server/test/e2e/harness.ts). */
 const METRICS_TOKEN = 'e2e-metrics-token-0123456789abcdef';
+
+/** The ports playwright.config.ts chose for this run. */
+function requiredPort(name: string): string {
+  const port = process.env[name];
+  if (!port) throw new Error(`${name} must be set: playwright.config.ts sets it`);
+  return port;
+}
 
 export type TelegramUser = { id: number; first_name: string; username: string };
 
@@ -109,7 +117,7 @@ export async function dropConnections(): Promise<void> {
 /** The number of SSE streams the server holds open, from its Prometheus metrics. */
 export async function openStreams(): Promise<number> {
   const text = await (
-    await fetch('http://127.0.0.1:4180/metrics', {
+    await fetch(`${APP}/metrics`, {
       headers: { authorization: `Bearer ${METRICS_TOKEN}` },
     })
   ).text();
