@@ -1,4 +1,5 @@
 import type { Config } from '../../src/config';
+import { testDatabaseUrl } from './testDatabase';
 
 export function testConfig(overrides: Partial<Config> = {}): Config {
   return {
@@ -7,7 +8,7 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     MINI_APP_SHORT_NAME: 'chess',
     PUBLIC_URL: 'https://chess.test',
     WEBHOOK_SECRET: 'w'.repeat(32),
-    DATABASE_URL: process.env.TEST_DATABASE_URL ?? '',
+    DATABASE_URL: testDatabaseUrl(),
     DATABASE_RESET_ON_MISMATCH: false,
     SESSION_SECRET: 's'.repeat(32),
     LICHESS_TOKEN: undefined,

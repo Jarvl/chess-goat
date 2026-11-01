@@ -8,6 +8,7 @@ import { storePhoto } from '../../src/domain/photos';
 import { openTestDb, truncateAll } from '../helpers/db';
 import { insertChallenge, insertGame, insertGroup, insertUser } from '../helpers/fixtures';
 import { FIXTURE_JPEG } from '../helpers/photos';
+import { testDatabaseUrl } from '../helpers/testDatabase';
 
 const { db, close } = openTestDb();
 
@@ -55,7 +56,7 @@ describe('database', () => {
   });
 
   it('has every table after migration and is idempotent to migrate again', async () => {
-    await runMigrations(process.env.TEST_DATABASE_URL!);
+    await runMigrations(testDatabaseUrl());
     const rows = await db.execute(
       sql`select table_name from information_schema.tables where table_schema = 'public' order by table_name`,
     );

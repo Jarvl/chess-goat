@@ -8,6 +8,7 @@ exit criteria come from PRD §13.
 
 | Layer | Command | Size | Runs on |
 |---|---|---|---|
+| Unit only, every package (no database) | `pnpm test:unit` | — | locally, on purpose |
 | Unit — shared rules and protocol | `pnpm test` | 292 tests, 17 files | every pull request |
 | Unit — server | `pnpm test` | 254 tests, 31 files | every pull request |
 | Integration — server on real PostgreSQL and a fake Bot API | `pnpm test` | 455 tests, 43 files | every pull request |
@@ -18,15 +19,34 @@ exit criteria come from PRD §13.
 | Licence allow-list | `pnpm check:licences` | 191 npm packages | every pull request |
 | Dependency advisories | `pnpm audit --prod --audit-level=high` | — | every pull request |
 
-`pnpm test` is 1478 tests; with PostgreSQL, a local run takes about four minutes. Integration tests need `TEST_DATABASE_URL`; without
-it only the unit projects run, which is a silent reduction in coverage, so CI always sets it.
+`pnpm test` runs everything, about four minutes locally, and fails at once if no PostgreSQL
+answers; there is no silent unit-only mode. `pnpm test:unit` skips the integration tests on purpose.
 The server's test setup downloads the snapshot card's fonts on first run
 (`scripts/fetch-fonts.mjs`, checksummed), so the first `pnpm test` on a fresh clone needs network
 access. A local `pnpm e2e` needs them too, since its harness boots the job worker: run `pnpm fonts`,
 or `pnpm test` once, first.
 
-Local setup is one command. `scripts/local-postgres.sh start` creates both databases on port 54329
-and prints the two exports.
+Local setup is one command per machine: `scripts/local-postgres.sh start` runs PostgreSQL on port
+54329. Nothing needs exporting for the tests.
+
+### Running alongside other sessions
+
+Several sessions can test at once, each in its own git worktree, with no setup per worktree:
+
+- **Databases are per worktree.** The tests name theirs after the worktree folder plus a hash of its
+  path (`chess_goat_test_<key>`, and `chess_goat_test_<key>_e2e` for the end-to-end harness;
+  `scripts/test-database-name.mjs`). The first run creates and migrates it. A database another
+  branch migrated, after a worktree is reused, is wiped and migrated again, by the same reset
+  staging uses (`DATABASE_RESET_ON_MISMATCH`).
+- **`TEST_DATABASE_URL` only picks the server.** Unset, it is the local one on 54329. Its database
+  path is used only to connect and create databases; CI sets it to its service container.
+- **End-to-end runs take free ports.** `playwright.config.ts` picks two per run, never 4180/4181,
+  and never reuses a server it did not start, so a run cannot test another worktree's code.
+- **Two runs in one worktree at once still collide.** A run is about that worktree's changes, so
+  this is not supported.
+- **Clean up with `scripts/local-postgres.sh prune`**, which lists the test databases that belong
+  to no worktree of this repository: removed worktrees, but also hand-named ones and other clones'
+  on the same server. Read the list, then `prune --drop` drops them.
 
 **No CI runner installs Stockfish.** Every test above — unit, integration and end-to-end — runs
 against `fakeEngine`, a scripted stand-in that never spawns a real process. The real Stockfish

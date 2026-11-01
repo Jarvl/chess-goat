@@ -9,6 +9,7 @@
   },
   "scripts": {
     "test": "vitest run",
+    "test:unit": "TEST_UNIT_ONLY=1 vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -b",
     "lint": "eslint .",

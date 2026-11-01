@@ -7,7 +7,6 @@ import { fileURLToPath } from 'node:url';
 import { INITIAL_FEN, toBase64Url } from '@chess-goat/shared';
 import { eq } from 'drizzle-orm';
 import { games, ratings, userFlair, users } from '../../src/db/schema';
-import { runMigrations } from '../../src/db/migrate';
 import { touchMember } from '../../src/domain/members';
 import { storePhoto } from '../../src/domain/photos';
 import type { Engine } from '../../src/engine/engine';
@@ -18,9 +17,12 @@ import { fakeEngine } from '../helpers/fakeEngine';
 import { FakeTelegram } from '../helpers/fakeTelegram';
 import { insertGame, insertGroup, insertMove, insertUser } from '../helpers/fixtures';
 import { FIXTURE_JPEG } from '../helpers/photos';
+import { ensureTestDatabase } from '../helpers/testDatabase';
 
-const APP_PORT = Number(process.env.E2E_APP_PORT ?? 4180);
-const HARNESS_PORT = Number(process.env.E2E_HARNESS_PORT ?? 4181);
+// Chosen free by apps/miniapp/playwright.config.ts for each run, so runs in separate worktrees
+// never meet on a port or test each other's server.
+const APP_PORT = requiredPort('E2E_APP_PORT');
+const HARNESS_PORT = requiredPort('E2E_HARNESS_PORT');
 const MINI_APP_DIR = fileURLToPath(new URL('../../../miniapp/dist/', import.meta.url));
 const CHAT = -1001000000099;
 
@@ -101,11 +103,15 @@ const TELEGRAM_USERS = {
   carol: { id: 33, first_name: 'Carol', username: 'carol' },
 } as const;
 
+function requiredPort(name: string): number {
+  const port = Number(process.env[name]);
+  if (!port) throw new Error(`${name} must be set: run the harness through playwright test`);
+  return port;
+}
+
 async function main(): Promise<void> {
-  const url = process.env.TEST_DATABASE_URL;
-  if (!url) throw new Error('TEST_DATABASE_URL must be set for the e2e harness');
-  await runMigrations(url);
-  const { db, close } = openTestDb();
+  const url = await ensureTestDatabase('e2e');
+  const { db, close } = openTestDb(url);
   await truncateAll(db);
   const fake = await FakeTelegram.start();
   const engine = scriptedEngine();

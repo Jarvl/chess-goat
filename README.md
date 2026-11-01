@@ -80,7 +80,7 @@ The whole server runs as one Node process with four roles (`api`, `bot`, `jobs`,
 ## Requirements
 
 - Node 22 (`.nvmrc`), pnpm 10 (`corepack enable`)
-- PostgreSQL 18 for integration and end-to-end tests (`scripts/local-postgres.sh start` runs one on port 54329 when `initdb` is available, or use Docker: `docker compose up db`)
+- PostgreSQL 18 for integration and end-to-end tests (`scripts/local-postgres.sh start` runs one on port 54329 when `initdb` is available, or use Docker: `docker compose up db` and `export TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/postgres`)
 - A Telegram bot token from BotFather for a real deployment
 
 ## Quick start
@@ -88,7 +88,7 @@ The whole server runs as one Node process with four roles (`api`, `bot`, `jobs`,
 ```bash
 pnpm install
 cp .env.example .env            # fill in BOT_TOKEN, BOT_USERNAME, MINI_APP_SHORT_NAME, PUBLIC_URL, secrets
-scripts/local-postgres.sh start  # creates chess_goat and chess_goat_test on :54329 and prints both URLs
+scripts/local-postgres.sh start  # creates chess_goat on :54329 and prints its URL; tests make their own databases
 export DATABASE_URL=postgres://postgres@127.0.0.1:54329/chess_goat
 # or: docker compose up -d db  →  DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/chess_goat
 pnpm dev:server                  # migrations run at boot; the bot long-polls when TELEGRAM_POLLING=true
@@ -101,8 +101,7 @@ Telegram must load the Mini App over public HTTPS: point BotFather's app URL at 
 
 ```bash
 pnpm lint && pnpm format:check && pnpm typecheck
-export TEST_DATABASE_URL=postgres://postgres@127.0.0.1:54329/chess_goat_test
-pnpm test                        # unit + integration (PostgreSQL); without TEST_DATABASE_URL only unit tests run
+pnpm test                        # unit + integration, on this worktree's own database (pnpm test:unit skips integration)
 pnpm build && pnpm check:budget  # Mini App bundle inside the §6.5 budget
 pnpm check:licences              # every dependency inside the licence allow-list
 pnpm e2e                         # builds the app and runs Playwright against the real server + a fake Bot API
