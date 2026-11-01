@@ -75,26 +75,18 @@
         "admin_actions_group_id_groups_id_fk": {
           "name": "admin_actions_group_id_groups_id_fk",
           "tableFrom": "admin_actions",
-          "columnsFrom": [
-            "group_id"
-          ],
+          "columnsFrom": ["group_id"],
           "tableTo": "groups",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "no action"
         },
         "admin_actions_admin_user_id_users_id_fk": {
           "name": "admin_actions_admin_user_id_users_id_fk",
           "tableFrom": "admin_actions",
-          "columnsFrom": [
-            "admin_user_id"
-          ],
+          "columnsFrom": ["admin_user_id"],
           "tableTo": "users",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "no action"
         }
@@ -190,26 +182,18 @@
         "challenge_prompts_group_id_groups_id_fk": {
           "name": "challenge_prompts_group_id_groups_id_fk",
           "tableFrom": "challenge_prompts",
-          "columnsFrom": [
-            "group_id"
-          ],
+          "columnsFrom": ["group_id"],
           "tableTo": "groups",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "no action"
         },
         "challenge_prompts_user_id_users_id_fk": {
           "name": "challenge_prompts_user_id_users_id_fk",
           "tableFrom": "challenge_prompts",
-          "columnsFrom": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
           "tableTo": "users",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "no action"
         }
@@ -217,10 +201,7 @@
       "compositePrimaryKeys": {
         "challenge_prompts_group_id_user_id_pk": {
           "name": "challenge_prompts_group_id_user_id_pk",
-          "columns": [
-            "group_id",
-            "user_id"
-          ]
+          "columns": ["group_id", "user_id"]
         }
       },
       "uniqueConstraints": {},
@@ -390,39 +371,27 @@
         "challenges_group_id_groups_id_fk": {
           "name": "challenges_group_id_groups_id_fk",
           "tableFrom": "challenges",
-          "columnsFrom": [
-            "group_id"
-          ],
+          "columnsFrom": ["group_id"],
           "tableTo": "groups",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "no action"
         },
         "challenges_challenger_id_users_id_fk": {
           "name": "challenges_challenger_id_users_id_fk",
           "tableFrom": "challenges",
-          "columnsFrom": [
-            "challenger_id"
-          ],
+          "columnsFrom": ["challenger_id"],
           "tableTo": "users",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "no action"
         },
         "challenges_opponent_id_users_id_fk": {
           "name": "challenges_opponent_id_users_id_fk",
           "tableFrom": "challenges",
-          "columnsFrom": [
-            "opponent_id"
-          ],
+          "columnsFrom": ["opponent_id"],
           "tableTo": "users",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "no action"
         }
@@ -431,9 +400,7 @@
       "uniqueConstraints": {
         "challenges_publicId_unique": {
           "name": "challenges_publicId_unique",
-          "columns": [
-            "public_id"
-          ],
+          "columns": ["public_id"],
           "nullsNotDistinct": false
         }
       },
@@ -561,39 +528,27 @@
         "dm_messages_user_id_users_id_fk": {
           "name": "dm_messages_user_id_users_id_fk",
           "tableFrom": "dm_messages",
-          "columnsFrom": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
           "tableTo": "users",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "no action"
         },
         "dm_messages_game_id_games_id_fk": {
           "name": "dm_messages_game_id_games_id_fk",
           "tableFrom": "dm_messages",
-          "columnsFrom": [
-            "game_id"
-          ],
+          "columnsFrom": ["game_id"],
           "tableTo": "games",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "no action"
         },
         "dm_messages_challenge_id_challenges_id_fk": {
           "name": "dm_messages_challenge_id_challenges_id_fk",
           "tableFrom": "dm_messages",
-          "columnsFrom": [
-            "challenge_id"
-          ],
+          "columnsFrom": ["challenge_id"],
           "tableTo": "challenges",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "no action"
         }
@@ -1038,39 +993,27 @@
         "games_group_id_groups_id_fk": {
           "name": "games_group_id_groups_id_fk",
           "tableFrom": "games",
-          "columnsFrom": [
-            "group_id"
-          ],
+          "columnsFrom": ["group_id"],
           "tableTo": "groups",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "no action"
         },
         "games_white_id_users_id_fk": {
           "name": "games_white_id_users_id_fk",
           "tableFrom": "games",
-          "columnsFrom": [
-            "white_id"
-          ],
+          "columnsFrom": ["white_id"],
           "tableTo": "users",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "no action"
         },
         "games_black_id_users_id_fk": {
           "name": "games_black_id_users_id_fk",
           "tableFrom": "games",
-          "columnsFrom": [
-            "black_id"
-          ],
+          "columnsFrom": ["black_id"],
           "tableTo": "users",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "no action"
         }
@@ -1079,9 +1022,7 @@
       "uniqueConstraints": {
         "games_publicId_unique": {
           "name": "games_publicId_unique",
-          "columns": [
-            "public_id"
-          ],
+          "columns": ["public_id"],
           "nullsNotDistinct": false
         }
       },
@@ -1172,26 +1113,18 @@
         "group_members_group_id_groups_id_fk": {
           "name": "group_members_group_id_groups_id_fk",
           "tableFrom": "group_members",
-          "columnsFrom": [
-            "group_id"
-          ],
+          "columnsFrom": ["group_id"],
           "tableTo": "groups",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "no action"
         },
         "group_members_user_id_users_id_fk": {
           "name": "group_members_user_id_users_id_fk",
           "tableFrom": "group_members",
-          "columnsFrom": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
           "tableTo": "users",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "no action"
         }
@@ -1199,10 +1132,7 @@
       "compositePrimaryKeys": {
         "group_members_group_id_user_id_pk": {
           "name": "group_members_group_id_user_id_pk",
-          "columns": [
-            "group_id",
-            "user_id"
-          ]
+          "columns": ["group_id", "user_id"]
         }
       },
       "uniqueConstraints": {},
@@ -1317,16 +1247,12 @@
       "uniqueConstraints": {
         "groups_publicId_unique": {
           "name": "groups_publicId_unique",
-          "columns": [
-            "public_id"
-          ],
+          "columns": ["public_id"],
           "nullsNotDistinct": false
         },
         "groups_telegramChatId_unique": {
           "name": "groups_telegramChatId_unique",
-          "columns": [
-            "telegram_chat_id"
-          ],
+          "columns": ["telegram_chat_id"],
           "nullsNotDistinct": false
         }
       },
@@ -1527,13 +1453,9 @@
         "moves_game_id_games_id_fk": {
           "name": "moves_game_id_games_id_fk",
           "tableFrom": "moves",
-          "columnsFrom": [
-            "game_id"
-          ],
+          "columnsFrom": ["game_id"],
           "tableTo": "games",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "no action"
         }
@@ -1541,19 +1463,13 @@
       "compositePrimaryKeys": {
         "moves_game_id_ply_pk": {
           "name": "moves_game_id_ply_pk",
-          "columns": [
-            "game_id",
-            "ply"
-          ]
+          "columns": ["game_id", "ply"]
         }
       },
       "uniqueConstraints": {
         "moves_client_move_unique": {
           "name": "moves_client_move_unique",
-          "columns": [
-            "game_id",
-            "client_move_id"
-          ],
+          "columns": ["game_id", "client_move_id"],
           "nullsNotDistinct": false
         }
       },
@@ -1635,26 +1551,18 @@
         "ratings_group_id_groups_id_fk": {
           "name": "ratings_group_id_groups_id_fk",
           "tableFrom": "ratings",
-          "columnsFrom": [
-            "group_id"
-          ],
+          "columnsFrom": ["group_id"],
           "tableTo": "groups",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "no action"
         },
         "ratings_user_id_users_id_fk": {
           "name": "ratings_user_id_users_id_fk",
           "tableFrom": "ratings",
-          "columnsFrom": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
           "tableTo": "users",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "no action"
         }
@@ -1662,10 +1570,7 @@
       "compositePrimaryKeys": {
         "ratings_group_id_user_id_pk": {
           "name": "ratings_group_id_user_id_pk",
-          "columns": [
-            "group_id",
-            "user_id"
-          ]
+          "columns": ["group_id", "user_id"]
         }
       },
       "uniqueConstraints": {},
@@ -1753,26 +1658,18 @@
         "shares_game_id_games_id_fk": {
           "name": "shares_game_id_games_id_fk",
           "tableFrom": "shares",
-          "columnsFrom": [
-            "game_id"
-          ],
+          "columnsFrom": ["game_id"],
           "tableTo": "games",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "no action"
         },
         "shares_user_id_users_id_fk": {
           "name": "shares_user_id_users_id_fk",
           "tableFrom": "shares",
-          "columnsFrom": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
           "tableTo": "users",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "no action"
         }
@@ -1879,13 +1776,9 @@
         "tips_user_id_users_id_fk": {
           "name": "tips_user_id_users_id_fk",
           "tableFrom": "tips",
-          "columnsFrom": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
           "tableTo": "users",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "no action"
         }
@@ -1894,9 +1787,7 @@
       "uniqueConstraints": {
         "tips_telegramPaymentChargeId_unique": {
           "name": "tips_telegramPaymentChargeId_unique",
-          "columns": [
-            "telegram_payment_charge_id"
-          ],
+          "columns": ["telegram_payment_charge_id"],
           "nullsNotDistinct": false
         }
       },
@@ -1938,26 +1829,18 @@
         "user_flair_user_id_users_id_fk": {
           "name": "user_flair_user_id_users_id_fk",
           "tableFrom": "user_flair",
-          "columnsFrom": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
           "tableTo": "users",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "no action"
         },
         "user_flair_game_id_games_id_fk": {
           "name": "user_flair_game_id_games_id_fk",
           "tableFrom": "user_flair",
-          "columnsFrom": [
-            "game_id"
-          ],
+          "columnsFrom": ["game_id"],
           "tableTo": "games",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "no action"
         }
@@ -1965,10 +1848,7 @@
       "compositePrimaryKeys": {
         "user_flair_user_id_flair_id_pk": {
           "name": "user_flair_user_id_flair_id_pk",
-          "columns": [
-            "user_id",
-            "flair_id"
-          ]
+          "columns": ["user_id", "flair_id"]
         }
       },
       "uniqueConstraints": {},
@@ -2033,13 +1913,9 @@
         "user_photos_user_id_users_id_fk": {
           "name": "user_photos_user_id_users_id_fk",
           "tableFrom": "user_photos",
-          "columnsFrom": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
           "tableTo": "users",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "no action"
         }
@@ -2179,9 +2055,7 @@
       "uniqueConstraints": {
         "users_telegramUserId_unique": {
           "name": "users_telegramUserId_unique",
-          "columns": [
-            "telegram_user_id"
-          ],
+          "columns": ["telegram_user_id"],
           "nullsNotDistinct": false
         }
       },
