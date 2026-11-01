@@ -64,6 +64,7 @@ In the **Environment** tab:
 | `PUBLIC_URL` | `https://your.domain` — no trailing slash |
 | `WEBHOOK_SECRET` | 16 characters or more |
 | `SESSION_SECRET` | 32 characters or more |
+| `METRICS_TOKEN` | optional; `openssl rand -hex 32` |
 | `DATABASE_URL` | the internal string from step 1 |
 
 Generate the secrets rather than inventing them:
@@ -125,10 +126,9 @@ joins. Tap **Challenge someone** on the welcome card, send `/challenge @name`, o
 
 ## Worth doing before you rely on it
 
-**Close off `/metrics`.** Traefik serves the whole domain, so `/metrics` is publicly readable. It
-exposes counts, not personal data or message text, but it is still a free look at your traffic. Put
-a Traefik middleware in front of that path, either basic auth or an IP allowlist, or accept it
-knowingly.
+**`/metrics` is hidden by default.** It answers 404 unless `METRICS_TOKEN` is set, and then only to
+requests carrying `Authorization: Bearer <token>`. Set it if you scrape the endpoint; leave it unset
+and nothing is exposed.
 
 **Redact query strings in access logs.** The Mini App passes its session token as `?token=` on the
 live-updates stream, and a short-lived scoped token on the PGN download. Telegram's own design

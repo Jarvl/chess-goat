@@ -33,6 +33,8 @@ export const ConfigSchema = z.object({
     .transform((value) => value === 'true'),
   SESSION_SECRET: z.string().min(32),
   LICHESS_TOKEN: z.string().min(1).optional(),
+  /** Bearer token for `GET /metrics`; unset hides the endpoint (404). */
+  METRICS_TOKEN: z.string().min(32).optional(),
   ROLES: RolesSchema,
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),

@@ -26,7 +26,13 @@ beforeAll(async () => {
   server = await startServer(
     // ENGINE_ENABLED: false — otherwise startServer's boot probe would spawn a real `stockfish`
     // process (global constraint: no test may spawn a binary).
-    testConfig({ TELEGRAM_API_ROOT: fake.url, PORT: 0, MINI_APP_DIR: dir, ENGINE_ENABLED: false }),
+    testConfig({
+      TELEGRAM_API_ROOT: fake.url,
+      PORT: 0,
+      MINI_APP_DIR: dir,
+      ENGINE_ENABLED: false,
+      METRICS_TOKEN: 'm'.repeat(32),
+    }),
   );
   base = `http://127.0.0.1:${server.port}`;
 });
@@ -123,7 +129,9 @@ describe('startServer', () => {
   });
 
   it('exposes Prometheus metrics including the Telegram call counters', async () => {
-    const text = await (await fetch(`${base}/metrics`)).text();
+    const text = await (
+      await fetch(`${base}/metrics`, { headers: { authorization: `Bearer ${'m'.repeat(32)}` } })
+    ).text();
     expect(text).toMatch(/telegram_api_calls_total\{method="setWebhook",status="ok"\} 1/);
     for (const name of [
       'webhook_updates_total',
