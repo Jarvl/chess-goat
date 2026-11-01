@@ -154,8 +154,7 @@ If `/app/` is a 404, `MINI_APP_DIR` is unset or you have not run `pnpm build`.
 |---|---|
 | Blank screen in Telegram | `MINI_APP_DIR` not set, or `pnpm build` not run |
 | "Reopen from Telegram" | The app was opened outside Telegram, or `BOT_TOKEN` does not match the bot whose link you used |
-| Bot ignores `/challenge` in the group | It is not an administrator |
-| "I haven't seen @name in this group yet" | The bot only knows people it has seen in the group. Reply to one of their messages with `/challenge` instead |
+| `/challenge` shows no prompt | Close and reopen the chat so Telegram loads the new command menu; `/challenge` is a private command, so only the sender sees it and the prompt |
 | Nothing happens on any command | The webhook cannot reach you. Check the tunnel is still up and `PUBLIC_URL` matches its current URL, then restart the server |
 | Server exits at startup | The configuration is invalid; the error names the variable and what is wrong with it |
 | Moves work but the group card never updates | The bot lacks permission to edit its own message, usually because it is not an administrator |
