@@ -40,10 +40,22 @@ case "${1:-}" in
     ;;
   prune)
     ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+    # Without the worktree list every database would look stale, so a failed read stops here.
+    WORKTREES="$(git -C "$ROOT" worktree list --porcelain | sed -n 's/^worktree //p')" || {
+      echo "prune: cannot list this repository's worktrees; nothing done" >&2
+      exit 1
+    }
     KEYS=""
     while read -r WORKTREE; do
-      [ -d "$WORKTREE" ] && KEYS="$KEYS $(node "$ROOT/scripts/test-database-name.mjs" key "$WORKTREE")"
-    done < <(git -C "$ROOT" worktree list --porcelain | sed -n 's/^worktree //p')
+      [ -n "$WORKTREE" ] && [ -d "$WORKTREE" ] && KEYS="$KEYS $(node "$ROOT/scripts/test-database-name.mjs" key "$WORKTREE")"
+    done <<<"$WORKTREES"
+    case " $KEYS " in
+      *" $(node "$ROOT/scripts/test-database-name.mjs" key "$ROOT") "*) ;;
+      *)
+        echo "prune: this checkout is missing from its own worktree list; nothing done" >&2
+        exit 1
+        ;;
+    esac
     PSQL=("$BIN/psql" -h 127.0.0.1 -p "$PORT" -U postgres -tA)
     for DB in $("${PSQL[@]}" -c "select datname from pg_database where datname like 'chess_goat\_test\_%' or datname like 'chess_goat\_scratch\_%'"); do
       LIVE=""

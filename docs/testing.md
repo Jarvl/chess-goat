@@ -44,8 +44,9 @@ Several sessions can test at once, each in its own git worktree, with no setup p
   and never reuses a server it did not start, so a run cannot test another worktree's code.
 - **Two runs in one worktree at once still collide.** A run is about that worktree's changes, so
   this is not supported.
-- **Clean up with `scripts/local-postgres.sh prune`**, which lists test databases whose worktree is
-  gone; `prune --drop` drops them.
+- **Clean up with `scripts/local-postgres.sh prune`**, which lists the test databases that belong
+  to no worktree of this repository: removed worktrees, but also hand-named ones and other clones'
+  on the same server. Read the list, then `prune --drop` drops them.
 
 **No CI runner installs Stockfish.** Every test above — unit, integration and end-to-end — runs
 against `fakeEngine`, a scripted stand-in that never spawns a real process. The real Stockfish
