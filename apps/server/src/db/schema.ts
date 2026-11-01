@@ -1,3 +1,5 @@
+// Columns read by the `stats.*` views (drizzle/0014_stats_views.sql) need the affected view
+// recreated in the same migration that alters or drops them.
 import type {
   ChallengeStatus,
   ColourChoice,

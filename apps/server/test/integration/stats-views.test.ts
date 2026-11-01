@@ -30,7 +30,7 @@ const VIEWS = {
   tips: ['id', 'paid_at', 'stars', 'refunded'],
 } as const;
 
-let database: ScratchDatabase;
+let database: ScratchDatabase | undefined;
 let scratch: postgres.Sql;
 let scratchUrl: string;
 let databaseName: string;
@@ -53,7 +53,8 @@ beforeAll(async () => {
   database = await scratchDatabase('stats_views');
   ({ sql: scratch, url: scratchUrl } = database);
   await runMigrations(scratchUrl);
-  [{ name: databaseName }] = await scratch<{ name: string }[]>`select current_database() as name`;
+  const [current] = await scratch<{ name: string }[]>`select current_database() as name`;
+  databaseName = current!.name;
   await grantReader();
 });
 
@@ -62,7 +63,7 @@ afterAll(async () => {
   if (roleCreated) {
     await scratch.unsafe(`drop owned by ${READER}`);
   }
-  await database.drop();
+  await database?.drop();
   if (roleCreated) {
     const admin = postgres(process.env.TEST_DATABASE_URL!, { max: 1, onnotice: () => undefined });
     await admin.unsafe(`drop role if exists ${READER}`);
@@ -116,7 +117,9 @@ function asReader(query: string): Promise<unknown> {
 class RolledBack extends Error {}
 
 async function readerChecks(): Promise<void> {
-  await expect(asReader('select count(*) from stats.users')).rejects.toBeInstanceOf(RolledBack);
+  for (const view of Object.keys(VIEWS)) {
+    await expect(asReader(`select count(*) from stats.${view}`)).rejects.toBeInstanceOf(RolledBack);
+  }
   await expect(asReader('select count(*) from public.users')).rejects.toThrow(/permission denied/);
 }
 

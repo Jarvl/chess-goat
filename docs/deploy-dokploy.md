@@ -72,6 +72,7 @@ Generate the secrets rather than inventing them:
 ```bash
 openssl rand -hex 16   # WEBHOOK_SECRET
 openssl rand -hex 32   # SESSION_SECRET
+openssl rand -hex 32   # METRICS_TOKEN (optional)
 ```
 
 The server validates all of this at boot and refuses to start with a message naming the variable at
@@ -149,7 +150,7 @@ An optional read-only dashboard over anonymised views of the database (`stats.*`
 
 **Check the RAM first.** Metabase wants 1-2 GB on top of the app, and Dokploy runs everything on its own host. Look at the host's free memory before adding it.
 
-**Add the template.** In the same Dokploy project, add the **Metabase** template. Keep its image on, or pin it to, a `v0.x` tag (`metabase/metabase:v0.63.x`, the free open-source edition). Never switch to `metabase-enterprise` or a `v1.x` tag. Keep the template's own application database; Metabase stores its settings there, not in the app's.
+**Add the template.** In the same Dokploy project, add the **Metabase** template. Keep its image on, or pin it to, a `v0.x` tag (`metabase/metabase:v0.63.18` or a later `v0.x`, the free open-source edition). Never switch to `metabase-enterprise` or a `v1.x` tag. Keep the template's own application database; Metabase stores its settings there, not in the app's.
 
 **Give it a domain.** Add its own hostname with HTTPS, as in step 3. On first boot, create the admin account. Then, in Admin → Settings, turn off anonymous usage tracking.
 
@@ -157,7 +158,7 @@ An optional read-only dashboard over anonymised views of the database (`stats.*`
 
 **Connect the data source.** In Admin → Databases, add a **PostgreSQL** database:
 
-- host: the PostgreSQL service's **internal** name, from its Dokploy page. Never expose a public port for this.
+- host: the PostgreSQL service's **internal** name, from its Dokploy page. Never expose a public port for this. If that name doesn't resolve from Metabase, make sure the Metabase service is on Dokploy's shared network (turn off Isolated Deployment for it).
 - port and database name: the same as the app's
 - user: `metabase_reader`, and its password
 - schema filter: only `stats`

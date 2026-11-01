@@ -38,6 +38,7 @@ describe('GET /metrics access', () => {
   it('serves /metrics to the right bearer token', async () => {
     const res = await get(guarded, `Bearer ${TOKEN}`);
     expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/plain');
     expect(await res.text()).toContain('moves_total');
   });
 });

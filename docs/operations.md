@@ -63,10 +63,11 @@ Logs are JSON (pino) with numeric and public ids only; bound query parameters ar
 
   It finds the tip, refuses an unknown or already-refunded one, shows the transaction (amount, when it was paid, the payer) and asks `[y/N]`; only `y` or `yes` goes ahead. It then refunds the payer using the container's own `BOT_TOKEN`, so the token is never typed or pasted. Telegram then sends `refunded_payment` and the bot sets `refunded_at`. Tip rows survive "Delete my data" for exactly this reason. If the app container is down, the same refund is `refundStarPayment` with `user_id=<telegram_user_id>` and `telegram_payment_charge_id=<transaction id>`, sent with `curl -d`; keep the token out of shell history (a leading space, or `read -s BOT_TOKEN` first).
 - **The engine binary is missing or broken**: `engine_available` reads 0. This degrades bot games only — the bot stops appearing as an opponent, and existing bot games queue and then abort — and never affects human games, which do not touch the engine.
-- **Set up the usage dashboard's database user**: once, in the Dokploy PostgreSQL console, connected as the same user the app uses, so that `alter default privileges` also covers the views future migrations create. Replace `<database>` with the app's database name and generate the password where the placeholder says:
+- **Set up the usage dashboard's database user**: once, in the Dokploy PostgreSQL console, connected as the same user the app uses, so that `alter default privileges` also covers the views future migrations create. Replace `<database>` with the app's database name. `\password` prompts for the password (type a long random one, such as the output of `openssl rand -hex 24`) and sends only a hash to the server, so the password never lands in psql history or the server log:
 
   ```sql
-  create role metabase_reader login password '<generate with: openssl rand -hex 24>';
+  create role metabase_reader login;
+  \password metabase_reader
   grant connect on database <database> to metabase_reader;
   grant usage on schema stats to metabase_reader;
   grant select on all tables in schema stats to metabase_reader;
@@ -74,7 +75,7 @@ Logs are JSON (pino) with numeric and public ids only; bound query parameters ar
   revoke all on schema public from metabase_reader;
   ```
 
-  The `stats` views carry only ids, timestamps and categories: no names, usernames, Telegram ids or chat titles. `metabase_reader` can read nothing else. Metabase is set up against it in [deploy-dokploy.md](deploy-dokploy.md#usage-dashboard-metabase). `apps/server/test/integration/stats-views.test.ts` runs these same statements (with its own role name and database), so keep the two in sync.
+  The `stats` views carry only ids, timestamps and categories: no names, usernames, Telegram ids or chat titles. `metabase_reader` can read the `stats` views and none of the app's tables (it can still see system catalogs, as every role can); the `revoke all on schema public` line is belt-and-braces. Metabase is set up against it in [deploy-dokploy.md](deploy-dokploy.md#usage-dashboard-metabase). `apps/server/test/integration/stats-views.test.ts` runs the same grant statements (with its own `nologin` role without a password, and its own database), so keep the two in sync.
 
 ## Known limits of the alpha
 
