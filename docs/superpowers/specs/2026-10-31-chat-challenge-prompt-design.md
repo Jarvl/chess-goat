@@ -214,6 +214,12 @@ acceptable if it is simpler; this is the builder's call (see below).
    - Refusals to a non-ephemeral `/challenge` from a non-admin bot (my call, as designer): a one-line
      public reply to the command, as today, deleted after 60 s.
    - `/chess` and `/settings` stay ephemeral either way; they don't depend on reply targets.
+   - **Decision, 2026-11-01 (owner):** the staging test showed ephemeral commands arrive without
+     `reply_to_message`. The owner dropped the reply-to form instead of keeping `/challenge`
+     non-ephemeral. `/challenge` is now ephemeral, so the prompt and every refusal are private in
+     every group, admin or not. A `/challenge` replying to a message opens the prompt; replying to
+     the prompt itself replaces it. The non-ephemeral path above remains only for clients that send
+     `/challenge` as a normal message.
 2. **New Bot API surface.** The grammY version in use (1.46) may lack types for the 10.2/10.3 fields.
    Use raw calls with local types rather than upgrading for this alone.
 3. **Delivery isn't guaranteed.** Telegram does not promise ephemeral delivery, especially when the

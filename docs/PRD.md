@@ -93,7 +93,7 @@ Acceptance: no configuration needed before the first game.
 
 Two paths, both one step:
 
-- **In the chat**: tap `/challenge` in the command menu. The bot asks "Who do you want to play? Type @ and pick them from the list, or tap Anyone." and opens the reply box. Alice replies with Bob picked from Telegram's @ list, and the bot posts a game card: "Alice vs Bob · 3 days per move · [Accept] [Decline]". Only Bob can accept. The prompt's **Game settings** button sets the time, colour and rated/casual first. Alice can also send `/challenge @bob`, or reply to any message from Bob with `/challenge`, and the card posts at once.
+- **In the chat**: tap `/challenge` in the command menu. The bot asks "Who do you want to play? Type @ and pick them from the list, or tap Anyone." and opens the reply box. Alice replies with Bob picked from Telegram's @ list, and the bot posts a game card: "Alice vs Bob · 3 days per move · [Accept] [Decline]". Only Bob can accept. The prompt's **Game settings** button sets the time, colour and rated/casual first. Alice can also send `/challenge @bob`, and the card posts at once.
 - **In the app**: Alice opens the lobby, taps **New game**, picks Bob from the group's players (people the bot has seen in this group) or chooses **Open challenge**, sets the time control, and confirms. The bot posts the same card to the group.
 
 Acceptance: the challenged player is mentioned on the card (so they are notified) and, if they have allowed DMs, gets a DM with an **Open** button.
@@ -127,19 +127,19 @@ Priorities: **P0** = launch, **P1** = fast follow. Almost everything is P0 becau
 
 - Welcome card on join with the **♟ Open Chess** button. Optional pin (needs pin rights).
 - Bot profile has the Main Mini App button, so the lobby also opens from the bot's profile without any message in the group.
-- Group-scoped command menu contains only `/challenge`, `/chess` and `/settings`. `/chess` and `/settings` are ephemeral commands: only the sender sees the reply.
+- Group-scoped command menu contains only `/challenge`, `/chess` and `/settings`. All three are ephemeral commands: only the sender sees the command and the reply.
 - The first time a user opens the app, it asks for permission to send them DMs (used for "your move" and challenge notifications). The app works if they decline.
 
 ### 7.2 Challenges — P0
 
-- Direct challenge in the group: reply to the `/challenge` prompt with someone picked from Telegram's @ list, send `/challenge @name`, or reply `/challenge` to the opponent's message. From the app, pick a player the bot has seen in that group.
+- Direct challenge in the group: reply to the `/challenge` prompt with someone picked from Telegram's @ list, or send `/challenge @name`. From the app, pick a player the bot has seen in that group.
 - A member picked without a username is challenged directly (a text mention). An unseen `@username` becomes a challenge by username: the card names @bob, and only the person with that username can accept or decline, in the chat or in the app (where it shows as "@bob"). Bots and yourself are refused.
 - Open challenge from the app, or **Anyone** on the `/challenge` prompt: the first person other than the challenger to accept gets the game.
-- Options: time per move (`1h`, `8h`, `1d` default, `3d`, `7d`, none), colour (random default, or choose), rated or casual (rated default). The chat prompt's **Game settings** offers 1 day, 3 days or 7 days, Random, White or Black, and Rated or Casual, starting at 3 days, random colour and the group's rated default (it ignores the group's default time). `/challenge @name` and reply-to also use 3 days, random colour and the group's rated default.
+- Options: time per move (`1h`, `8h`, `1d` default, `3d`, `7d`, none), colour (random default, or choose), rated or casual (rated default). The chat prompt's **Game settings** offers 1 day, 3 days or 7 days, Random, White or Black, and Rated or Casual, starting at 3 days, random colour and the group's rated default (it ignores the group's default time). `/challenge @name` also uses 3 days, random colour and the group's rated default.
 - The game card in the group is the challenge card edited in place on accept. Declined and expired (24 h) challenges are edited to say so, not deleted.
 - **Rematch** from the game-end screen in the app or the game-end card creates a reversed-colour challenge already accepted by the presser.
 - Limits: at most 3 pending challenges per person per group (`MAX_PENDING_CHALLENGES`).
-- Because the Bot API has no member list and cannot resolve a `@username` the bot has never seen, the app's opponent picker lists only players who have interacted with the bot in that group. Challenges by username and reply-to-message challenges cover everyone else.
+- Because the Bot API has no member list and cannot resolve a `@username` the bot has never seen, the app's opponent picker lists only players who have interacted with the bot in that group. Challenges by username cover everyone else.
 
 ### 7.3 Gameplay and rules — P0
 
@@ -172,8 +172,8 @@ The bot posts nothing to the group except the following:
 | Welcome card | Bot added | One line plus **♟ Open Chess** |
 | Game card | Challenge created; edited on accept, and again at game end | Players (with colours once assigned), time per move, rated/casual; status line ("Move 12 · Bob to move") updated silently as the game goes; **Accept**/**Decline** while pending; **♟ Open game** while running; result, **Analyze on Lichess** and **Rematch** when finished |
 | Shared position | A player or spectator taps Share position in the app | Portrait snapshot card of that position (the board between both players' bars with their ratings and captured material, the result once the game is over, and a Chess Goat footer naming the bot), caption "Alice shared move 23 of Alice vs Bob", **♟ Open live game** button. Group members reply in the chat as usual |
-| `/challenge` prompt | Someone sends a bare `/challenge` | "Who do you want to play?" with **Anyone** and **Game settings**. When the bot is a group admin it is private to the sender (an ephemeral message) and the bot deletes the `/challenge` message; otherwise it is a group message that deletes itself after 10 minutes, or as soon as it is used |
-| Reply to `/challenge` | Only when the command cannot be fulfilled (for example, you picked a bot or yourself) | Private to the sender when the bot is a group admin; otherwise one short reply that deletes itself after 60 seconds |
+| `/challenge` prompt | Someone sends a bare `/challenge` | "Who do you want to play?" with **Anyone** and **Game settings**. Private to the sender (an ephemeral message), admin or not. Only where the Telegram app sends `/challenge` as a normal message, or refuses the private answer, is it a group message that deletes itself after 10 minutes, or as soon as it is used (an admin bot also deletes that `/challenge` message) |
+| Reply to `/challenge` | Only when the command cannot be fulfilled (for example, you picked a bot or yourself) | Private to the sender; only for a Telegram app without private commands and a bot that is not a group admin, one short reply that deletes itself after 60 seconds |
 
 Wherever these messages name a player, in the text or in a photo's caption, the player's worn flair
 follows the name ("Alice 👑 vs Bob 🔥🤝"). The snapshot images themselves do not carry it yet.
@@ -287,8 +287,8 @@ The bot has three group commands and no others in the group menu:
 
 | Command | Purpose |
 |---|---|
-| `/challenge` | Tapped in the menu, it opens the prompt, private to the sender when the bot is a group admin and otherwise a group message that deletes itself: reply with someone picked from the @ list, or tap **Anyone** or **Game settings**. It is a normal command, because ephemeral commands lose the reply target |
-| `/challenge @name`, or as a reply to someone | Post the challenge card at once (3 days, random colour, the group's rated default) |
+| `/challenge` | Tapped in the menu, it opens the prompt, private to the sender: reply to it with someone picked from the @ list, or tap **Anyone** or **Game settings**. Replying `/challenge` to someone's message names nobody; it opens the prompt |
+| `/challenge @name` | Post the challenge card at once (3 days, random colour, the group's rated default) |
 | `/chess` | Show an **♟ Open Chess** button, private to the sender (for groups that did not pin the welcome card) |
 | `/settings` | Show an **Open settings** button, private to the sender (admins) |
 
@@ -319,7 +319,7 @@ Bot API version tags below were verified against core.telegram.org/bots/api-chan
 | Forum groups | `message_thread_id` (Bot API 6.3) | Cards go in the challenge's topic or a fixed topic. |
 | Admin check for settings | `getChatMember` | Verified on every settings request. |
 | Command menu | `setMyCommands` with group scope | Keeps the group menu to three commands. |
-| Private replies in a group | Ephemeral messages and commands (Bot API 10.2, July 2026) | `/chess` and `/settings` are ephemeral. A normal command can be answered privately only when the bot is a group admin. `/challenge` stays a normal command, because an ephemeral command drops the reply target. |
+| Private replies in a group | Ephemeral messages and commands (Bot API 10.2, July 2026) | All three group commands are ephemeral. A normal command (a Telegram app without private commands) can be answered privately only when the bot is a group admin. |
 | Reply box that opens on its own | `force_reply` on inline keyboards (Bot API 10.3, August 2026) | The `/challenge` prompt's buttons open the reply box so the sender can pick someone from the @ list. |
 | Button colours | Button `style` (Bot API 9.4) | Used on the prompt and settings buttons. |
 | Lichess analysis | Lichess game import API and analysis-board URL | `POST /api/import` takes a PGN, needs no authentication, and returns a permanent game id and URL immediately (no queueing). Rate limit: 100 imports/hour unauthenticated, 200/hour with an OAuth2 token — worth an app token at the 5,000-group scale target. Requesting computer analysis is a lichess.org website feature on the game page, open to any visitor; it is not a separate API call. |
@@ -332,7 +332,7 @@ Considered and not used: inline keyboards for moves (clunky, the reason for the 
 |---|---|
 | Interactive content only in Mini Apps | The board lives in the app; the chat gets cards and images only. |
 | Inline `web_app` buttons don't work in groups | All app buttons in the group are direct links. |
-| No member list; unknown usernames can't be resolved | In-app opponent picker shows known players. A person picked from Telegram's @ list without a username arrives as a text mention. An unseen `@username` becomes a challenge by username, which only the person with that username can accept. Reply-to-message `/challenge` also works for anyone. |
+| No member list; unknown usernames can't be resolved | In-app opponent picker shows known players. A person picked from Telegram's @ list without a username arrives as a text mention. An unseen `@username` becomes a challenge by username, which only the person with that username can accept. |
 | Bots can't DM without permission | Ask in the app on first launch; the app and the challenge mention cover users who decline. |
 | Edits don't notify | Turn notifications are DMs and in-app, never group messages. |
 | About 20 messages per minute per group | Irrelevant at this footprint; position shares are user-initiated and rate-limited per user (20 per minute, so several positions can be shared at once). |

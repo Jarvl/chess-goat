@@ -91,7 +91,7 @@ describe('webhook', () => {
   });
 
   it('acknowledges a duplicate update without repeating its effects', async () => {
-    const update = commandUpdate({ chat, from: alice, text: '/challenge', replyTo: { from: bob } });
+    const update = challengeBob();
     expect((await post(update)).status).toBe(200);
     expect((await post(update)).status).toBe(200);
     expect(await db.select().from(challenges)).toHaveLength(1);
@@ -105,7 +105,7 @@ describe('webhook', () => {
   });
 
   it('reprocesses an update whose earlier attempt never finished, but not one still in flight', async () => {
-    const update = commandUpdate({ chat, from: alice, text: '/challenge', replyTo: { from: bob } });
+    const update = challengeBob();
     await db.insert(telegramUpdates).values({ updateId: update.update_id });
     expect((await post(update)).status).toBe(200);
     expect(await db.select().from(challenges)).toHaveLength(0);
@@ -119,6 +119,15 @@ describe('webhook', () => {
     expect((await db.select().from(telegramUpdates))[0]?.processedAt).not.toBeNull();
   });
 });
+
+/** `/challenge Bob`, picking Bob (who has no username) from the mention list. */
+const challengeBob = () =>
+  commandUpdate({
+    chat,
+    from: alice,
+    text: '/challenge Bob',
+    entities: [{ type: 'text_mention', offset: 11, length: 3, user: bob }],
+  });
 
 const PROMPT = 'Who do you want to play? Type @ and pick them from the list, or tap Anyone.';
 const sends = () => fake.callsTo('sendMessage').map((call) => call.body);
@@ -171,13 +180,13 @@ const mentionAt0 = (name: string): MessageEntity[] => [
 ];
 
 describe('/challenge', () => {
-  it('creates a direct challenge from a reply inside the topic and records both members', async () => {
+  it('creates a direct challenge from a mention inside the topic and records both members', async () => {
     await post(
       commandUpdate({
         chat,
         from: alice,
-        text: '/challenge@TestChessBot',
-        replyTo: { from: bob },
+        text: '/challenge@TestChessBot Bob',
+        entities: [{ type: 'text_mention', offset: 22, length: 3, user: bob }],
         threadId: 77,
       }),
     );
@@ -346,8 +355,8 @@ describe('/challenge', () => {
     const update = commandUpdate({
       chat,
       from: alice,
-      text: '/challenge',
-      replyTo: { from: alice },
+      text: '/challenge @alice',
+      entities: [{ type: 'mention', offset: 11, length: 6 }],
     });
     await post(update);
     expect(sends()[1]).toMatchObject({
@@ -374,14 +383,13 @@ describe('/challenge', () => {
   });
 
   it("opens a prompt for a bare /challenge that replies to the bot's own message", async () => {
-    // The prompt opens the reply box itself, so a /challenge tapped from the menu replies to it.
     const me = { id: 424242, is_bot: true, first_name: 'Test Chess', username: 'TestChessBot' };
     await post(commandUpdate({ chat, from: alice, text: '/challenge', replyTo: { from: me } }));
     expect(texts()).toEqual([`@alice\n${PROMPT}\n3 days per move · Random colour · Rated`]);
     expect(await promptRows()).toHaveLength(1);
   });
 
-  it('opens the prompt in a forum topic, where Telegram marks the topic root as the reply', async () => {
+  it('opens the prompt, whatever a bare /challenge replies to', async () => {
     const update = commandUpdate({
       chat,
       from: alice,
@@ -394,8 +402,12 @@ describe('/challenge', () => {
       forum_topic_created: { name: 'Games', icon_color: 1 },
     });
     await post(update);
+    // A reply to a person, an anonymous author or yourself is no longer a way to name an opponent.
+    for (const replyTo of [{ from: bob }, { senderChat: true }, { from: alice }])
+      await post(commandUpdate({ chat, from: alice, text: '/challenge', replyTo }));
     expect(await db.select().from(challenges)).toHaveLength(0);
-    expect(sends()[0]?.text).toContain(PROMPT);
+    expect(texts()).toHaveLength(4);
+    texts().forEach((text) => expect(text).toContain(PROMPT));
   });
 
   it('edits the prompt to the settings view and back, carrying the chosen settings', async () => {
@@ -671,7 +683,7 @@ describe('/challenge', () => {
   });
 
   it('ignores replies to cards and to other bot messages', async () => {
-    await post(commandUpdate({ chat, from: alice, text: '/challenge', replyTo: { from: bob } }));
+    await post(challengeBob());
     fake.reset();
     const card: InlineKeyboardMarkup = {
       inline_keyboard: [[{ text: 'Accept', callback_data: 'ch/acc/AAAAAAAAAA' }]],
@@ -744,23 +756,17 @@ describe('/challenge', () => {
     ]);
   });
 
-  it('refuses a self-challenge, a bot or an anonymous author in a normal reply to the command', async () => {
-    const updates = [
-      commandUpdate({ chat, from: alice, text: '/challenge', replyTo: { from: alice } }),
+  it('refuses a self-challenge or a bot named in a normal message, as a public reply', async () => {
+    const mention = (name: string) =>
       commandUpdate({
         chat,
         from: alice,
-        text: '/challenge',
-        replyTo: { from: { ...bob, is_bot: true } },
-      }),
-      commandUpdate({ chat, from: alice, text: '/challenge', replyTo: { senderChat: true } }),
-    ];
+        text: `/challenge ${name}`,
+        entities: [{ type: 'mention', offset: 11, length: name.length }],
+      });
+    const updates = [mention('@alice'), mention('@other_bot')];
     for (const update of updates) await post(update);
-    expect(texts()).toEqual([
-      "You can't challenge yourself.",
-      "Bots don't play here.",
-      'Reply to a message from a person to challenge them.',
-    ]);
+    expect(texts()).toEqual(["You can't challenge yourself.", "Bots don't play here."]);
     sends().forEach((body, i) => {
       expect(body).not.toHaveProperty('ephemeral_message_parameters');
       expect(body).toMatchObject({
@@ -776,8 +782,8 @@ describe('/challenge', () => {
     const update = commandUpdate({
       chat,
       from: alice,
-      text: '/challenge',
-      replyTo: { from: alice },
+      text: '/challenge @alice',
+      entities: [{ type: 'mention', offset: 11, length: 6 }],
     });
     await post(update);
     expect(sends()).toEqual([
@@ -793,14 +799,12 @@ describe('/challenge', () => {
   });
 
   it('ignores commands addressed to another bot', async () => {
-    await post(
-      commandUpdate({ chat, from: alice, text: '/challenge@OtherBot', replyTo: { from: bob } }),
-    );
+    await post(commandUpdate({ chat, from: alice, text: '/challenge@OtherBot' }));
     expect(await db.select().from(challenges)).toHaveLength(0);
     expect(await jobRows()).toHaveLength(0);
   });
   it('ignores /play, which is not a command', async () => {
-    await post(commandUpdate({ chat, from: alice, text: '/play', replyTo: { from: bob } }));
+    await post(commandUpdate({ chat, from: alice, text: '/play' }));
     expect(await db.select().from(challenges)).toHaveLength(0);
     expect(await jobRows()).toHaveLength(0);
   });
@@ -835,7 +839,7 @@ describe('/challenge', () => {
     expect(await db.select().from(groupMembers)).toHaveLength(2);
   });
 
-  it('prefers the mention over the message it replies to', async () => {
+  it('challenges the mentioned person, and a reply target alone opens the prompt', async () => {
     await post(serviceUpdate(chat, alice, { new_chat_members: [carol] }));
     await post(
       commandUpdate({
@@ -848,6 +852,89 @@ describe('/challenge', () => {
     );
     const [carolRow] = await db.select().from(users).where(eq(users.telegramUserId, carol.id));
     expect((await db.select().from(challenges))[0]?.opponentId).toBe(carolRow!.id);
+    expect(sends()).toEqual([]);
+    await post(commandUpdate({ chat, from: alice, text: '/challenge', replyTo: { from: bob } }));
+    expect(await db.select().from(challenges)).toHaveLength(1);
+    expect(texts()).toEqual([`@alice\n${PROMPT}\n3 days per move · Random colour · Rated`]);
+  });
+
+  it('answers an ephemeral bare /challenge with a private prompt, admin or not', async () => {
+    for (const admin of [false, true]) {
+      if (admin) await makeAdmin();
+      fake.reset();
+      await db.delete(challengePrompts);
+      const update = commandUpdate({ chat, from: alice, text: '/challenge', ephemeral: true });
+      await post(update);
+      expect(sends()).toHaveLength(1);
+      const body = sends()[0]!;
+      expect(body).toMatchObject({
+        chat_id: chat.id,
+        reply_parameters: { ephemeral_message_id: update.message!.ephemeral_message_id },
+        ephemeral_message_parameters: { receiver_user_id: alice.id },
+        text: `${PROMPT}\n3 days per move · Random colour · Rated`,
+      });
+      expect(
+        (body.reply_markup as InlineKeyboardMarkup).inline_keyboard[0]!.map(
+          (b) => (b as { callback_data: string }).callback_data,
+        ),
+      ).toEqual(['cp/a/11/3/r/1', 'cp/s/11/3/r/1']);
+      expect(fake.callsTo('deleteMessage')).toHaveLength(0);
+      expect(await promptRows()).toHaveLength(1);
+    }
+  });
+
+  it('refuses an ephemeral /challenge @name privately, admin or not', async () => {
+    for (const admin of [false, true]) {
+      if (admin) await makeAdmin();
+      fake.reset();
+      const update = commandUpdate({
+        chat,
+        from: alice,
+        text: '/challenge @SomeBot',
+        entities: [{ type: 'mention', offset: 11, length: 8 }],
+        ephemeral: true,
+      });
+      await post(update);
+      expect(sends()).toEqual([
+        expect.objectContaining({
+          text: "Bots don't play here.",
+          reply_parameters: { ephemeral_message_id: update.message!.ephemeral_message_id },
+          ephemeral_message_parameters: { receiver_user_id: alice.id },
+        }),
+      ]);
+      expect(fake.callsTo('deleteMessage')).toHaveLength(0);
+      expect((await jobRows()).filter((job) => job.kind === 'send_message')).toEqual([]);
+    }
+  });
+
+  it('opens the prompt for an ephemeral /challenge sent as a reply, ignoring what it replies to', async () => {
+    // Telegram sends none, but should it ever, the reply is not a way to name an opponent.
+    await post(
+      commandUpdate({
+        chat,
+        from: alice,
+        text: '/challenge',
+        replyTo: { from: bob },
+        ephemeral: true,
+      }),
+    );
+    expect(await db.select().from(challenges)).toHaveLength(0);
+    expect(sends()).toHaveLength(1);
+    expect(sends()[0]).toMatchObject({
+      text: `${PROMPT}\n3 days per move · Random colour · Rated`,
+      ephemeral_message_parameters: { receiver_user_id: alice.id },
+    });
+    expect(await promptRows()).toHaveLength(1);
+  });
+
+  it('falls back to the public prompt when Telegram refuses the private answer to an ephemeral /challenge', async () => {
+    fake.failNext('sendMessage', { error_code: 400, description: 'Bad Request: not supported' });
+    await post(commandUpdate({ chat, from: alice, text: '/challenge', ephemeral: true }));
+    expect(sends()).toHaveLength(2);
+    expect(sends()[1]).not.toHaveProperty('ephemeral_message_parameters');
+    expect(sends()[1]?.text).toBe(`@alice\n${PROMPT}\n3 days per move · Random colour · Rated`);
+    expect(fake.callsTo('deleteMessage')).toHaveLength(0);
+    await expectDeletionIn('delete_message', 600);
   });
 
   it('challenges a username it has not seen, and refuses bots and yourself by name', async () => {

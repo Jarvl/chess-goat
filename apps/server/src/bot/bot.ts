@@ -88,7 +88,6 @@ export async function createBot(deps: Deps, config: Config): Promise<Bot> {
 
   const groupOnly = bot.chatType(['group', 'supergroup']);
 
-  // /challenge is a normal command: an ephemeral one arrives without the message it replies to.
   groupOnly.command('challenge', async (ctx) => {
     const from = ctx.from;
     if (!from || from.is_bot || ctx.msg.sender_chat) return;
@@ -96,24 +95,35 @@ export async function createBot(deps: Deps, config: Config): Promise<Bot> {
     const user = await ensureUser(deps.db, userInfo(from));
     await touchMember(deps.db, group.id, user.id);
     const threadId = threadOf(ctx.msg);
+    // An ephemeral command is private for any bot; a normal one (an old client) only for an admin.
+    const ephemeralMessageId = ephemeralIdOf(ctx.msg);
     const answer: Answer = {
       chatId: ctx.chat.id,
       threadId,
       receiverId: from.id,
-      // Only an admin bot may answer a normal message privately.
-      trigger: group.botIsAdmin ? { kind: 'none' } : null,
-      replyToMessageId: ctx.msg.message_id,
+      trigger:
+        ephemeralMessageId !== null
+          ? { ephemeralMessageId }
+          : group.botIsAdmin
+            ? { kind: 'none' }
+            : null,
+      replyToMessageId: ephemeralMessageId !== null ? null : ctx.msg.message_id,
     };
     const choice = await resolveOpponent(deps, {
       groupId: group.id,
       challenger: from,
       message: ctx.msg,
-      botId: ctx.me.id,
       botUsername: ctx.me.username,
-      useReplyTarget: true,
     });
     if (choice.kind === 'none') {
-      await openPrompt(deps, directApi, { group, user, from, chatId: ctx.chat.id, threadId });
+      await openPrompt(deps, directApi, {
+        group,
+        user,
+        from,
+        chatId: ctx.chat.id,
+        threadId,
+        trigger: answer.trigger,
+      });
     } else if (choice.kind === 'refuse') {
       await sayPrivately(deps, directApi, answer, choice.key);
     } else {
@@ -129,8 +139,9 @@ export async function createBot(deps: Deps, config: Config): Promise<Bot> {
         threadId: cardThread(settings, threadId),
       });
     }
-    // Keeps the chat free of command chatter where the bot may delete; failing that, it stays.
-    if (group.botIsAdmin) {
+    // Keeps the chat free of command chatter where the bot may delete; failing that, it stays. An
+    // ephemeral command is invisible to the group, so there is nothing to delete.
+    if (ephemeralMessageId === null && group.botIsAdmin) {
       await directApi.deleteMessage(ctx.chat.id, ctx.msg.message_id).catch((error: unknown) => {
         deps.log.debug({ err: error }, 'could not delete a /challenge command');
       });

@@ -46,12 +46,11 @@ export const ALLOWED_UPDATES = [
 
 /**
  * Spec §5.1 step 3: three group commands, two private commands, nothing in the default scope.
- * `/chess` and `/settings` are ephemeral (Bot API 10.2): only the sender sees them and the answer.
- * `/challenge` is not, because an ephemeral command loses the message it replies to.
+ * All three are ephemeral (Bot API 10.2): only the sender sees them and the answer.
  */
 export const BOT_COMMANDS = {
   group: [
-    { command: 'challenge', description: t('command.challenge.description') },
+    { command: 'challenge', description: t('command.challenge.description'), is_ephemeral: true },
     { command: 'chess', description: t('command.chess.description'), is_ephemeral: true },
     { command: 'settings', description: t('command.settings.description'), is_ephemeral: true },
   ],

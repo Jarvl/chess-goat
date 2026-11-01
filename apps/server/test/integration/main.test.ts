@@ -64,7 +64,6 @@ describe('startServer', () => {
       all_group_chats: ['challenge', 'chess', 'settings'],
       all_private_chats: ['start', 'paysupport'],
     });
-    // /challenge stays a normal message: an ephemeral command loses the message it replies to.
     const group = calls.find(
       (call) => (call.body.scope as { type: string }).type === 'all_group_chats',
     );
@@ -74,7 +73,7 @@ describe('startServer', () => {
         c.is_ephemeral ?? false,
       ]),
     ).toEqual([
-      ['challenge', false],
+      ['challenge', true],
       ['chess', true],
       ['settings', true],
     ]);

@@ -9,7 +9,7 @@ export type OpponentChoice =
   | { kind: 'user'; userId: number }
   /** Lower-case, no `@`: a username this group has not shown the bot. */
   | { kind: 'username'; username: string }
-  | { kind: 'refuse'; key: Extract<MessageKey, 'reply.bot' | 'reply.self' | 'reply.anonymous'> }
+  | { kind: 'refuse'; key: Extract<MessageKey, 'reply.bot' | 'reply.self'> }
   | { kind: 'none' };
 
 /** Records someone the message points at as a member, and names them as the opponent. */
@@ -20,9 +20,8 @@ async function memberChoice(deps: Deps, groupId: number, person: User): Promise<
 }
 
 /**
- * Who a /challenge, or a reply to its prompt, names. An @mention names the opponent more
- * deliberately than the message it replies to, so the first mention wins; the reply target counts
- * only when `useReplyTarget`.
+ * Who a /challenge, or a reply to its prompt, names: the first @mention. What the message replies
+ * to names nobody.
  */
 export async function resolveOpponent(
   deps: Deps,
@@ -30,9 +29,7 @@ export async function resolveOpponent(
     groupId: number;
     challenger: User;
     message: Message;
-    botId: number;
     botUsername: string;
-    useReplyTarget: boolean;
   },
 ): Promise<OpponentChoice> {
   const { challenger, message } = input;
@@ -59,13 +56,5 @@ export async function resolveOpponent(
       ? { kind: 'user', userId: opponent.id }
       : { kind: 'username', username: handle };
   }
-  const target = message.reply_to_message;
-  // In a forum topic, a message that replies to nothing carries the topic's opening message.
-  if (!input.useReplyTarget || !target || target.forum_topic_created) return { kind: 'none' };
-  // The prompt opens the reply box itself, so a /challenge sent again replies to this bot.
-  if (target.from?.id === input.botId) return { kind: 'none' };
-  if (target.sender_chat || !target.from) return { kind: 'refuse', key: 'reply.anonymous' };
-  if (target.from.is_bot) return { kind: 'refuse', key: 'reply.bot' };
-  if (target.from.id === challenger.id) return { kind: 'refuse', key: 'reply.self' };
-  return memberChoice(deps, input.groupId, target.from);
+  return { kind: 'none' };
 }

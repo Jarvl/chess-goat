@@ -153,7 +153,6 @@ export const en = {
   'dm.stub.deleted': 'Game ended',
   'reply.self': "You can't challenge yourself.",
   'reply.bot': "Bots don't play here.",
-  'reply.anonymous': 'Reply to a message from a person to challenge them.',
   'reply.blocked': "That challenge isn't possible in this group.",
   'reply.pending_limit': 'You already have {count} pending challenges here.',
   'reply.open_disabled': 'Open challenges are off in this group.',

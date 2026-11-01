@@ -136,24 +136,33 @@ async function sendFallbackPrompt(
   await deleteLater(deps, place.chatId, sent.message_id, FALLBACK_PROMPT_TTL);
 }
 
-/** A bare /challenge: the prompt at its starting settings, private when the bot is an admin. */
+/**
+ * A bare /challenge: the prompt at its starting settings, private through `trigger`, which is null
+ * where Telegram allows no private answer.
+ */
 export async function openPrompt(
   deps: Deps,
   api: Api,
-  input: { group: GroupRow; user: UserRow; from: User; chatId: number; threadId: number | null },
+  input: {
+    group: GroupRow;
+    user: UserRow;
+    from: User;
+    chatId: number;
+    threadId: number | null;
+    trigger: EphemeralTrigger | null;
+  },
 ): Promise<void> {
   const { group, from } = input;
   const settings = startingSettings(settingsOf(group));
   await openPromptRow(deps.db, group.id, input.user.id, settings, input.threadId);
   const view = promptView('main', from.id, settings);
-  // Only an admin bot may send an ephemeral message that answers nothing ephemeral.
   if (
-    group.botIsAdmin &&
+    input.trigger &&
     (await sendEphemeral(api, {
       chatId: input.chatId,
       threadId: input.threadId,
       receiverId: from.id,
-      trigger: { kind: 'none' },
+      trigger: input.trigger,
       text: view.text,
       replyMarkup: view.replyMarkup,
     }))
@@ -348,9 +357,7 @@ export function registerPromptReplies(
       groupId: group.id,
       challenger: msg.from,
       message: msg,
-      botId: ctx.me.id,
       botUsername: ctx.me.username,
-      useReplyTarget: false,
     });
     if (choice.kind === 'none') return sayPrivately(deps, api, answer, 'reply.pick_someone');
     if (choice.kind === 'refuse') return sayPrivately(deps, api, answer, choice.key);
