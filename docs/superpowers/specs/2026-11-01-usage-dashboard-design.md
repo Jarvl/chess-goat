@@ -121,9 +121,10 @@ A new section in `docs/deploy-dokploy.md`:
 
 - Add Dokploy's Metabase template to the same project, pinned to a `v0.x` tag (open-source edition), with
   its own application database as the template provides. Not the Enterprise image.
-- Not publicly accessible (operator decision): no domain; its port is published on the host's loopback
-  only and reached through an SSH tunnel. Metabase's login is a second layer; create one admin account on
-  first boot, and turn off anything that sends data out (anonymous usage tracking) in Admin settings.
+- Give it its own hostname with HTTPS (operator decision, for now; making it private via Tailscale or
+  Cloudflare Access is deferred). Metabase's login protects it; create one admin account on first boot
+  with a generated password, and turn off anything that sends data out (anonymous usage tracking) in
+  Admin settings.
 - Add the chess-goat database as a data source using the **internal** host, user `metabase_reader`, and
   restrict Metabase to the `stats` schema.
 - Note the RAM requirement (Metabase wants 1–2 GB on top of the app; the existing guide asks for 2 GB for

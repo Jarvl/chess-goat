@@ -152,25 +152,14 @@ An optional read-only dashboard over anonymised views of the database (`stats.*`
 
 **Add the template.** In the same Dokploy project, add the **Metabase** template. Keep its image on, or pin it to, a `v0.x` tag (`metabase/metabase:v0.63.18` or a later `v0.x`, the free open-source edition). Never switch to `metabase-enterprise` or a `v1.x` tag. Keep the template's own application database; Metabase stores its settings there, not in the app's.
 
-**Keep it private: no domain.** Metabase is not served on the internet. If the template created a
-domain, delete it, so Traefik never routes to it. Instead, publish its port on the host's loopback
-only, in the template's compose file:
+**Give it a domain.** Add its own hostname with HTTPS, as in step 3. The page is public, so
+Metabase's login is the only lock on it: use a long, generated password for the admin account, and
+create no other accounts you don't need. On first boot, create that admin account. Then, in
+Admin → Settings, turn off anonymous usage tracking.
 
-```yaml
-    ports:
-      - '127.0.0.1:3001:3000'
-```
-
-Binding to `127.0.0.1` matters: Docker publishes ports past host firewalls such as `ufw`, so a bare
-`'3001:3000'` would be reachable from anywhere. Then open it from your own machine through SSH:
-
-```bash
-ssh -N -L 3001:127.0.0.1:3001 <user>@<your VPS>
-# then browse to http://localhost:3001
-```
-
-On first boot, create the admin account. Then, in Admin → Settings, turn off anonymous usage
-tracking.
+Making it private later, without SSH, needs a private network or a login wall in front of it, since
+every Dokploy domain is served to the whole internet: Tailscale (`tailscale serve` to a loopback-only
+port, reached from your own devices), or Cloudflare Access in front of the hostname.
 
 **Create the database user.** Run the SQL in the "Set up the usage dashboard's database user" entry of [operations.md](operations.md), once. It creates `metabase_reader`, which can read the `stats` views and none of the app's tables.
 
