@@ -77,13 +77,12 @@ describe('ensureTestDatabase', () => {
   });
 
   it('fails with the address and the fix when no server answers', async () => {
-    const error = await ensureTestDatabase('test', {
+    const failure = ensureTestDatabase('test', {
       root: rootFor('down'),
       server: 'postgres://postgres:hunter2@127.0.0.1:1/postgres',
-    }).catch((caught: unknown) => caught as Error);
-    expect(error).toBeInstanceOf(Error);
-    expect(error.message).toMatch(/127\.0\.0\.1:1/);
-    expect(error.message).toMatch(/scripts\/local-postgres\.sh start/);
-    expect(error.message).not.toContain('hunter2');
+    });
+    await expect(failure).rejects.toThrow(/127\.0\.0\.1:1/);
+    await expect(failure).rejects.toThrow(/scripts\/local-postgres\.sh start/);
+    await expect(failure).rejects.not.toThrow(/hunter2/);
   });
 });
