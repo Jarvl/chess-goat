@@ -74,7 +74,7 @@ Logs are JSON (pino) with numeric and public ids only; bound query parameters ar
   revoke all on schema public from metabase_reader;
   ```
 
-  The `stats` views carry only ids, timestamps and categories: no names, usernames, Telegram ids or chat titles. `metabase_reader` can read nothing else. Metabase is set up against it in [deploy-dokploy.md](deploy-dokploy.md#metabase). `apps/server/test/integration/stats-views.test.ts` runs these same statements (with its own role name and database), so keep the two in sync.
+  The `stats` views carry only ids, timestamps and categories: no names, usernames, Telegram ids or chat titles. `metabase_reader` can read nothing else. Metabase is set up against it in [deploy-dokploy.md](deploy-dokploy.md#usage-dashboard-metabase). `apps/server/test/integration/stats-views.test.ts` runs these same statements (with its own role name and database), so keep the two in sync.
 
 ## Known limits of the alpha
 
