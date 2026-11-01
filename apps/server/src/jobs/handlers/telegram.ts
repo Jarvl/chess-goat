@@ -181,6 +181,16 @@ const sendMessage =
     return settle(result);
   };
 
+const deleteMessage =
+  (ctx: TelegramHandlerContext): JobHandler =>
+  async ({ job }) => {
+    const { chatId, messageId } = z
+      .object({ chatId: z.number().int(), messageId: z.number().int() })
+      .parse(job.payload);
+    // A message that is already gone settles as done.
+    return settle(await call(ctx, chatId, () => ctx.api.deleteMessage(chatId, messageId)));
+  };
+
 export function telegramJobHandlers(ctx: TelegramHandlerContext): JobHandlers {
   return {
     send_challenge_card: sendChallengeCard(ctx),
@@ -189,5 +199,6 @@ export function telegramJobHandlers(ctx: TelegramHandlerContext): JobHandlers {
     retire_dm: retireDm(ctx),
     send_welcome: sendWelcome(ctx),
     send_message: sendMessage(ctx),
+    delete_message: deleteMessage(ctx),
   };
 }

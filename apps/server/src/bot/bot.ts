@@ -1,10 +1,4 @@
-import {
-  decodeCallbackData,
-  t,
-  type GroupSettings,
-  type MessageKey,
-  type MessageParams,
-} from '@chess-goat/shared';
+import { decodeCallbackData, t, type MessageKey, type MessageParams } from '@chess-goat/shared';
 import { apiThrottler } from '@grammyjs/transformer-throttler';
 import { Bot, type Context } from 'grammy';
 import type { Chat } from 'grammy/types';
@@ -12,7 +6,6 @@ import type { Config } from '../config';
 import {
   acceptChallenge,
   cancelChallenge,
-  createChallenge,
   createRematch,
   declineChallenge,
   getChallengeByPublicId,
@@ -29,15 +22,28 @@ import {
   settingsOf,
   type TelegramChatInfo,
 } from '../domain/groups';
-import { findMemberByUsername, markLeft, touchMember } from '../domain/members';
+import { markLeft, touchMember } from '../domain/members';
 import { ensureUser, setDmAllowed } from '../domain/users';
 import { enqueue } from '../jobs/queue';
 import { createTelegramApi } from '../telegram/client';
 import type { MessageButton } from '../jobs/handlers/telegram';
 import { miniAppButton, miniAppLink } from '../telegram/links';
-import { RateLimiter } from './rateLimit';
+import { sendEphemeral } from './ephemeral';
+import { resolveOpponent } from './opponent';
 import { registerPayments } from './payments';
-import { alertFor, replyFor } from './replies';
+import {
+  cardThread,
+  challengeOrExplain,
+  ephemeralIdOf,
+  handlePromptTap,
+  openPrompt,
+  registerPromptReplies,
+  sayPrivately,
+  threadOf,
+  type Answer,
+} from './promptHandlers';
+import { RateLimiter } from './rateLimit';
+import { alertFor } from './replies';
 import { userInfo } from './userInfo';
 
 type GroupChat = Chat.GroupChat | Chat.SupergroupChat;
@@ -48,11 +54,6 @@ const chatInfo = (chat: GroupChat): TelegramChatInfo => ({
   type: chat.type,
   isForum: chat.type === 'supergroup' && chat.is_forum === true,
 });
-
-/** Cards go to the topic the challenge was made in, or to the configured fixed topic (spec §5.8). */
-function cardThread(settings: GroupSettings, originThread: number | null): number | null {
-  return settings.cardTopicMode === 'fixed' ? settings.fixedTopicId : originThread;
-}
 
 function isGroupChat(chat: Chat): chat is GroupChat {
   return chat.type === 'group' || chat.type === 'supergroup';
@@ -66,10 +67,10 @@ export async function createBot(deps: Deps, config: Config): Promise<Bot> {
   bot.api.config.use(apiThrottler());
   await bot.init();
   const linkLimiter = new RateLimiter(20, 60_000);
-  // Pre-checkout answers get their own client without the message throttler: bot.api's queue is
-  // shared with the job worker's sends, and a backlog there could push the answer past
-  // Telegram's 10-second pre-checkout deadline.
-  const checkoutApi = createTelegramApi(config, {
+  // Pre-checkout answers and private (ephemeral) answers get their own client without the message
+  // throttler: bot.api's queue is shared with the job worker's sends, and a backlog there could
+  // push an answer past Telegram's deadline (10 s for pre-checkout, 15 s for an ephemeral answer).
+  const directApi = createTelegramApi(config, {
     apiRoot: config.TELEGRAM_API_ROOT,
     throttle: false,
   });
@@ -79,7 +80,7 @@ export async function createBot(deps: Deps, config: Config): Promise<Bot> {
     threadId: number | null,
     key: MessageKey,
     params: MessageParams,
-    extra: { replyToMessageId?: number; buttons?: MessageButton[] } = {},
+    extra: { buttons?: MessageButton[] } = {},
   ) =>
     enqueue(deps.db, {
       kind: 'send_message',
@@ -94,55 +95,57 @@ export async function createBot(deps: Deps, config: Config): Promise<Bot> {
     const group = await ensureGroup(deps.db, chatInfo(ctx.chat));
     const user = await ensureUser(deps.db, userInfo(from));
     await touchMember(deps.db, group.id, user.id);
-    const threadId = ctx.msg.is_topic_message ? (ctx.msg.message_thread_id ?? null) : null;
-    const reply = (key: MessageKey, params: MessageParams = {}) =>
-      sendLine(ctx.chat.id, threadId, key, params, { replyToMessageId: ctx.msg.message_id });
-    // An @mention names the opponent more deliberately than the message the command replies to.
-    const mention = ctx.msg.entities?.find(
-      (entity) => entity.type === 'mention' || entity.type === 'text_mention',
-    );
-    const target = ctx.msg.reply_to_message;
-    let opponentId: number | null = null;
-    if (mention?.type === 'text_mention') {
-      // Picked from the mention list: Telegram hands over the person, username or not.
-      if (mention.user.is_bot) return reply('reply.bot');
-      if (mention.user.id === from.id) return reply('reply.self');
-      const opponent = await ensureUser(deps.db, userInfo(mention.user));
-      await touchMember(deps.db, group.id, opponent.id);
-      opponentId = opponent.id;
-    } else if (mention) {
-      const handle = (ctx.msg.text ?? '').slice(
-        mention.offset + 1,
-        mention.offset + mention.length,
-      );
-      if (handle.toLowerCase() === ctx.me.username.toLowerCase()) return reply('reply.bot');
-      const opponent = await findMemberByUsername(deps.db, group.id, handle);
-      if (opponent?.id === user.id) return reply('reply.self');
-      if (!opponent) return reply('reply.unknown_mention', { name: `@${handle}` });
-      opponentId = opponent.id;
-    } else if (target) {
-      if (target.sender_chat || !target.from) return reply('reply.anonymous');
-      if (target.from.is_bot) return reply('reply.bot');
-      if (target.from.id === from.id) return reply('reply.self');
-      const opponent = await ensureUser(deps.db, userInfo(target.from));
-      await touchMember(deps.db, group.id, opponent.id);
-      opponentId = opponent.id;
-    }
-    const settings = settingsOf(group);
-    try {
-      await createChallenge(deps, {
+    const threadId = threadOf(ctx.msg);
+    // An ephemeral command is private for any bot; a normal one (an old client) only for an admin.
+    const ephemeralMessageId = ephemeralIdOf(ctx.msg);
+    const answer: Answer = {
+      chatId: ctx.chat.id,
+      threadId,
+      receiverId: from.id,
+      trigger:
+        ephemeralMessageId !== null
+          ? { ephemeralMessageId }
+          : group.botIsAdmin
+            ? { kind: 'none' }
+            : null,
+      replyToMessageId: ephemeralMessageId !== null ? null : ctx.msg.message_id,
+    };
+    const choice = await resolveOpponent(deps, {
+      groupId: group.id,
+      challenger: from,
+      message: ctx.msg,
+      botUsername: ctx.me.username,
+    });
+    if (choice.kind === 'none') {
+      await openPrompt(deps, directApi, {
+        group,
+        user,
+        from,
+        chatId: ctx.chat.id,
+        threadId,
+        trigger: answer.trigger,
+      });
+    } else if (choice.kind === 'refuse') {
+      await sayPrivately(deps, directApi, answer, choice.key);
+    } else {
+      const settings = settingsOf(group);
+      await challengeOrExplain(deps, directApi, answer, {
         groupId: group.id,
         challengerId: user.id,
-        opponentId,
-        timePerMove: settings.defaultTimePerMove,
+        opponentId: choice.kind === 'user' ? choice.userId : null,
+        opponentUsername: choice.kind === 'username' ? choice.username : null,
+        timePerMove: 259200,
         colour: 'random',
         rated: settings.ratedDefault,
         threadId: cardThread(settings, threadId),
       });
-    } catch (error) {
-      const line = replyFor(error);
-      if (!line) throw error;
-      await reply(line.key, line.params);
+    }
+    // Keeps the chat free of command chatter where the bot may delete; failing that, it stays. An
+    // ephemeral command is invisible to the group, so there is nothing to delete.
+    if (ephemeralMessageId === null && group.botIsAdmin) {
+      await directApi.deleteMessage(ctx.chat.id, ctx.msg.message_id).catch((error: unknown) => {
+        deps.log.debug({ err: error }, 'could not delete a /challenge command');
+      });
     }
   });
 
@@ -162,26 +165,35 @@ export async function createBot(deps: Deps, config: Config): Promise<Bot> {
         const user = await ensureUser(deps.db, userInfo(ctx.from));
         await touchMember(deps.db, group.id, user.id);
       }
-      const threadId = ctx.msg.is_topic_message ? (ctx.msg.message_thread_id ?? null) : null;
+      const threadId = threadOf(ctx.msg);
       const groupId = group.publicId;
-      await sendLine(
-        ctx.chat.id,
-        threadId,
-        kind === 'lobby' ? 'command.chess' : 'command.settings',
-        {},
-        {
-          buttons:
-            kind === 'lobby'
-              ? [
-                  {
-                    text: t('button.challenge'),
-                    url: miniAppLink(config, { kind: 'newGame', groupId }),
-                  },
-                  { text: t('button.group_lobby'), url: miniAppLink(config, { kind, groupId }) },
-                ]
-              : [{ text: t('button.open_settings'), url: miniAppLink(config, { kind, groupId }) }],
-        },
-      );
+      const key = kind === 'lobby' ? 'command.chess' : 'command.settings';
+      const buttons =
+        kind === 'lobby'
+          ? [
+              {
+                text: t('button.challenge'),
+                url: miniAppLink(config, { kind: 'newGame', groupId }),
+              },
+              { text: t('button.group_lobby'), url: miniAppLink(config, { kind, groupId }) },
+            ]
+          : [{ text: t('button.open_settings'), url: miniAppLink(config, { kind, groupId }) }];
+      // An ephemeral command gets a private answer; an anonymous sender has nobody to receive one.
+      const ephemeralMessageId = ephemeralIdOf(ctx.msg);
+      if (
+        !anonymous &&
+        ephemeralMessageId !== null &&
+        (await sendEphemeral(directApi, {
+          chatId: ctx.chat.id,
+          threadId,
+          receiverId: ctx.from.id,
+          trigger: { ephemeralMessageId },
+          text: t(key),
+          replyMarkup: { inline_keyboard: buttons.map((button) => [button]) },
+        }))
+      )
+        return;
+      await sendLine(ctx.chat.id, threadId, key, {}, { buttons });
     };
   groupOnly.command('chess', linkCommand('lobby'));
   groupOnly.command('settings', linkCommand('settings'));
@@ -203,6 +215,7 @@ export async function createBot(deps: Deps, config: Config): Promise<Bot> {
   bot.on('callback_query:data', async (ctx) => {
     const data = decodeCallbackData(ctx.callbackQuery.data);
     if (!data) return ctx.answerCallbackQuery();
+    if (data.action === 'prompt') return handlePromptTap(deps, directApi, ctx.callbackQuery, data);
     const user = await ensureUser(deps.db, userInfo(ctx.from));
     const chat = ctx.callbackQuery.message?.chat;
     if (chat && isGroupChat(chat)) {
@@ -310,12 +323,15 @@ export async function createBot(deps: Deps, config: Config): Promise<Bot> {
     await migrateChatId(deps.db, ctx.chat.id, ctx.msg.migrate_to_chat_id);
   });
 
+  // After the commands, so a command sent as a reply to the prompt stays a command.
+  registerPromptReplies(groupOnly, deps, directApi);
+
   bot.chatType('private').on('message:write_access_allowed', async (ctx) => {
     const user = await ensureUser(deps.db, userInfo(ctx.from));
     await setDmAllowed(deps.db, user.id, true);
   });
 
-  registerPayments(bot, deps, checkoutApi);
+  registerPayments(bot, deps, directApi);
 
   return bot;
 }

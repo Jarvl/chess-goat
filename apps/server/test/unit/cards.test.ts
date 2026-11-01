@@ -307,7 +307,7 @@ describe('welcome and share', () => {
       lobby: lobbyLink,
     });
     expect(card.text).toBe(
-      'Play chess with this group on a real board inside Telegram. Tap Challenge someone to pick an opponent, or send /challenge @name here. The chat only sees results and shared positions.',
+      'Play chess with this group on a real board inside Telegram. Tap Challenge someone to pick an opponent, or send /challenge here. The chat only sees results and shared positions.',
     );
     expect(card.reply_markup?.inline_keyboard).toEqual([
       [

@@ -85,13 +85,17 @@ export async function listFinished(
   };
 }
 
-export async function pendingChallenges(tx: DbOrTx, groupId: number, viewerId: number) {
+export async function pendingChallenges(
+  tx: DbOrTx,
+  groupId: number,
+  viewer: { id: number; username: string | null },
+) {
   const rows = await challengeDtoRows(
     tx,
     and(eq(challenges.groupId, groupId), eq(challenges.status, 'pending')),
     50,
   );
-  return rows.map((row) => challengeToDto(row, viewerId));
+  return rows.map((row) => challengeToDto(row, viewer));
 }
 
 export async function buildLobby(
@@ -104,7 +108,7 @@ export async function buildLobby(
   const [active, finished, pending, players] = await Promise.all([
     activeGames(deps.db, group.id, viewer.id),
     listFinished(deps, group.id, viewer.id, null),
-    pendingChallenges(deps.db, group.id, viewer.id),
+    pendingChallenges(deps.db, group.id, viewer),
     getLeaderboard(deps.db, group.id),
   ]);
   return {

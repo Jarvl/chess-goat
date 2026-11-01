@@ -85,6 +85,20 @@
       "when": 1793315998180,
       "tag": "0011_conditional_premoves",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793431906912,
+      "tag": "0012_challenge_opponent_username",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793475122226,
+      "tag": "0013_challenge_prompts",
+      "breakpoints": true
     }
   ]
 }

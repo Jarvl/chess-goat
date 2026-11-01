@@ -44,12 +44,15 @@ export const ALLOWED_UPDATES = [
   'pre_checkout_query',
 ] as const;
 
-/** Spec §5.1 step 3: three group commands, two private commands, nothing in the default scope. */
+/**
+ * Spec §5.1 step 3: three group commands, two private commands, nothing in the default scope.
+ * All three are ephemeral (Bot API 10.2): only the sender sees them and the answer.
+ */
 export const BOT_COMMANDS = {
   group: [
-    { command: 'challenge', description: t('command.challenge.description') },
-    { command: 'chess', description: t('command.chess.description') },
-    { command: 'settings', description: t('command.settings.description') },
+    { command: 'challenge', description: t('command.challenge.description'), is_ephemeral: true },
+    { command: 'chess', description: t('command.chess.description'), is_ephemeral: true },
+    { command: 'settings', description: t('command.settings.description'), is_ephemeral: true },
   ],
   private: [
     { command: 'start', description: t('command.start.description') },

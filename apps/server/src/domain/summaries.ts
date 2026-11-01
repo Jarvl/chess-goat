@@ -145,13 +145,23 @@ export async function challengeDtoRows(
     .limit(limit);
 }
 
-export function challengeToDto(row: ChallengeDtoRow, viewerId: number): ChallengeDto {
+export function challengeToDto(
+  row: ChallengeDtoRow,
+  viewer: { id: number; username: string | null },
+): ChallengeDto {
   const { challenge } = row;
   const pending = challenge.status === 'pending';
+  const open = challenge.opponentId === null && challenge.opponentUsername === null;
+  // A username challenge is answerable only by whoever holds that username now.
+  const named =
+    challenge.opponentUsername !== null &&
+    viewer.username?.toLowerCase() === challenge.opponentUsername;
+  const addressed = challenge.opponentId === viewer.id || named;
   return {
     id: challenge.publicId,
     challenger: toPlayerRef(row.challenger, row.challengerRating),
     opponent: row.opponent ? toPlayerRef(row.opponent, row.opponentRating) : null,
+    opponentUsername: challenge.opponentUsername,
     timePerMove: challenge.timePerMove as TimePerMove,
     challengerColour: challenge.challengerColour,
     rated: challenge.rated,
@@ -159,12 +169,9 @@ export function challengeToDto(row: ChallengeDtoRow, viewerId: number): Challeng
     createdAt: challenge.createdAt.toISOString(),
     expiresAt: challenge.expiresAt.toISOString(),
     viewer: {
-      canAccept:
-        pending &&
-        (challenge.opponentId === viewerId ||
-          (challenge.opponentId === null && challenge.challengerId !== viewerId)),
-      canDecline: pending && challenge.opponentId === viewerId,
-      canCancel: pending && challenge.challengerId === viewerId,
+      canAccept: pending && (addressed || (open && challenge.challengerId !== viewer.id)),
+      canDecline: pending && addressed,
+      canCancel: pending && challenge.challengerId === viewer.id,
     },
   };
 }

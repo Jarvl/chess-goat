@@ -1,4 +1,4 @@
-import type { Chat, MessageEntity, Update, User } from 'grammy/types';
+import type { Chat, InlineKeyboardMarkup, MessageEntity, Update, User } from 'grammy/types';
 
 let updateId = 1000;
 let messageId = 500;
@@ -34,6 +34,8 @@ export function commandUpdate(options: {
   entities?: MessageEntity[];
   /** Posted as an anonymous admin: Telegram sets sender_chat to the group itself. */
   senderChat?: boolean;
+  /** An ephemeral message: message_id 0, identified by ephemeral_message_id instead. */
+  ephemeral?: boolean;
 }): Update {
   const command = options.text.split(' ')[0] ?? options.text;
   const base = { date: 1, chat: options.chat };
@@ -41,7 +43,8 @@ export function commandUpdate(options: {
     update_id: (updateId += 1),
     message: {
       ...base,
-      message_id: (messageId += 1),
+      message_id: options.ephemeral ? 0 : (messageId += 1),
+      ...(options.ephemeral ? { ephemeral_message_id: (messageId += 1) } : {}),
       from: options.from,
       ...(options.senderChat ? { sender_chat: options.chat } : {}),
       text: options.text,
@@ -70,6 +73,10 @@ export function callbackUpdate(options: {
   chat: Chat.SupergroupChat;
   data: string;
   cardMessageId?: number;
+  /** The tap is on an ephemeral message: message_id 0 plus its ephemeral_message_id. */
+  ephemeralMessageId?: number;
+  markup?: InlineKeyboardMarkup;
+  threadId?: number;
 }): Update {
   return {
     update_id: (updateId += 1),
@@ -79,10 +86,59 @@ export function callbackUpdate(options: {
       chat_instance: 'ci',
       data: options.data,
       message: {
-        message_id: options.cardMessageId ?? 1,
+        message_id: options.ephemeralMessageId !== undefined ? 0 : (options.cardMessageId ?? 1),
+        ...(options.ephemeralMessageId !== undefined
+          ? { ephemeral_message_id: options.ephemeralMessageId }
+          : {}),
         date: 1,
         chat: options.chat,
         text: 'card',
+        ...(options.threadId
+          ? { message_thread_id: options.threadId, is_topic_message: true }
+          : {}),
+        ...(options.markup ? { reply_markup: options.markup } : {}),
+      },
+    },
+  } as Update;
+}
+
+/** A user's reply to the bot's prompt (force_reply, or a tap-reply on an ephemeral prompt). */
+export function promptReplyUpdate(options: {
+  chat: Chat.SupergroupChat;
+  from: User;
+  text: string;
+  entities?: MessageEntity[];
+  prompt: {
+    markup: InlineKeyboardMarkup;
+    ephemeralMessageId?: number;
+    messageId?: number;
+  };
+  threadId?: number;
+  ephemeral?: boolean;
+}): Update {
+  const base = { date: 1, chat: options.chat };
+  return {
+    update_id: (updateId += 1),
+    message: {
+      ...base,
+      message_id: options.ephemeral ? 0 : (messageId += 1),
+      ...(options.ephemeral ? { ephemeral_message_id: (messageId += 1) } : {}),
+      from: options.from,
+      text: options.text,
+      ...(options.entities ? { entities: options.entities } : {}),
+      ...(options.threadId ? { message_thread_id: options.threadId, is_topic_message: true } : {}),
+      reply_to_message: {
+        ...base,
+        message_id:
+          options.prompt.ephemeralMessageId !== undefined
+            ? 0
+            : (options.prompt.messageId ?? (messageId += 1)),
+        ...(options.prompt.ephemeralMessageId !== undefined
+          ? { ephemeral_message_id: options.prompt.ephemeralMessageId }
+          : {}),
+        from: { id: 424242, is_bot: true, first_name: 'Test Chess', username: 'TestChessBot' },
+        text: 'prompt',
+        reply_markup: options.prompt.markup,
       },
     },
   } as Update;
