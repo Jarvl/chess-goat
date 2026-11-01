@@ -22,6 +22,8 @@ export const test = base.extend({
 
 export const BOT_TOKEN = '123456:TEST-TOKEN';
 export const HARNESS = 'http://127.0.0.1:4181';
+/** The harness's METRICS_TOKEN (apps/server/test/e2e/harness.ts). */
+const METRICS_TOKEN = 'e2e-metrics-token-0123456789abcdef';
 
 export type TelegramUser = { id: number; first_name: string; username: string };
 
@@ -106,7 +108,11 @@ export async function dropConnections(): Promise<void> {
 
 /** The number of SSE streams the server holds open, from its Prometheus metrics. */
 export async function openStreams(): Promise<number> {
-  const text = await (await fetch('http://127.0.0.1:4180/metrics')).text();
+  const text = await (
+    await fetch('http://127.0.0.1:4180/metrics', {
+      headers: { authorization: `Bearer ${METRICS_TOKEN}` },
+    })
+  ).text();
   const match = /^sse_streams (\d+)$/m.exec(text);
   return match ? Number(match[1]) : Number.NaN;
 }

@@ -98,6 +98,7 @@ jobs:
             -e SESSION_SECRET=ci-only-session-secret-0123456789abcdef \
             -e DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/chess_goat \
             -e ROLES=api,jobs,clock \
+            -e METRICS_TOKEN=ci-only-metrics-token-0123456789abcdef \
             chess-goat:ci
       - name: Smoke test
         run: |
@@ -108,7 +109,7 @@ jobs:
           # No runner installs Stockfish (the whole test suite runs on a fake engine); this probes
           # the binary packaged in the image itself, already proven at build time by the Dockerfile
           # assertion.
-          curl -fsS "http://127.0.0.1:3000/metrics" | grep -E '^engine_available 1$'
+          curl -fsS -H "Authorization: Bearer ci-only-metrics-token-0123456789abcdef" "http://127.0.0.1:3000/metrics" | grep -E '^engine_available 1$'
           docker stop --time 15 app
           docker logs app 2>&1 | grep 'server stopped'
       - name: Container logs

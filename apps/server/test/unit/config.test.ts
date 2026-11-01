@@ -34,6 +34,14 @@ describe('loadConfig', () => {
     expect(() => loadConfig(rest)).toThrow(/BOT_TOKEN/);
   });
 
+  it('leaves METRICS_TOKEN unset by default and rejects a short one', () => {
+    expect(loadConfig(valid).METRICS_TOKEN).toBeUndefined();
+    expect(() => loadConfig({ ...valid, METRICS_TOKEN: 'short' })).toThrow(/METRICS_TOKEN/);
+    expect(loadConfig({ ...valid, METRICS_TOKEN: 'm'.repeat(32) }).METRICS_TOKEN).toBe(
+      'm'.repeat(32),
+    );
+  });
+
   it('rejects an unknown role', () => {
     expect(() => loadConfig({ ...valid, ROLES: 'api,cron' })).toThrow(/ROLES/);
   });

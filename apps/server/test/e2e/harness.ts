@@ -119,6 +119,8 @@ async function main(): Promise<void> {
       MINI_APP_DIR,
       DATABASE_URL: url,
       LOG_LEVEL: 'warn',
+      // The browser tests read `sse_streams` from /metrics; the same token is in e2e/support.ts.
+      METRICS_TOKEN: 'e2e-metrics-token-0123456789abcdef',
       // On, so spec §11's "one engine game seeded in the existing harness and played through" can
       // exist: with the flag off, the endpoint refuses and the handler never runs.
       ENGINE_ENABLED: true,

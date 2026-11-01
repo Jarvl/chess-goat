@@ -11,6 +11,7 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     DATABASE_RESET_ON_MISMATCH: false,
     SESSION_SECRET: 's'.repeat(32),
     LICHESS_TOKEN: undefined,
+    METRICS_TOKEN: undefined,
     ROLES: ['api', 'bot', 'jobs', 'clock'],
     LOG_LEVEL: 'fatal',
     PORT: 0,

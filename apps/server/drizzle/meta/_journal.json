@@ -99,6 +99,13 @@
       "when": 1793475122226,
       "tag": "0013_challenge_prompts",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1793510704030,
+      "tag": "0014_stats_views",
+      "breakpoints": true
     }
   ]
 }

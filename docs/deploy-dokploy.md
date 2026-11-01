@@ -64,6 +64,7 @@ In the **Environment** tab:
 | `PUBLIC_URL` | `https://your.domain` — no trailing slash |
 | `WEBHOOK_SECRET` | 16 characters or more |
 | `SESSION_SECRET` | 32 characters or more |
+| `METRICS_TOKEN` | optional; `openssl rand -hex 32` |
 | `DATABASE_URL` | the internal string from step 1 |
 
 Generate the secrets rather than inventing them:
@@ -71,6 +72,7 @@ Generate the secrets rather than inventing them:
 ```bash
 openssl rand -hex 16   # WEBHOOK_SECRET
 openssl rand -hex 32   # SESSION_SECRET
+openssl rand -hex 32   # METRICS_TOKEN (optional)
 ```
 
 The server validates all of this at boot and refuses to start with a message naming the variable at
@@ -125,10 +127,9 @@ joins. Tap **Challenge someone** on the welcome card, send `/challenge @name`, o
 
 ## Worth doing before you rely on it
 
-**Close off `/metrics`.** Traefik serves the whole domain, so `/metrics` is publicly readable. It
-exposes counts, not personal data or message text, but it is still a free look at your traffic. Put
-a Traefik middleware in front of that path, either basic auth or an IP allowlist, or accept it
-knowingly.
+**`/metrics` is hidden by default.** It answers 404 unless `METRICS_TOKEN` is set, and then only to
+requests carrying `Authorization: Bearer <token>`. Set it if you scrape the endpoint; leave it unset
+and nothing is exposed.
 
 **Redact query strings in access logs.** The Mini App passes its session token as `?token=` on the
 live-updates stream, and a short-lived scoped token on the PGN download. Telegram's own design
@@ -142,6 +143,179 @@ itself writes nothing to disk, so it needs no volume.
 **Set up auto-deploy** from the application's webhook if you want pushes to `main` to ship. CI runs
 the full suite on every pull request, and the end-to-end suite plus a Docker image smoke test on
 `main`, so a green `main` is a reasonable thing to deploy automatically.
+
+## Usage dashboard (Metabase)
+
+An optional read-only dashboard over anonymised views of the database (`stats.*`). It shows how many groups, people, games, shares and tips there are, and how they grow. It sees ids, timestamps and categories only: no names, usernames, Telegram ids or chat titles.
+
+**Check the RAM first.** Metabase wants 1-2 GB on top of the app, and Dokploy runs everything on its own host. Look at the host's free memory before adding it.
+
+**Add the template.** In the same Dokploy project, add the **Metabase** template. Keep its image on, or pin it to, a `v0.x` tag (`metabase/metabase:v0.63.18` or a later `v0.x`, the free open-source edition). Never switch to `metabase-enterprise` or a `v1.x` tag. Keep the template's own application database; Metabase stores its settings there, not in the app's.
+
+**Give it a domain.** Add its own hostname with HTTPS, as in step 3. The page is public, so
+Metabase's login is the only lock on it: use a long, generated password for the admin account, and
+create no other accounts you don't need. On first boot, create that admin account. Then, in
+Admin → Settings, turn off anonymous usage tracking.
+
+Making it private later, without SSH, needs a private network or a login wall in front of it, since
+every Dokploy domain is served to the whole internet: Tailscale (`tailscale serve` to a loopback-only
+port, reached from your own devices), or Cloudflare Access in front of the hostname.
+
+**Create the database user.** Run the SQL in the "Set up the usage dashboard's database user" entry of [operations.md](operations.md), once. It creates `metabase_reader`, which can read the `stats` views and none of the app's tables.
+
+**Connect the data source.** In Admin → Databases, add a **PostgreSQL** database:
+
+- host: the PostgreSQL service's **internal** name, from its Dokploy page. Never expose a public port for this. If that name doesn't resolve from Metabase, make sure the Metabase service is on Dokploy's shared network (turn off Isolated Deployment for it).
+- port and database name: the same as the app's
+- user: `metabase_reader`, and its password
+- schema filter: only `stats`
+
+Don't paste connection strings anywhere else.
+
+### The dashboard
+
+Make one dashboard, **Chess Goat usage**, and set its auto-refresh to 5 minutes. Each headline number below is a native SQL question (New → SQL query) against the `stats` database, saved as a number card. Each graph is a question-builder recipe, or SQL where it needs a join. Day graphs cover the last 90 days.
+
+**Headline numbers**
+
+Groups with the bot:
+
+```sql
+select count(*) from stats.groups where bot_present;
+```
+
+Groups that removed it:
+
+```sql
+select count(*) from stats.groups where not bot_present;
+```
+
+Games in progress, human vs human:
+
+```sql
+select count(*) from stats.games where status = 'active' and not vs_engine;
+```
+
+Games in progress, vs the bot:
+
+```sql
+select count(*) from stats.games where status = 'active' and vs_engine;
+```
+
+Games finished:
+
+```sql
+select count(*) from stats.games where counted;
+```
+
+People seen:
+
+```sql
+select count(*) from stats.users;
+```
+
+People who have played:
+
+```sql
+select count(*) from stats.users where has_played;
+```
+
+People active in the last 7 days:
+
+```sql
+select count(*) from stats.users
+where last_seen_at > now() - interval '7 days' and not deleted;
+```
+
+Shares, all time:
+
+```sql
+select count(*) from stats.shares;
+```
+
+Shares, last 24 hours:
+
+```sql
+select count(*) from stats.shares where created_at > now() - interval '24 hours';
+```
+
+Shares, last 7 days:
+
+```sql
+select count(*) from stats.shares where created_at > now() - interval '7 days';
+```
+
+Moves played:
+
+```sql
+select count(*) from stats.moves;
+```
+
+Challenges pending:
+
+```sql
+select count(*) from stats.challenges where status = 'pending';
+```
+
+Stars received:
+
+```sql
+select coalesce(sum(stars), 0) from stats.tips where not refunded;
+```
+
+**Graphs**
+
+Make each a line or bar chart with the day on the x axis.
+
+- **New people per day.** Table `Users`; Summarize → Count by `Created At: Day`; filter `Created At` → Previous 90 days.
+- **Games started per day, split by vs engine.** Table `Games`; Summarize → Count by `Started At: Day` and `Vs Engine`; filter `Started At` → Previous 90 days. Show as a stacked bar.
+- **Shares per day.** Table `Shares`; Summarize → Count by `Created At: Day`; filter `Created At` → Previous 90 days.
+- **Moves per day.** Table `Moves`; Summarize → Count by `Played At: Day`; filter `Played At` → Previous 90 days.
+- **Groups added, cumulative** and **People seen, cumulative.** A running total has to start from the all-time count, so these are SQL (below) and cover all time rather than 90 days.
+- **Distinct players per day.** This needs a join, so use SQL (below).
+
+Groups added, cumulative:
+
+```sql
+select day, sum(added) over (order by day) as groups_total
+from (
+  select created_at::date as day, count(*) as added
+  from stats.groups
+  group by 1
+) d
+order by day;
+```
+
+People seen, cumulative:
+
+```sql
+select day, sum(added) over (order by day) as people_total
+from (
+  select created_at::date as day, count(*) as added
+  from stats.users
+  group by 1
+) d
+order by day;
+```
+
+Distinct players per day. This takes games that had a move that day, unpivots white and black, and joins `stats.users`, which drops the engine:
+
+```sql
+with played as (
+  select distinct m.played_at::date as day, m.game_id
+  from stats.moves m
+  where m.played_at > now() - interval '90 days'
+)
+select p.day, count(distinct u.id) as players
+from played p
+join stats.games g on g.id = p.game_id
+cross join lateral (values (g.white_id), (g.black_id)) as side(user_id)
+join stats.users u on u.id = side.user_id
+group by p.day
+order by p.day;
+```
+
+**What the dashboard can't show.** Groups that removed the bot have no removal timestamp, so removals over time aren't graphed; only the current count is. "Active in the last 7 days" exists only as a current number, because nothing stores its history. Put a text card under the graphs saying so, so nobody reads the missing lines as zero.
 
 ## A staging environment
 
