@@ -4,9 +4,10 @@ import { Hono } from 'hono';
 import type { ApiContext } from '../context';
 
 function bearerMatches(header: string | undefined, token: string): boolean {
-  const expected = `Bearer ${token}`;
-  if (!header || header.length !== expected.length) return false;
-  return timingSafeEqual(Buffer.from(header), Buffer.from(expected));
+  if (!header) return false;
+  const given = Buffer.from(header);
+  const expected = Buffer.from(`Bearer ${token}`);
+  return given.length === expected.length && timingSafeEqual(given, expected);
 }
 
 export function healthRoutes(ctx: ApiContext): Hono {

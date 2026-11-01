@@ -31,6 +31,7 @@ describe('GET /metrics access', () => {
     expect((await get(guarded, `Bearer ${'x'.repeat(40)}`)).status).toBe(404);
     expect((await get(guarded, 'Bearer short')).status).toBe(404);
     expect((await get(guarded, `Bearer ${'m'.repeat(41)}`)).status).toBe(404);
+    expect((await get(guarded, `Bearer ${'é' + 'm'.repeat(39)}`)).status).toBe(404);
     expect((await get(guarded, `Basic ${'m'.repeat(40)}`)).status).toBe(404);
   });
 
