@@ -150,7 +150,14 @@ An optional read-only dashboard over anonymised views of the database (`stats.*`
 
 **Check the RAM first.** Metabase wants 1-2 GB on top of the app, and Dokploy runs everything on its own host. Look at the host's free memory before adding it.
 
-**Add the template.** In the same Dokploy project, add the **Metabase** template. Keep its image on, or pin it to, a `v0.x` tag (`metabase/metabase:v0.63.18` or a later `v0.x`, the free open-source edition). Never switch to `metabase-enterprise` or a `v1.x` tag. Keep the template's own application database; Metabase stores its settings there, not in the app's.
+**Add the template.** Add the **Metabase** template, either in this project or in a Dokploy
+project of its own (say, "Analytics"). One Metabase can connect to several databases, so a
+separate project suits it if other apps will report to it too; the data-source step below works
+the same from any project, as long as both services are on Dokploy's shared network. In its compose file, pin the image to an exact release of the free open-source edition,
+`metabase/metabase:v0.65.2.5` (the latest on 2026-11-01), not `latest`: an upgrade migrates Metabase's
+own database and cannot be rolled back, so upgrade on purpose, by changing the tag after a backup of
+that database. What keeps it free is the repository, `metabase/metabase`; never switch to
+`metabase/metabase-enterprise`. Keep the template's own application database; Metabase stores its settings there, not in the app's.
 
 **Give it a domain.** Add its own hostname with HTTPS, as in step 3. The page is public, so
 Metabase's login is the only lock on it: use a long, generated password for the admin account, and
