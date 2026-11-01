@@ -1,13 +1,13 @@
 import { sql } from 'drizzle-orm';
 import postgres from 'postgres';
+import { REPO_ROOT, scratchDatabaseName } from '../../../../scripts/test-database-name.mjs';
 import { LocalBus } from '../../src/bus/bus';
 import { createDb, type Db, type Tx } from '../../src/db/client';
 import type { Deps } from '../../src/domain/deps';
 import { createLogger } from '../../src/logger';
+import { testDatabaseUrl } from './testDatabase';
 
-export function openTestDb(): ReturnType<typeof createDb> {
-  const url = process.env.TEST_DATABASE_URL;
-  if (!url) throw new Error('TEST_DATABASE_URL must be set for integration tests');
+export function openTestDb(url = testDatabaseUrl()): ReturnType<typeof createDb> {
   return createDb(url, { max: 6 });
 }
 
@@ -86,10 +86,9 @@ export type ScratchDatabase = { url: string; sql: postgres.Sql; drop(): Promise<
 
 /** A new, empty database beside the test one, for a test that migrates from nothing. */
 export async function scratchDatabase(name: string): Promise<ScratchDatabase> {
-  const base = process.env.TEST_DATABASE_URL;
-  if (!base) throw new Error('TEST_DATABASE_URL must be set for integration tests');
+  const base = testDatabaseUrl();
   const admin = postgres(base, { max: 1, onnotice: () => undefined });
-  const database = `chess_goat_${name}_${process.pid}`;
+  const database = scratchDatabaseName(REPO_ROOT, name, process.pid);
   await admin.unsafe(`drop database if exists ${database} with (force)`);
   await admin.unsafe(`create database ${database}`);
   const url = new URL(base);

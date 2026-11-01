@@ -3,6 +3,7 @@ import postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { runMigrations } from '../../src/db/migrate';
 import { scratchDatabase, type ScratchDatabase } from '../helpers/db';
+import { testDatabaseUrl } from '../helpers/testDatabase';
 
 const READER = `stats_reader_test_${process.pid}`;
 const VIEWS = {
@@ -65,7 +66,7 @@ afterAll(async () => {
   }
   await database?.drop();
   if (roleCreated) {
-    const admin = postgres(process.env.TEST_DATABASE_URL!, { max: 1, onnotice: () => undefined });
+    const admin = postgres(testDatabaseUrl(), { max: 1, onnotice: () => undefined });
     await admin.unsafe(`drop role if exists ${READER}`);
     await admin.end({ timeout: 5 });
   }

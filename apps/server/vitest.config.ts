@@ -1,18 +1,15 @@
 import { defineConfig } from 'vitest/config';
 
-const hasDatabase = Boolean(process.env.TEST_DATABASE_URL);
-if (!hasDatabase) {
-  console.warn(
-    '[server] TEST_DATABASE_URL is not set: integration tests are skipped. See scripts/local-postgres.sh.',
-  );
-}
+// `pnpm test:unit` sets this to skip the integration tests on purpose. Without it they always run,
+// on this worktree's own database (test/helpers/testDatabase.ts), and fail if no server answers.
+const unitOnly = process.env.TEST_UNIT_ONLY === '1';
 
 export default defineConfig({
   test: {
     name: 'server',
-    include: hasDatabase ? ['test/**/*.test.ts'] : ['test/unit/**/*.test.ts'],
+    include: unitOnly ? ['test/unit/**/*.test.ts'] : ['test/**/*.test.ts'],
     exclude: ['test/e2e/**', '**/node_modules/**'],
-    globalSetup: ['test/helpers/fonts.ts', ...(hasDatabase ? ['test/helpers/globalSetup.ts'] : [])],
+    globalSetup: ['test/helpers/fonts.ts', ...(unitOnly ? [] : ['test/helpers/globalSetup.ts'])],
     fileParallelism: false,
     testTimeout: 20_000,
     hookTimeout: 30_000,

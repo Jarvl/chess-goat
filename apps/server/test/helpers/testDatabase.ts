@@ -1,3 +1,4 @@
+import { connect } from 'node:net';
 import postgres from 'postgres';
 import { REPO_ROOT, testDatabaseName } from '../../../../scripts/test-database-name.mjs';
 import { runMigrations } from '../../src/db/migrate';
@@ -72,19 +73,38 @@ async function withConnection(
   url: string,
   work: (sql: postgres.Sql) => Promise<void>,
 ): Promise<void> {
+  await reachable(url);
   const sql = postgres(url, { max: 1, onnotice: () => undefined });
   try {
-    await sql`select 1`.catch((error: unknown) => {
-      if (error instanceof postgres.PostgresError) throw error;
-      const { hostname, port } = new URL(url);
-      throw new Error(
-        `No PostgreSQL at ${hostname}:${port || 5432} for the tests. Start one with scripts/local-postgres.sh start, or set TEST_DATABASE_URL to a server.`,
-        { cause: error },
-      );
-    });
     await work(sql);
   } finally {
     await sql.end({ timeout: 5 });
+  }
+}
+
+/**
+ * Fails with the fix when nothing listens at the server's address. Checked over plain TCP, so the
+ * message names the address and never the credentials a connection error might carry.
+ */
+async function reachable(url: string): Promise<void> {
+  const { hostname, port: portText } = new URL(url);
+  const port = Number(portText || 5432);
+  const failure = await new Promise<string | undefined>((resolve) => {
+    const socket = connect({ host: hostname, port, timeout: 5_000 });
+    socket.once('connect', () => {
+      socket.destroy();
+      resolve(undefined);
+    });
+    socket.once('timeout', () => {
+      socket.destroy();
+      resolve('timed out');
+    });
+    socket.once('error', (error: NodeJS.ErrnoException) => resolve(error.code ?? error.message));
+  });
+  if (failure) {
+    throw new Error(
+      `No PostgreSQL at ${hostname}:${port} for the tests (${failure}). Start one with scripts/local-postgres.sh start, or set TEST_DATABASE_URL to a server.`,
+    );
   }
 }
 
