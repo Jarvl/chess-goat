@@ -20,7 +20,16 @@ async function openFirstGame(page: Page): Promise<void> {
   await page.locator('.game-card').first().click();
   await expect(page.locator('.switcher [data-switch]')).toHaveCount(2);
   // The fake Telegram reports a 720 px stable height by default; a real phone reports its own.
-  await page.evaluate(() => window.__tg!.setStableHeight(window.innerHeight));
+  // The board resizes at once, but chessground lays its squares out again only from a
+  // ResizeObserver, which runs after the next frame's animation callbacks; until then they keep
+  // the old size and spill past the board. A second frame is past that.
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        window.__tg!.setStableHeight(window.innerHeight);
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
 }
 
 test('hops between games from the strip and backs out to the list in one tap', async ({ page }) => {
