@@ -54,7 +54,7 @@ export async function boot(app: AppContextValue): Promise<void> {
   });
   tg.onViewportChanged(() => applyTheme(tg));
 
-  const outcome = await launch(client, tg.initData);
+  const outcome = await launch(client, tg.initData, tg.startParam);
   if (outcome.kind === 'expired') {
     router.land('games', { name: 'reopen' });
     return;
@@ -84,7 +84,7 @@ export async function boot(app: AppContextValue): Promise<void> {
 
 /** The 401 path of spec §6.1 step 6: one relaunch with the original initData, or the reopen screen. */
 export async function relaunch(app: AppContextValue): Promise<string | null> {
-  const outcome = await launch(app.client, app.tg.initData);
+  const outcome = await launch(app.client, app.tg.initData, app.tg.startParam);
   if (outcome.kind === 'ok') return outcome.response.token;
   app.router.land('games', { name: 'reopen' });
   return null;

@@ -26,7 +26,8 @@ import { markLeft, touchMember } from '../domain/members';
 import { ensureUser, setDmAllowed } from '../domain/users';
 import { enqueue } from '../jobs/queue';
 import { createTelegramApi } from '../telegram/client';
-import { miniAppLink } from '../telegram/links';
+import type { MessageButton } from '../jobs/handlers/telegram';
+import { miniAppButton, miniAppLink } from '../telegram/links';
 import { sendEphemeral } from './ephemeral';
 import { resolveOpponent } from './opponent';
 import { registerPayments } from './payments';
@@ -79,7 +80,7 @@ export async function createBot(deps: Deps, config: Config): Promise<Bot> {
     threadId: number | null,
     key: MessageKey,
     params: MessageParams,
-    extra: { buttons?: { text: string; url: string }[] } = {},
+    extra: { buttons?: MessageButton[] } = {},
   ) =>
     enqueue(deps.db, {
       kind: 'send_message',
@@ -206,7 +207,7 @@ export async function createBot(deps: Deps, config: Config): Promise<Bot> {
       'dm.start',
       {},
       {
-        buttons: [{ text: t('button.open_chess'), url: miniAppLink(config) }],
+        buttons: [miniAppButton(config, t('button.open_chess'))],
       },
     );
   });

@@ -276,7 +276,7 @@ describe('send_dm', () => {
         [
           {
             text: '♟ Open game',
-            url: `https://t.me/TestChessBot/chess?startapp=g_${game.publicId}`,
+            web_app: { url: `https://chess.test/app/?startapp=g_${game.publicId}` },
           },
         ],
         [{ text: 'Go to group', url: 'https://t.me/c/1000000002/900' }],

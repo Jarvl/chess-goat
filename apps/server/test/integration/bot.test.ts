@@ -1089,7 +1089,7 @@ describe('/chess, /settings and /start', () => {
     expect(user?.dmAllowed).toBe(true);
     expect((await messagesSent())[0]).toMatchObject({
       chatId: alice.id,
-      buttons: [{ text: '♟ Open Chess', url: 'https://t.me/TestChessBot/chess' }],
+      buttons: [{ text: '♟ Open Chess', web_app: { url: 'https://chess.test/app/' } }],
     });
   });
 });
