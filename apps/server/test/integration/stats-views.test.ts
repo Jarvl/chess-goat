@@ -43,7 +43,9 @@ async function grantReader(): Promise<void> {
   await scratch.unsafe(`grant connect on database ${databaseName} to ${READER}`);
   await scratch.unsafe(`grant usage on schema stats to ${READER}`);
   await scratch.unsafe(`grant select on all tables in schema stats to ${READER}`);
-  await scratch.unsafe(`alter default privileges in schema stats grant select on tables to ${READER}`);
+  await scratch.unsafe(
+    `alter default privileges in schema stats grant select on tables to ${READER}`,
+  );
   await scratch.unsafe(`revoke all on schema public from ${READER}`);
 }
 
@@ -161,7 +163,10 @@ describe('stats views', () => {
     const engine = await engineId();
     const group = await seedGroup('ggames', -2000002);
     await seedGame('gm-active', group, a, b);
-    const mate = await seedGame('gm-mate', group, a, b, { status: 'finished', endReason: 'checkmate' });
+    const mate = await seedGame('gm-mate', group, a, b, {
+      status: 'finished',
+      endReason: 'checkmate',
+    });
     await seedGame('gm-abort', group, a, b, { status: 'finished', endReason: 'abort' });
     const voided = await seedGame('gm-void', group, a, b, {
       status: 'finished',
