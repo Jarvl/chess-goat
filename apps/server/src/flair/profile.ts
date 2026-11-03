@@ -23,6 +23,8 @@ export async function loadFlairDto(tx: DbOrTx, userId: number): Promise<FlairDto
         firstName: opponent.firstName,
         username: opponent.username,
         deletedAt: opponent.deletedAt,
+        ownerId: opponent.ownerId,
+        ownerName: opponent.ownerName,
       },
     })
     .from(userFlair)

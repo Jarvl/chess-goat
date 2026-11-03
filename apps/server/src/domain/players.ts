@@ -7,7 +7,15 @@ import { displayName, wornFlair } from './users';
 export function toPlayerRef(
   user: Pick<
     UserRow,
-    'id' | 'firstName' | 'username' | 'deletedAt' | 'isEngine' | 'photoHash' | 'flairWorn'
+    | 'id'
+    | 'firstName'
+    | 'username'
+    | 'deletedAt'
+    | 'isEngine'
+    | 'photoHash'
+    | 'flairWorn'
+    | 'ownerId'
+    | 'ownerName'
   >,
   rating: Pick<RatingRow, 'rating' | 'rd'> | null,
 ): PlayerRef {

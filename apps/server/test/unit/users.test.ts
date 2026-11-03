@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { UserRow } from '../../src/db/schema';
-import { displayName, flairEmoji, nameWithFlair } from '../../src/domain/users';
+import { displayName, flairEmoji, isHuman, nameWithFlair, wornFlair } from '../../src/domain/users';
 
 const person = (overrides: Partial<UserRow>) =>
   ({
@@ -9,6 +9,8 @@ const person = (overrides: Partial<UserRow>) =>
     deletedAt: null,
     isEngine: false,
     flairWorn: [],
+    ownerId: null,
+    ownerName: null,
     ...overrides,
   }) as UserRow;
 
@@ -25,6 +27,32 @@ describe('displayName', () => {
     expect(displayName(person({ username: 'jarvl', deletedAt: new Date() }))).toBe(
       'Deleted player',
     );
+  });
+});
+
+describe('displayName for bots', () => {
+  const bot = { firstName: 'Deep Goat', ownerId: 1, ownerName: '@jo' };
+
+  it('labels a bot with its owner', () => {
+    expect(displayName(person(bot))).toBe('🤖 Deep Goat (@jo)');
+  });
+
+  it('labels a deleted bot generically', () => {
+    expect(displayName(person({ ...bot, deletedAt: new Date() }))).toBe('🤖 Deleted bot');
+  });
+});
+
+describe('bot identity', () => {
+  it('bots wear no flair', () => {
+    expect(wornFlair(person({ ownerId: 1, ownerName: '@jo', flairWorn: ['rank_1500'] }))).toEqual(
+      [],
+    );
+  });
+
+  it('isHuman is false for the engine and for bots', () => {
+    expect(isHuman({ isEngine: true, ownerId: null })).toBe(false);
+    expect(isHuman({ isEngine: false, ownerId: 5 })).toBe(false);
+    expect(isHuman({ isEngine: false, ownerId: null })).toBe(true);
   });
 });
 
