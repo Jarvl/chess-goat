@@ -242,15 +242,13 @@ describe('Settings', () => {
     expect(r.app.router.current.value).toEqual({ name: 'flair' });
   });
 
-  it('opens Bots from its row after Move confirmations', async () => {
+  it('has no Bots row yet', () => {
+    // Hidden until the MCP server exists (bots milestone 3, issue #102); the screen and route stay.
     const r = renderApp(
       () => <Settings />,
       withFlair(() => ({ status: 200, body: { ok: true } })),
     );
-    const row = r.root.querySelector('[data-action="bots"]')!;
-    expect(r.root.querySelector('[data-pref="moveConfirmations"]')?.nextElementSibling).toBe(row);
-    await r.click('[data-action="bots"]');
-    expect(r.app.router.current.value).toEqual({ name: 'bots' });
+    expect(r.root.querySelector('[data-action="bots"]')).toBeNull();
   });
 
   it('keeps the row working when the flair cannot load', async () => {

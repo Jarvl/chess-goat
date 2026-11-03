@@ -1,7 +1,7 @@
 import type { GameResult, PlayerResult } from '@chess-goat/shared';
 import { and, asc, eq, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client';
-import { games, users, type GameRow } from '../db/schema';
+import { games, type GameRow } from '../db/schema';
 import type { CountedGame } from './rules';
 
 // `finishGame` uses `isCountedGame` (flair spec §3.2), so nothing here may import `domain/games.ts`.

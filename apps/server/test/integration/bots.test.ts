@@ -78,6 +78,11 @@ describe('bot management', () => {
     expect((await createBot(db, owner.id, { name: '  Deep   Goat ' })).firstName).toBe('Deep Goat');
   });
 
+  it('accepts combining marks after the first character', async () => {
+    const owner = await insertUser(db);
+    expect((await createBot(db, owner.id, { name: 'नमस्ते' })).firstName).toBe('नमस्ते');
+  });
+
   it('refuses invalid names', async () => {
     const owner = await insertUser(db);
     for (const name of ['', '   ', 'a'.repeat(33), '@goat', '-goat', 'goat!', 'stockfish']) {

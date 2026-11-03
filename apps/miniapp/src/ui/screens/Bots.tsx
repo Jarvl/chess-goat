@@ -32,9 +32,9 @@ export function Bots() {
 
   const create = async (confirmMessage?: string) => {
     if (busy) return;
-    if (confirmMessage && !(await confirmDialog(confirmMessage, { danger: true }))) return;
     setBusy(true);
     try {
+      if (confirmMessage && !(await confirmDialog(confirmMessage, { danger: true }))) return;
       const created = await client.post(
         '/api/me/owner-token',
         undefined,
@@ -50,9 +50,9 @@ export function Bots() {
   };
   const revoke = async () => {
     if (busy) return;
-    if (!(await confirmDialog(t('app.bots.revoke_confirm'), { danger: true }))) return;
     setBusy(true);
     try {
+      if (!(await confirmDialog(t('app.bots.revoke_confirm'), { danger: true }))) return;
       await client.del('/api/me/owner-token');
       setSecret(null);
       setInfo(null);
@@ -100,7 +100,7 @@ export function Bots() {
         {secret ? (
           <div class="field">
             <span class="grow">
-              <code data-token style="word-break:break-all;user-select:all">
+              <code class="token" data-token>
                 {secret}
               </code>
               <span class="secondary">{t('app.bots.shown_once')}</span>
@@ -122,7 +122,12 @@ export function Bots() {
           >
             {t('app.bots.rotate')}
           </button>
-          <button class="card danger-row" data-action="revoke-token" onClick={() => void revoke()}>
+          <button
+            class="card danger-row"
+            data-action="revoke-token"
+            disabled={busy}
+            onClick={() => void revoke()}
+          >
             {t('app.bots.revoke')}
           </button>
         </>

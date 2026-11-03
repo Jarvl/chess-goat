@@ -8,6 +8,7 @@ import { openTestDb, truncateAll } from '../helpers/db';
 import {
   insertChallenge,
   insertGame,
+  insertBot,
   insertGroup,
   insertMove,
   insertUser,
@@ -39,6 +40,14 @@ const launch = (fields: Parameters<typeof signInitData>[1]) =>
   });
 
 describe('GET /api/me/games', () => {
+  it('rejects a session token issued for a bot id', async () => {
+    const owner = await insertUser(db);
+    const bot = await insertBot(db, owner);
+    const token = await api.sessionFor(bot);
+    const res = await api.request('GET', '/api/me/games', { token });
+    expect(res.status).toBe(401);
+  });
+
   it('spans the groups the viewer can see, their own turn first, and leaves out the rest', async () => {
     const [viewer, opponent] = [await insertUser(db), await insertUser(db)];
     const club = await insertGroup(db, { title: 'Club' });

@@ -200,7 +200,13 @@ select count(*) from stats.groups where not bot_present;
 Games in progress, human vs human:
 
 ```sql
-select count(*) from stats.games where status = 'active' and not vs_engine;
+select count(*) from stats.games where status = 'active' and not vs_engine and not vs_bot;
+```
+
+Games in progress, against a bot account (counted apart):
+
+```sql
+select count(*) from stats.games where status = 'active' and vs_bot;
 ```
 
 Games in progress, vs the bot:

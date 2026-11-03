@@ -613,6 +613,11 @@ button {
   font-weight: 600;
 }
 
+.token {
+  word-break: break-all;
+  user-select: all;
+}
+
 .danger-row {
   width: 100%;
   padding: 14px;

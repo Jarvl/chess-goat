@@ -7,7 +7,7 @@ import { DomainError } from './errors';
 import { MAX_BOTS_PER_OWNER } from './limits';
 import { displayName, lockLiveHumanOwner } from './users';
 
-const NAME_PATTERN = /^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,31}$/u;
+const NAME_PATTERN = /^[\p{L}\p{N}][\p{L}\p{M}\p{N} ._-]{0,31}$/u;
 const RESERVED_NAMES = new Set(['stockfish', 'deleted player', 'deleted bot']);
 const TAGLINE_MAX = 80;
 
