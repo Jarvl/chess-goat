@@ -114,6 +114,22 @@ describe('abortStaleBotGames', () => {
     expect(published).toEqual([game.publicId]);
   });
 
+  it('queues no import, card, photo, DM or flair job for the abort', async () => {
+    const game = await botGame({ lastMoveAt: minutesAgo(31 * DAY), plyCount: 4 });
+    expect(await abortStaleBotGames(deps)).toBe(1);
+    expect((await reload(game.id)).endReason).toBe('abort');
+    const kinds = (await db.select().from(jobs)).map((job) => job.kind);
+    for (const kind of [
+      'lichess_import',
+      'edit_card',
+      'send_result_photo',
+      'send_dm',
+      'award_flair',
+    ]) {
+      expect(kinds).not.toContain(kind);
+    }
+  });
+
   it('leaves one idle for 29 days', async () => {
     const game = await botGame({ lastMoveAt: minutesAgo(29 * DAY) });
     expect(await abortStaleBotGames(deps)).toBe(0);

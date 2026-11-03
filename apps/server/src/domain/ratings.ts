@@ -134,6 +134,8 @@ async function lockGroupRatings(tx: DbOrTx, groupId: number): Promise<void> {
 /**
  * Each rated result is its own rating period for both players (spec §7.5). Returns null and
  * touches nothing for casual games and for results that do not change ratings (aborts, voids).
+ * In a bot-vs-human game the human's side is frozen: the returned snapshot has before = after for
+ * it, while the stored rating columns for that side are null.
  */
 export async function applyGameResultToRatings(
   tx: DbOrTx,

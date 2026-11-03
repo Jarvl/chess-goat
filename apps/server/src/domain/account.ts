@@ -95,7 +95,7 @@ export async function leavePlay(
 
 /** What a deleted bot's `users` row keeps: its id, owner and history, under the anonymous name. */
 export function deletedBotFields(now: Date) {
-  return { firstName: 'Deleted bot', tagline: null, deletedAt: now };
+  return { firstName: 'Deleted bot', tagline: null, lastActiveAt: null, deletedAt: now };
 }
 
 /** Spec §12 "Delete my data": immediate and irreversible; opponents' histories stay consistent. */

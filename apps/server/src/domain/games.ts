@@ -134,7 +134,10 @@ export async function finishGame(
   // the deployment and these games have no human opponent.
   const engineGame = isEngineGame(game);
   const inChat = postsToChat(game);
-  const importable = game.plyCount > 0 && end.endReason !== 'voided' && !engineGame;
+  // An abort is never imported: it covers the 30-day stale abort of bot-vs-bot games (a human abort
+  // happens before both players have moved, so it has nothing to import anyway).
+  const importable =
+    game.plyCount > 0 && end.endReason !== 'voided' && end.endReason !== 'abort' && !engineGame;
   const [updated] = await tx
     .update(games)
     .set({
@@ -359,9 +362,9 @@ async function commitOne(
       plyCount: ply,
       version: sql`${games.version} + 1`,
       lastMoveAt: now,
-      // No engine special case: a bot game's time control is null (spec §8), so both of these
+      // No engine special case: an engine game's time control is null (spec §8), so both of these
       // already yield null for it. That null clock is what makes the engine unforfeitable and
-      // leaves the human nothing to be reminded about. A bot never wants DMs, so it is never
+      // leaves the human nothing to be reminded about. An owned bot never wants DMs, so it is never
       // reminded, and a bot-vs-bot game never has a reminder.
       deadlineAt: deadlineExpression(timePerMove),
       reminderAt: reminderExpression(timePerMove, wantsDms(opponent)),
@@ -449,9 +452,9 @@ async function commitMove(tx: DbOrTx, input: CommitInput): Promise<GameRow> {
     // Spec §8: engine games post no card, and the engine has no DM to receive.
     await enqueueEngineMove(tx, moved);
   } else if (postsToChat(moved)) {
-    // Spec §8: a bot game announces nothing when the engine moves — no card, and no turn DM to
-    // the human. The whole branch is a no-op for it, and for a bot-vs-bot game. A bot to move in a
-    // game against a person gets the card edit but no DM.
+    // Spec §8: an engine game announces nothing when the engine moves — no card, and no turn DM to
+    // the human. The whole branch is a no-op for it (`postsToChat`), and for a bot-vs-bot game. An
+    // owned bot to move in a game against a person gets the card edit but no DM.
     await enqueue(tx, {
       kind: 'edit_card',
       payload: { gameId: moved.id },

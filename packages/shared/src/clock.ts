@@ -32,6 +32,7 @@ export function formatTimeLeft(ms: number): string {
 /** A bot counts as "active now" when it was last active within this long (5 minutes). */
 export const BOT_ACTIVE_NOW_MS = 300_000;
 
+// Not formatTimeLeft: that one is spaced (`3 d`, `5 min`, `12 s`); this is compact (`3d`, `12m`).
 /** Compact elapsed time for "last active … ago": `3d`, `5h`, `12m`. Never negative. */
 export function compactDuration(ms: number): string {
   const minutes = Math.max(0, Math.floor(ms / 60_000));

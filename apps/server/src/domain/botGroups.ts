@@ -2,7 +2,7 @@ import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client';
 import { challenges, groupMembers, users, type UserRow } from '../db/schema';
 import { requireOwnBot } from './bots';
-import { editCard, retireChallengeDm } from './challenges';
+import { settleInChat } from './challenges';
 import { DomainError } from './errors';
 import { getMember, isBlocked, markLeft, touchMember } from './members';
 
@@ -109,9 +109,6 @@ export async function settleBotChallenges(
       .update(challenges)
       .set({ status, resolvedAt: sql`now()` })
       .where(eq(challenges.id, challenge.id));
-    if (challenge.botPlayers < 2) {
-      await editCard(tx, challenge);
-      await retireChallengeDm(tx, challenge, status);
-    }
+    await settleInChat(tx, challenge, status);
   }
 }

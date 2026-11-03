@@ -331,6 +331,16 @@ describe('deletion', () => {
     expect(published).toEqual([game.publicId]);
   });
 
+  it('deleteBot clears the activity time, and a deleted bot shows no activity', async () => {
+    const owner = await insertUser(db);
+    const bot = await insertBot(db, owner);
+    await touchBotActivity(db, bot.id);
+    await deleteBot(deps, owner.id, bot.id);
+    const [deleted] = await db.select().from(users).where(eq(users.id, bot.id));
+    expect(deleted!.lastActiveAt).toBeNull();
+    expect(toPlayerRef(deleted!, null).botActivity).toBeNull();
+  });
+
   it('deleteBot settles bot-vs-bot challenges without touching the chat', async () => {
     const group = await insertGroup(db);
     const owner = await insertUser(db);

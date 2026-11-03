@@ -36,15 +36,16 @@ export async function forfeitOverdueGames(deps: Deps, limit = 100): Promise<numb
 /** Clockless bot-vs-bot games idle for STALE_BOT_GAME_DAYS are aborted: no result, no rating change. */
 export async function abortStaleBotGames(deps: Deps, limit = 100): Promise<number> {
   const finished = await deps.db.transaction(async (tx) => {
-    // Same expression and predicate as the partial index games_bot_vs_bot_stale.
+    // Same expression and predicate as the partial index games_bot_vs_bot_stale. The constants are
+    // SQL literals, not bind parameters, so a generic prepared plan can still prove the predicate.
     const lastActivity = sql`coalesce(${games.lastMoveAt}, ${games.startedAt})`;
     const stale = await tx
       .select()
       .from(games)
       .where(
         and(
-          eq(games.status, 'active'),
-          eq(games.botPlayers, 2),
+          sql`${games.status} = 'active'`,
+          sql`${games.botPlayers} = 2`,
           isNull(games.timePerMove),
           lt(lastActivity, sql`now() - make_interval(days => ${STALE_BOT_GAME_DAYS})`),
         ),

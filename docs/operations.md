@@ -12,7 +12,7 @@
 
 ## Deploying the image
 
-- One container, all four roles by default (`ROLES=api,bot,jobs,clock`). To split, run several containers with subsets; scanners and the job worker are safe to run in several instances (`SELECT … FOR UPDATE SKIP LOCKED`).
+- One container, all four roles by default (`ROLES=api,bot,jobs,clock`). To split, run several containers with subsets; scanners and the job worker are safe to run in several instances (`SELECT … FOR UPDATE SKIP LOCKED`). The `clock` role also aborts clockless bot-vs-bot games idle for 30 days (`staleBotGames` in the "scanners applied transitions" log).
 - **Do not split the roles across containers yet, and do not run more than one `api` replica.** The event bus is in-process (`LocalBus`), so a game change committed anywhere other than the container holding a viewer's SSE stream never reaches that viewer: the board stops live-updating until the client refetches. This bites hardest with the bot, because *every* bot move is committed in whichever container runs the `jobs` role — split `jobs` off and bot games look frozen to anyone watching. A `clock` split loses forfeits the same way. Both need the `PgNotifyBus` upgrade named in the design (§4.3) first; the alpha runs all four roles in one container.
 - If the roles ever are split, scope the `engine_available` alert below to the container running `jobs`: the boot probe only runs under that role, so an api-only container reports `0` for ever and would alert continuously.
 - Migrations run at boot under an advisory lock, so several replicas can start at once. Rolling restarts are safe: clocks and jobs are rows; Telegram retries the webhook; SSE clients reconnect.

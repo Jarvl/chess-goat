@@ -31,8 +31,9 @@ export function toPlayerRef(
       user.photoHash && !user.isEngine && !user.deletedAt ? avatarUrl(user.photoHash) : null,
     // One bad row with a fourth flair would break every screen showing them (see `wornFlair`).
     flair: wornFlair(user).map((flair) => flair.id),
-    botActivity: isOwnedBot(user)
-      ? { lastActiveAt: user.lastActiveAt ? user.lastActiveAt.toISOString() : null }
-      : null,
+    botActivity:
+      isOwnedBot(user) && !user.deletedAt
+        ? { lastActiveAt: user.lastActiveAt ? user.lastActiveAt.toISOString() : null }
+        : null,
   };
 }
