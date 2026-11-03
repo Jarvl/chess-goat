@@ -136,9 +136,23 @@ describe('bots in groups', () => {
     await addBotToGroup(db, owner.id, second.id, group.id);
     await blockUser(db, group.id, second.id, admin.id);
     const dto = await groupSettingsDto(db, group);
-    expect(dto.bots.map((b) => [b.id, b.blocked])).toEqual([
-      [String(bot.id), false],
-      [String(second.id), true],
+    expect(dto.bots.map((b) => [b.id, b.blocked, b.blockedViaOwner])).toEqual([
+      [String(bot.id), false, false],
+      [String(second.id), true, false],
     ]);
+  });
+
+  it('keeps a blocked bot listed after it leaves, and marks bots blocked via their owner', async () => {
+    const { group, owner, admin, bot } = await setup();
+    await addBotToGroup(db, owner.id, bot.id, group.id);
+    await adminBlock(deps, group, admin.id, bot.id);
+    await removeBotFromGroup(db, owner.id, bot.id, group.id);
+    const dto = await groupSettingsDto(db, group);
+    expect(dto.bots.map((b) => [b.id, b.blocked])).toEqual([[String(bot.id), true]]);
+    await adminUnblock(deps, group, admin.id, bot.id);
+    await adminBlock(deps, group, admin.id, owner.id);
+    await touchMember(db, group.id, bot.id);
+    const via = await groupSettingsDto(db, group);
+    expect(via.bots.map((b) => [b.blocked, b.blockedViaOwner])).toEqual([[true, true]]);
   });
 });

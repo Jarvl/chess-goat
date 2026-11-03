@@ -15,8 +15,9 @@ const dto: GroupSettingsDto = {
   },
   blocked: [playerRef('3', 'Carol')],
   bots: [
-    { ...playerRef('7', 'Rook'), blocked: false },
-    { ...playerRef('8', 'Pawn'), blocked: true },
+    { ...playerRef('7', 'Rook'), blocked: false, blockedViaOwner: false },
+    { ...playerRef('8', 'Pawn'), blocked: true, blockedViaOwner: false },
+    { ...playerRef('9', 'Knight'), blocked: true, blockedViaOwner: true },
   ],
   botIsAdmin: true,
   isForum: true,
@@ -92,6 +93,8 @@ describe('GroupSettings', () => {
     await r.flush();
     const post = r.calls.find((c) => c.method === 'POST');
     expect(post).toMatchObject({ path: '/api/groups/GrOuPiDxYz/blocks', body: { userId: '7' } });
+    expect(r.text()).toContain('Blocked with its owner.');
+    expect(r.root.querySelector('[data-block="9"], [data-unblock="9"]')).toBeNull();
     await r.click('[data-unblock="8"]');
     expect(r.calls.find((c) => c.method === 'DELETE')?.path).toBe(
       '/api/groups/GrOuPiDxYz/blocks/8',

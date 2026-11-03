@@ -437,7 +437,8 @@ export const en = {
   'app.gsettings.block': 'Block a player',
   'app.gsettings.block_confirm': 'Block {name}?',
   'app.gsettings.unblock': 'Unblock',
-  'app.group_settings.bots': 'Bots',
-  'app.group_settings.bots_empty': 'No bots in this group.',
+  'app.gsettings.bots': 'Bots',
+  'app.gsettings.bot_blocked_via_owner': 'Blocked with its owner.',
+  'app.gsettings.bots_empty': 'No bots in this group.',
   'app.gsettings.void': 'Void a game',
 } as const;

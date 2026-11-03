@@ -17,9 +17,9 @@ export async function groupSettingsDto(tx: DbOrTx, group: GroupRow): Promise<Gro
     .leftJoin(ratings, and(eq(ratings.groupId, groupMembers.groupId), eq(ratings.userId, users.id)))
     .where(and(eq(groupMembers.groupId, group.id), isNotNull(groupMembers.blockedAt)))
     .orderBy(users.firstName);
-  const bots = await listGroupBots(tx, group.id);
-  const botRatings =
-    bots.length === 0
+  const members = await listGroupBots(tx, group.id);
+  const memberRatings =
+    members.length === 0
       ? []
       : await tx
           .select()
@@ -29,13 +29,33 @@ export async function groupSettingsDto(tx: DbOrTx, group: GroupRow): Promise<Gro
               eq(ratings.groupId, group.id),
               inArray(
                 ratings.userId,
-                bots.map((bot) => bot.id),
+                members.map((bot) => bot.id),
               ),
             ),
           );
-  const blockedBotIds = new Set(
+  const ratingOf = new Map(memberRatings.map((rating) => [rating.userId, rating]));
+  // Members, plus bots an admin blocked that have since left: they must stay unblockable.
+  const botRows = new Map(
+    members.map((bot) => [bot.id, { user: bot, rating: ratingOf.get(bot.id) ?? null }]),
+  );
+  for (const row of blocked) {
+    if (row.user.ownerId !== null && !row.user.deletedAt && !botRows.has(row.user.id)) {
+      botRows.set(row.user.id, row);
+    }
+  }
+  const ownBlocked = new Set(
     blocked.filter((row) => row.user.ownerId !== null).map((row) => row.user.id),
   );
+  const blockedHumans = new Set(
+    blocked.filter((row) => row.user.ownerId === null).map((row) => row.user.id),
+  );
+  const bots = [...botRows.values()]
+    .sort((a, b) => a.user.firstName.localeCompare(b.user.firstName) || a.user.id - b.user.id)
+    .map(({ user, rating }) => {
+      const own = ownBlocked.has(user.id);
+      const viaOwner = !own && user.ownerId !== null && blockedHumans.has(user.ownerId);
+      return { ...toPlayerRef(user, rating), blocked: own || viaOwner, blockedViaOwner: viaOwner };
+    });
   return {
     group: { id: group.publicId, title: group.title },
     settings: settingsOf(group),
@@ -43,10 +63,7 @@ export async function groupSettingsDto(tx: DbOrTx, group: GroupRow): Promise<Gro
     blocked: blocked
       .filter((row) => row.user.ownerId === null)
       .map((row) => toPlayerRef(row.user, row.rating)),
-    bots: bots.map((bot) => ({
-      ...toPlayerRef(bot, botRatings.find((rating) => rating.userId === bot.id) ?? null),
-      blocked: blockedBotIds.has(bot.id),
-    })),
+    bots,
     botIsAdmin: group.botIsAdmin,
     isForum: group.isForum,
   };
