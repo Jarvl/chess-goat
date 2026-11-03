@@ -46,3 +46,6 @@ export function deadlineExpression(timePerMove: TimePerMove): SQL | null {
   if (timePerMove === null) return null;
   return sql`now() + make_interval(secs => ${timePerMove})`;
 }
+
+/** At most this many live bots per owner (Bots 1). */
+export const MAX_BOTS_PER_OWNER = 20;
