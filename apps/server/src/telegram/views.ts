@@ -54,6 +54,8 @@ export async function challengeCardView(
           }
         : null,
     opponentIsBot: opponent !== null && isOwnedBot(opponent),
+    opponentActivity:
+      opponent !== null && isOwnedBot(opponent) ? { lastActiveAt: opponent.lastActiveAt } : null,
     timePerMove: challenge.timePerMove as TimePerMove,
     rated: challenge.rated,
     challengerColour: challenge.challengerColour,

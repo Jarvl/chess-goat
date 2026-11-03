@@ -26,6 +26,7 @@ const activeGame = {
     isBot: false,
     photoUrl: null,
     flair: [],
+    botActivity: null,
     ratingAfter: null,
     provisionalAfter: null,
   },
@@ -38,6 +39,7 @@ const activeGame = {
     isBot: false,
     photoUrl: null,
     flair: [],
+    botActivity: null,
     ratingAfter: null,
     provisionalAfter: null,
   },
@@ -160,6 +162,7 @@ const summary = {
     isBot: false,
     photoUrl: null,
     flair: [],
+    botActivity: null,
   },
   black: {
     id: '2',
@@ -170,6 +173,7 @@ const summary = {
     isBot: true,
     photoUrl: null,
     flair: [],
+    botActivity: null,
   },
   status: 'active',
   timePerMove: null,
@@ -227,6 +231,7 @@ describe('PlayerRefSchema', () => {
     provisional: true,
     isBot: false,
     photoUrl: null,
+    botActivity: null,
   };
   it('reads a missing flair list as none', () => {
     expect(PlayerRefSchema.parse(ref).flair).toEqual([]);
@@ -280,6 +285,7 @@ describe('ChallengeDtoSchema', () => {
     isBot: false,
     photoUrl: null,
     flair: [],
+    botActivity: null,
   };
   const challenge = {
     id: 'aZ09bY18cX',

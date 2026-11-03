@@ -1,4 +1,6 @@
 import {
+  BOT_ACTIVE_NOW_MS,
+  compactDuration,
   encodeCallbackData,
   endReasonLabel,
   movesLabel,
@@ -43,6 +45,8 @@ export type ChallengeCardView = {
   opponent: PersonView | null;
   /** The opponent is an owned bot: only its own client accepts, so the card offers no Accept. */
   opponentIsBot: boolean;
+  /** The bot opponent's last activity (null when it has none); absent for human or open challenges. */
+  opponentActivity?: { lastActiveAt: Date | null } | null;
   timePerMove: TimePerMove;
   rated: boolean;
   challengerColour: ColourChoice;
@@ -134,7 +138,20 @@ function terms(view: ChallengeCardView): string {
   });
 }
 
-export function renderChallengeCard(view: ChallengeCardView): RenderedMessage {
+function botActivityLine(view: ChallengeCardView, now: Date): string | null {
+  if (!view.opponent || !view.opponentActivity) return null;
+  const bot = label(view.opponent);
+  const { lastActiveAt } = view.opponentActivity;
+  if (!lastActiveAt) return t('card.challenge.bot_never_active', { bot });
+  const age = now.getTime() - lastActiveAt.getTime();
+  if (age <= BOT_ACTIVE_NOW_MS) return t('card.challenge.bot_active_now', { bot });
+  return t('card.challenge.bot_last_active', { bot, ago: compactDuration(age) });
+}
+
+export function renderChallengeCard(
+  view: ChallengeCardView,
+  now: Date = new Date(),
+): RenderedMessage {
   const challenger = label(view.challenger);
   if (view.status === 'pending') {
     const line1 = view.opponent
@@ -153,7 +170,9 @@ export function renderChallengeCard(view: ChallengeCardView): RenderedMessage {
       }),
     };
     return {
-      text: `${line1.text}\n${terms(view)}`,
+      text: [line1.text, botActivityLine(view, now), terms(view)]
+        .filter((line) => line !== null)
+        .join('\n'),
       entities: line1.entities,
       reply_markup: keyboard([
         view.opponentIsBot ? [declineOrCancel] : [accept, declineOrCancel],

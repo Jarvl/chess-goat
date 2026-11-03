@@ -39,6 +39,20 @@ describe('toPlayerRef photo url', () => {
   });
 });
 
+describe('toPlayerRef botActivity', () => {
+  it('gives bots their last activity and humans null', () => {
+    const at = new Date('2026-11-01T10:00:00.000Z');
+    expect(toPlayerRef(person({ ownerId: 3, lastActiveAt: at }), null).botActivity).toEqual({
+      lastActiveAt: at.toISOString(),
+    });
+    expect(toPlayerRef(person({ ownerId: 3, lastActiveAt: null }), null).botActivity).toEqual({
+      lastActiveAt: null,
+    });
+    expect(toPlayerRef(person({ lastActiveAt: at }), null).botActivity).toBeNull();
+    expect(toPlayerRef(person({ isEngine: true }), null).botActivity).toBeNull();
+  });
+});
+
 describe('toPlayerRef flair', () => {
   // Which flair is worn (slot order, retired ids, at most three, none for the deleted or the bot)
   // is wornFlair's, tested through flairEmoji in users.test.ts.

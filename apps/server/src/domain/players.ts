@@ -1,7 +1,7 @@
 import { GLICKO2, isProvisional, type PlayerRef } from '@chess-goat/shared';
 import type { RatingRow, UserRow } from '../db/schema';
 import { avatarUrl } from './photos';
-import { displayName, wornFlair } from './users';
+import { displayName, isOwnedBot, wornFlair } from './users';
 
 /** The player shape the API sends everywhere; ratings default to 1500 provisional (spec §7.9). */
 export function toPlayerRef(
@@ -16,6 +16,7 @@ export function toPlayerRef(
     | 'flairWorn'
     | 'ownerId'
     | 'ownerName'
+    | 'lastActiveAt'
   >,
   rating: Pick<RatingRow, 'rating' | 'rd'> | null,
 ): PlayerRef {
@@ -30,5 +31,8 @@ export function toPlayerRef(
       user.photoHash && !user.isEngine && !user.deletedAt ? avatarUrl(user.photoHash) : null,
     // One bad row with a fourth flair would break every screen showing them (see `wornFlair`).
     flair: wornFlair(user).map((flair) => flair.id),
+    botActivity: isOwnedBot(user)
+      ? { lastActiveAt: user.lastActiveAt ? user.lastActiveAt.toISOString() : null }
+      : null,
   };
 }

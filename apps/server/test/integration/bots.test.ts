@@ -8,7 +8,18 @@ import { runFlairBackfill } from '../../src/flair/backfill';
 import { setWornFlair } from '../../src/flair/profile';
 import { LINES } from '../helpers/chess';
 import { earned, finishedGame } from '../helpers/flair';
-import { createBot, deleteBot, listBots, normaliseBotName, updateBot } from '../../src/domain/bots';
+import {
+  createBot,
+  deleteBot,
+  listBots,
+  normaliseBotName,
+  touchBotActivity,
+  updateBot,
+} from '../../src/domain/bots';
+import { toPlayerRef } from '../../src/domain/players';
+import { renderChallengeCard } from '../../src/telegram/cards';
+import { challengeCardView } from '../../src/telegram/views';
+import { testConfig } from '../helpers/config';
 import { displayName, ensureUser, wornFlair } from '../../src/domain/users';
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
 import {
@@ -166,6 +177,60 @@ describe('bot management', () => {
     await insertBot(db, owner, { deletedAt: new Date() });
     const second = await createBot(db, owner.id, { name: 'Second' });
     expect((await listBots(db, owner.id)).map((b) => b.id)).toEqual([first.id, second.id]);
+  });
+});
+
+describe('bot activity', () => {
+  const lastActive = async (id: number) =>
+    (await db.select().from(users).where(eq(users.id, id)))[0]!.lastActiveAt;
+
+  it('touchBotActivity writes at most once a minute', async () => {
+    const alice = await insertUser(db);
+    const bot = await insertBot(db, alice);
+    expect(await lastActive(bot.id)).toBeNull();
+    await touchBotActivity(db, bot.id);
+    const first = await lastActive(bot.id);
+    expect(first).not.toBeNull();
+    await touchBotActivity(db, bot.id);
+    expect(await lastActive(bot.id)).toEqual(first);
+    const old = new Date(Date.now() - 61_000);
+    await db.update(users).set({ lastActiveAt: old }).where(eq(users.id, bot.id));
+    await touchBotActivity(db, bot.id);
+    expect((await lastActive(bot.id))!.getTime()).toBeGreaterThan(old.getTime() + 30_000);
+  });
+
+  it('touchBotActivity ignores humans', async () => {
+    const alice = await insertUser(db);
+    await touchBotActivity(db, alice.id);
+    expect(await lastActive(alice.id)).toBeNull();
+  });
+
+  it('toPlayerRef gives bots botActivity and humans null', async () => {
+    const alice = await insertUser(db);
+    const bot = await insertBot(db, alice);
+    expect(toPlayerRef(bot, null).botActivity).toEqual({ lastActiveAt: null });
+    await touchBotActivity(db, bot.id);
+    const fresh = (await db.select().from(users).where(eq(users.id, bot.id)))[0]!;
+    expect(toPlayerRef(fresh, null).botActivity).toEqual({
+      lastActiveAt: fresh.lastActiveAt!.toISOString(),
+    });
+    expect(toPlayerRef(alice, null).botActivity).toBeNull();
+  });
+
+  it('the challenge card to an idle bot says when it was last active', async () => {
+    const group = await insertGroup(db);
+    const alice = await insertUser(db);
+    const bot = await insertBot(db, alice, {
+      lastActiveAt: new Date(Date.now() - 3 * 86_400_000),
+    });
+    const challenge = await insertChallenge(db, group.id, alice.id, bot.id);
+    const text = async () =>
+      renderChallengeCard(await challengeCardView(db, challenge, group, testConfig())).text;
+    expect(await text()).toContain(`${displayName(bot)} was last active 3d ago.`);
+    await db.update(users).set({ lastActiveAt: null }).where(eq(users.id, bot.id));
+    expect(await text()).toContain(`${displayName(bot)} hasn't been active yet.`);
+    await touchBotActivity(db, bot.id);
+    expect(await text()).toContain(`${displayName(bot)} is active now.`);
   });
 });
 
