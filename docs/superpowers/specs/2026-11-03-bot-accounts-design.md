@@ -150,12 +150,25 @@ Three decisions, each with the recommended option chosen by the owner.
   ago") and carry a "Challenge Deep Goat" button that opens New Game with that bot preselected.
 - **Draws, resignation, abort.** Bots can offer, accept, decline and claim draws, resign and abort
   under the same rules as humans.
-- **Conditional premoves.** Bots get them, under the same rules as humans (2026-10-29 premoves spec):
-  a tree of opponent-move/reply pairs, every move legal, one reply per opponent move, replies played
-  automatically. An agent can build a deep tree in one call, which also cuts how often it has to check
-  in. Through MCP a tree has an **advertised limit** on the number of pairs, stated in the tool
-  description and in the error when it is exceeded. *Builder:* pick the number (suggested 500 pairs
-  per game), well under the 64 KB request limit.
+- **Conditional premoves.** Bots get them: a tree of opponent-move/reply pairs (2026-10-29 premoves
+  spec), with replies played automatically. An agent can build a deep tree in one call, which also cuts
+  how often it has to check in. Two differences from the app's rules:
+  - **No legality check on submit.** The agent may send any tree. Moves are only checked as the game
+    reaches them, which the firing path already does (`playAndFire` in `domain/games.ts` treats a
+    refused reply as a missed tree). An illegal *opponent* move in the tree simply never matches. An
+    illegal *reply* stops the tree there: the rest is discarded, and the bot's inbox entry for that
+    game says so ("your premove tree's reply e2e4 to …d7d5 was illegal; the tree was discarded from
+    there; it is your move").
+  - **Moves are UCI** (`e2e4`, `e7e8q`). The stored format holds squares, and SAN can't be turned into
+    squares without the position, which would mean replaying the tree. UCI needs only a format
+    check, so a tree is accepted after checking its shape, not its chess. `get_game` lists legal moves
+    in both SAN and UCI.
+  - The submit check covers only shape: well-formed UCI, one reply per opponent move, at most 218
+    branches at a point, and the size limit.
+  - **Limit: 8,000 pairs per game**, advertised in the tool description and in the error when it is
+    exceeded. That stays under the stored format's ceiling (45,000 bytes at 5 bytes a pair, about 9,000
+    pairs). `/mcp` gets its own request body limit of 512 KB so a full tree fits as JSON (about 45
+    characters a pair). The app's own premove path, with its legality check, is unchanged.
 - **DMs.** Bots get none. Owners get none about their bots. Human opponents get their normal DMs.
 - **Lichess import, PGN, share images.** As for any game, with the bot labelled as in §1.
 
@@ -234,10 +247,10 @@ deterministic tool order.
 
 | Tool | Purpose |
 |---|---|
-| `get_inbox(bot?, wait_seconds 0–45)` | Everything needing attention: challenges received, games where it is the bot's move, draw offers. Without `bot`, covers all the owner's bots. With `wait_seconds`, returns as soon as something arrives (subscribing to the bus) or when the wait ends, sending progress notifications meanwhile. |
-| `get_game(bot, game_id, format)` | ASCII board and FEN, SAN move list, legal moves, current ply, clocks and deadline, opponent, draw state, and the bot's current premove tree in the same JSON shape `set_premoves` takes. `detailed` adds the PGN. |
+| `get_inbox(bot?, wait_seconds 0–45)` | Everything needing attention: challenges received, games where it is the bot's move (marked when a premove tree was discarded on an illegal reply, with the move that failed), draw offers. Without `bot`, covers all the owner's bots. With `wait_seconds`, returns as soon as something arrives (subscribing to the bus) or when the wait ends, sending progress notifications meanwhile. |
+| `get_game(bot, game_id, format)` | ASCII board and FEN, SAN move list, legal moves (SAN and UCI), current ply, clocks and deadline, opponent, draw state, and the bot's current premove tree in the same JSON shape `set_premoves` takes. `detailed` adds the PGN. |
 | `make_move(bot, game_id, move, expected_ply, premoves?)` | SAN or UCI. Passed to the existing move path with `expectedPly` and a `clientMoveId` derived from the call, so a retried call cannot play twice and a move into a changed position is refused. Optional `premoves` sets the premove tree with the move, as the app's "confirmed with the move" does. Returns the new position and ply. Illegal moves return the legal list. |
-| `set_premoves(bot, game_id, expected_ply, tree)` | Replaces the bot's premove tree on the opponent's turn. `tree` is readable nested JSON (`[{ "opponent": "e5", "reply": "Nf3", "then": [...] }]`) in SAN; the server checks every pair and encodes it to the existing format, and computes the fingerprint itself, so the agent never handles `baseHash`. An empty list clears the tree. Errors name the first illegal pair by its path. The pair limit is in the description. |
+| `set_premoves(bot, game_id, expected_ply, tree)` | Replaces the bot's premove tree on the opponent's turn. `tree` is nested JSON in UCI using the existing `PremoveNode` shape (`[{ "move": "e7e5", "reply": "g1f3", "children": [...] }]`, where `move` is the opponent's). The server checks shape only (§3), encodes it to the stored format and computes the fingerprint itself, so the agent never handles `baseHash`. An empty list clears the tree. Shape errors name the offending node by its path. The 8,000-pair limit is in the description. |
 | `game_action(bot, game_id, action)` | `offer_draw`, `accept_draw`, `decline_draw`, `claim_draw`, `resign`, `abort`. |
 | `respond_to_challenge(bot, challenge_id, accept)` | Accept or decline. |
 | `find_bots(group, query?, sort?)` | Search bots in a group (to challenge). Paginated. |
@@ -306,7 +319,7 @@ Phases after this design, in rough order:
 ## Left to the builder
 
 - Column shape for bot users and the engine index (§1).
-- Numbers: bots per owner, rate limits, name length, activity thresholds, the MCP premove pair limit.
+- Numbers: bots per owner, rate limits, name length, activity thresholds.
 - Token format and storage (hashed; the exact prefix).
 - Exact wording of cards, the warning for inactive bots, server instructions and tool descriptions.
 - Bot browser layout and how the Bots tab fits the existing tab bar.
