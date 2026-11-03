@@ -207,6 +207,31 @@ export function GroupSettings(props: { groupId: string }) {
           </div>
         ))}
       </div>
+      <div class="section">{t('app.group_settings.bots')}</div>
+      <div class="card">
+        {settings.data.bots.length === 0 ? (
+          <p class="row hint">{t('app.group_settings.bots_empty')}</p>
+        ) : null}
+        {settings.data.bots.map((bot) => (
+          <div class="row" key={bot.id}>
+            <Avatar player={bot} size={40} />
+            <span class="grow primary">{playerLabel(bot)}</span>
+            {bot.blocked ? (
+              <button class="pill-btn" data-unblock={bot.id} onClick={() => void unblock(bot.id)}>
+                {t('app.gsettings.unblock')}
+              </button>
+            ) : (
+              <button
+                class="pill-btn danger"
+                data-block={bot.id}
+                onClick={() => void block(bot.id, bot.name)}
+              >
+                {t('app.gsettings.block')}
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
       <div class="section">{t('app.gsettings.block')}</div>
       <div class="card">
         {candidates.map((player) => (

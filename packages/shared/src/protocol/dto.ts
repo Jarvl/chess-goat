@@ -286,6 +286,8 @@ export const GroupSettingsDtoSchema = z.object({
   group: GroupRefSchema,
   settings: GroupSettingsSchema,
   blocked: z.array(PlayerRefSchema),
+  /** The group's bots, each with whether an admin has blocked it directly. */
+  bots: z.array(PlayerRefSchema.extend({ blocked: z.boolean() })),
   botIsAdmin: z.boolean(),
   isForum: z.boolean(),
 });

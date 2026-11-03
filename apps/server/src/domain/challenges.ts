@@ -90,7 +90,10 @@ export async function setChallengeMessage(
   }
 }
 
-function editCard(tx: DbOrTx, challenge: Pick<ChallengeRow, 'id' | 'publicId'>): Promise<void> {
+export function editCard(
+  tx: DbOrTx,
+  challenge: Pick<ChallengeRow, 'id' | 'publicId'>,
+): Promise<void> {
   return enqueue(tx, {
     kind: 'edit_card',
     payload: { challengeId: challenge.id },
