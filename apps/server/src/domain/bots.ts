@@ -1,6 +1,8 @@
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
-import type { DbOrTx } from '../db/client';
+import { dbNow, type DbOrTx } from '../db/client';
 import { users, type UserRow } from '../db/schema';
+import { deletedBotFields, leavePlay, lockPlay } from './account';
+import type { Deps } from './deps';
 import { DomainError } from './errors';
 import { MAX_BOTS_PER_OWNER } from './limits';
 import { displayName, lockLiveHumanOwner } from './users';
@@ -107,6 +109,29 @@ export async function updateBot(
     if (isBotNameViolation(error)) throw nameTaken();
     throw error;
   }
+}
+
+/**
+ * Deletes one of the owner's live bots: resigns its live games, settles its pending challenges and
+ * anonymises its row, keeping the id so finished games still name it. Frees its name and its slot.
+ */
+export async function deleteBot(deps: Deps, ownerId: number, botId: number): Promise<void> {
+  const finished = await deps.db.transaction(async (tx) => {
+    await requireOwnBot(tx, ownerId, botId);
+    const now = await dbNow(tx);
+    // Same lock order as `deleteMyData`: games, then challenges, then the `users` row.
+    const play = await lockPlay(tx, [botId]);
+    // Re-checked under the row lock: a concurrent deletion of the same bot leaves nothing to do.
+    const [row] = await tx
+      .update(users)
+      .set(deletedBotFields(now))
+      .where(and(eq(users.id, botId), eq(users.ownerId, ownerId), isNull(users.deletedAt)))
+      .returning({ id: users.id });
+    if (!row) throw new DomainError('not_found', 'bot not found', { reason: 'bot_not_found' });
+    // A bot has no DMs to retire.
+    return leavePlay(tx, play, now, []);
+  });
+  for (const publicId of finished) deps.bus.publish(publicId);
 }
 
 export function listBots(tx: DbOrTx, ownerId: number): Promise<UserRow[]> {

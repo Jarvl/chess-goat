@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { groupMembers, ratings, users } from '../../src/db/schema';
+import { challenges, games, groupMembers, jobs, ratings, users } from '../../src/db/schema';
 import { getLeaderboard } from '../../src/domain/ratings';
 import { listKnownPlayers } from '../../src/domain/members';
 import { awardFlairForGame } from '../../src/flair/award';
@@ -8,12 +8,19 @@ import { runFlairBackfill } from '../../src/flair/backfill';
 import { setWornFlair } from '../../src/flair/profile';
 import { LINES } from '../helpers/chess';
 import { earned, finishedGame } from '../helpers/flair';
-import { createBot, listBots, normaliseBotName, updateBot } from '../../src/domain/bots';
+import { createBot, deleteBot, listBots, normaliseBotName, updateBot } from '../../src/domain/bots';
 import { displayName, ensureUser, wornFlair } from '../../src/domain/users';
-import { openTestDb, truncateAll } from '../helpers/db';
-import { insertBot, insertGroup, insertUser } from '../helpers/fixtures';
+import { openTestDb, testDeps, truncateAll } from '../helpers/db';
+import {
+  insertBot,
+  insertChallenge,
+  insertGame,
+  insertGroup,
+  insertUser,
+} from '../helpers/fixtures';
 
 const { db, close } = openTestDb();
+const deps = testDeps(db);
 
 beforeEach(() => truncateAll(db));
 afterAll(() => close());
@@ -174,7 +181,8 @@ describe('bots are not people', () => {
     const group = await insertGroup(db);
     const alice = await insertUser(db);
     const bot = await insertBot(db, alice);
-    for (let d = 2; d < 12; d += 1) await finishedGame(db, group.id, alice.id, bot.id, d, '1/2-1/2');
+    for (let d = 2; d < 12; d += 1)
+      await finishedGame(db, group.id, alice.id, bot.id, d, '1/2-1/2');
     const summary = await runFlairBackfill(db, [{ id: 'draws_10', version: 1 }]);
     expect(summary.players).toBe(0);
     expect(await earned(db, alice.id)).toEqual([]);
@@ -217,5 +225,77 @@ describe('bots are not people', () => {
     ]);
     const known = await listKnownPlayers(db, group.id);
     expect(known.map((p) => p.id)).toEqual([String(bob.id)]);
+  });
+});
+
+describe('deletion', () => {
+  const userRow = async (id: number) => (await db.select().from(users).where(eq(users.id, id)))[0]!;
+
+  it('deleteBot resigns live games and settles challenges', async () => {
+    const group = await insertGroup(db);
+    const owner = await insertUser(db);
+    const bot = await insertBot(db, owner);
+    const human = await insertUser(db);
+    const game = await insertGame(db, group.id, bot.id, human.id);
+    const from = await insertChallenge(db, group.id, bot.id, human.id);
+    const to = await insertChallenge(db, group.id, human.id, bot.id);
+    const published: string[] = [];
+    deps.bus.subscribe(game.publicId, () => published.push(game.publicId));
+
+    await deleteBot(deps, owner.id, bot.id);
+
+    const [ended] = await db.select().from(games).where(eq(games.id, game.id));
+    expect(ended).toMatchObject({ status: 'finished', result: '0-1', endReason: 'resignation' });
+    const settled = await db.select().from(challenges).orderBy(challenges.id);
+    expect(settled.map((c) => [c.id, c.status, c.resolvedAt !== null])).toEqual([
+      [from.id, 'cancelled', true],
+      [to.id, 'declined', true],
+    ]);
+    const cards = (await db.select().from(jobs).orderBy(jobs.id)).filter(
+      (job) => job.kind === 'edit_card' && job.payload.challengeId !== undefined,
+    );
+    expect(cards.map((job) => [job.payload.challengeId, job.dedupKey])).toEqual([
+      [from.id, `card:ch:${from.publicId}`],
+      [to.id, `card:ch:${to.publicId}`],
+    ]);
+    expect(published).toEqual([game.publicId]);
+  });
+
+  it('a deleted bot is anonymised and frees its name', async () => {
+    const group = await insertGroup(db);
+    const owner = await insertUser(db);
+    const bot = await createBot(db, owner.id, { name: 'Deep Goat', tagline: 'hi' });
+    const human = await insertUser(db);
+    const game = await insertGame(db, group.id, human.id, bot.id);
+
+    await deleteBot(deps, owner.id, bot.id);
+
+    const row = await userRow(bot.id);
+    expect(row.firstName).toBe('Deleted bot');
+    expect(row.tagline).toBeNull();
+    expect(row.deletedAt).not.toBeNull();
+    expect(displayName(row)).toBe('🤖 Deleted bot');
+    const [ended] = await db.select().from(games).where(eq(games.id, game.id));
+    expect(ended).toMatchObject({ status: 'finished', blackId: bot.id, result: '1-0' });
+    const again = await createBot(db, owner.id, { name: 'deep goat' });
+    expect(again.firstName).toBe('deep goat');
+  });
+
+  it('a deleted bot frees its slot', async () => {
+    const owner = await insertUser(db);
+    const bots = [];
+    for (let i = 0; i < 20; i++) bots.push(await createBot(db, owner.id, { name: `Bot ${i}` }));
+    await deleteBot(deps, owner.id, bots[0]!.id);
+    expect((await createBot(db, owner.id, { name: 'Bot 20' })).firstName).toBe('Bot 20');
+    expect(await listBots(db, owner.id)).toHaveLength(20);
+  });
+
+  it("deleteBot refuses other owners' bots and already-deleted bots", async () => {
+    const a = await insertUser(db);
+    const b = await insertUser(db);
+    const bot = await insertBot(db, a);
+    expect(await reason(deleteBot(deps, b.id, bot.id))).toBe('bot_not_found');
+    await deleteBot(deps, a.id, bot.id);
+    expect(await reason(deleteBot(deps, a.id, bot.id))).toBe('bot_not_found');
   });
 });
