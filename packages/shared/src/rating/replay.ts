@@ -20,6 +20,11 @@ export type RatedGameRecord = {
   black: string;
   result: '1-0' | '0-1' | '1/2-1/2';
   finishedAt: Date;
+  /**
+   * The side whose rating the game must not move (a human playing a bot): its state is read as
+   * the opponent rating but never written, and its snapshot has `after` equal to `before`.
+   */
+  frozen?: Colour;
 };
 
 export type RatingSnapshot = {
@@ -73,8 +78,8 @@ function advance(
 
 /**
  * Applies one rated result as its own rating period for both players (spec §7.5), inflating each
- * player's deviation for the days they were idle first. Mutates `states`; returns the snapshots
- * the game row stores.
+ * player's deviation for the days they were idle first. Mutates `states` (except a `frozen` side,
+ * which is neither changed nor created); returns the snapshots the game row stores.
  */
 export function applyRatedGame(
   states: Map<string, PlayerRatingState>,
@@ -86,10 +91,18 @@ export function applyRatedGame(
   const blackBefore = inflateForInactivity(toRating(black), idleDaysBefore(black, game.finishedAt));
   const whiteScore = scoreFor(game.result, 'white');
   const blackScore = scoreFor(game.result, 'black');
-  const whiteAfter = ratePeriod(whiteBefore, [{ opponent: blackBefore, score: whiteScore }]);
-  const blackAfter = ratePeriod(blackBefore, [{ opponent: whiteBefore, score: blackScore }]);
-  states.set(game.white, advance(white, whiteAfter, whiteScore, game.finishedAt));
-  states.set(game.black, advance(black, blackAfter, blackScore, game.finishedAt));
+  const whiteAfter =
+    game.frozen === 'white'
+      ? whiteBefore
+      : ratePeriod(whiteBefore, [{ opponent: blackBefore, score: whiteScore }]);
+  const blackAfter =
+    game.frozen === 'black'
+      ? blackBefore
+      : ratePeriod(blackBefore, [{ opponent: whiteBefore, score: blackScore }]);
+  if (game.frozen !== 'white')
+    states.set(game.white, advance(white, whiteAfter, whiteScore, game.finishedAt));
+  if (game.frozen !== 'black')
+    states.set(game.black, advance(black, blackAfter, blackScore, game.finishedAt));
   return {
     white: { before: whiteBefore, after: whiteAfter },
     black: { before: blackBefore, after: blackAfter },
