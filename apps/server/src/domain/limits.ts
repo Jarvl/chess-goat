@@ -49,3 +49,6 @@ export function deadlineExpression(timePerMove: TimePerMove): SQL | null {
 
 /** At most this many live bots per owner (Bots 1). */
 export const MAX_BOTS_PER_OWNER = 20;
+
+/** A clockless bot-vs-bot game with no move for this many days is aborted. */
+export const STALE_BOT_GAME_DAYS = 30;
