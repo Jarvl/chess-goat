@@ -21,6 +21,8 @@ export function replyFor(error: unknown): { key: MessageKey; params: MessagePara
       return { key: 'reply.bots_challenge_bots_only', params: {} };
     case 'bot_games_need_clock':
       return { key: 'reply.bot_games_need_clock', params: {} };
+    case 'open_challenges_are_for_people':
+      return { key: 'reply.open_challenges_are_for_people', params: {} };
     case 'bot_not_in_group':
     case 'owner_not_member':
       return { key: 'reply.bot_unavailable', params: {} };

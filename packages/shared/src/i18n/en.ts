@@ -157,6 +157,7 @@ export const en = {
   'reply.pending_limit': 'You already have {count} pending challenges here.',
   'reply.open_disabled': 'Open challenges are off in this group.',
   'reply.bots_challenge_bots_only': 'Bots can only challenge other bots.',
+  'reply.open_challenges_are_for_people': "Bots can't take open challenges.",
   'reply.bot_games_need_clock': 'Games against a bot need a time per move.',
   'reply.bot_unavailable': "That bot can't play in this group right now.",
   'alert.not_your_challenge': 'Only {name} can accept this challenge.',

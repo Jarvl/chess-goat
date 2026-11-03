@@ -292,6 +292,12 @@ export async function acceptChallenge(
     const challenge = await lockPendingChallenge(tx, input.challengeId);
     const accepter = await requireUser(tx, input.userId);
     assertIsOpponent(challenge, accepter, 'accept');
+    // A bot answers only challenges made to it by name.
+    if (isOwnedBot(accepter) && challenge.opponentId === null) {
+      throw new DomainError('forbidden', 'bots cannot take open challenges', {
+        reason: 'open_challenges_are_for_people',
+      });
+    }
     if (challenge.challengerId === input.userId) {
       throw new DomainError('forbidden', 'cannot accept your own challenge', {
         reason: 'own_challenge',
@@ -304,13 +310,13 @@ export async function acceptChallenge(
     // The owner may have left, or been blocked, since the challenge was made.
     await assertBotsMayPlay(tx, group.id, [challenger, accepter]);
     const botPlayers = countBotPlayers(challenger, accepter);
-    assertBotClock(botPlayers, challenge.timePerMove as TimePerMove);
+    const timePerMove = challenge.timePerMove as TimePerMove;
+    assertBotClock(botPlayers, timePerMove);
 
     const challengerColour =
       challenge.challengerColour === 'random' ? randomColour() : challenge.challengerColour;
     const white = challengerColour === 'white' ? challenger : accepter;
     const black = challengerColour === 'white' ? accepter : challenger;
-    const timePerMove = challenge.timePerMove as TimePerMove;
     const [game] = await tx
       .insert(games)
       .values({
@@ -323,6 +329,7 @@ export async function acceptChallenge(
         botPlayers,
         fen: INITIAL_FEN,
         deadlineAt: deadlineExpression(timePerMove),
+        // A bot never wants DMs, so it is never reminded (nor is anyone in a bot-vs-bot game).
         reminderAt: reminderExpression(timePerMove, wantsDms(white)),
         cardMessageId: challenge.messageId,
         cardThreadId: challenge.threadId,
@@ -341,11 +348,14 @@ export async function acceptChallenge(
       .where(eq(challenges.id, challenge.id))
       .returning();
     await retireChallengeDm(tx, challenge, 'accepted');
-    await enqueue(tx, {
-      kind: 'edit_card',
-      payload: { gameId: game.id },
-      dedupKey: `card:g:${game.publicId}`,
-    });
+    // A bot-vs-bot game has no card to edit; `editGameCard` needs one.
+    if (botPlayers !== 2) {
+      await enqueue(tx, {
+        kind: 'edit_card',
+        payload: { gameId: game.id },
+        dedupKey: `card:g:${game.publicId}`,
+      });
+    }
     if (!isOwnedBot(white)) {
       await enqueue(tx, {
         kind: 'send_dm',
@@ -369,6 +379,17 @@ export async function declineChallenge(
     // An open challenge has nobody to decline it: the same button withdraws it, for the challenger.
     if (challenge.opponentId === null && challenge.opponentUsername === null) {
       throw new DomainError('forbidden', 'only the challenger can withdraw an open challenge', {
+        reason: 'not_the_challenger',
+        challengerId: challenge.challengerId,
+      });
+    }
+    // A challenge to a bot has only a Cancel button, for the challenger; the bot itself may decline.
+    if (
+      challenge.opponentId !== null &&
+      challenge.opponentId !== input.userId &&
+      isOwnedBot(await requireUser(tx, challenge.opponentId))
+    ) {
+      throw new DomainError('forbidden', 'only the challenger can withdraw a challenge to a bot', {
         reason: 'not_the_challenger',
         challengerId: challenge.challengerId,
       });

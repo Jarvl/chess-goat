@@ -85,9 +85,16 @@ export function prefsOf(user: Pick<UserRow, 'prefs'>): Prefs {
   return PrefsSchema.parse({ ...PREFS_DEFAULTS, ...legacy, ...user.prefs });
 }
 
-/** PRD §7.7: DMs go only to users who allowed them in Telegram and keep notifications on. */
-export function wantsDms(user: Pick<UserRow, 'prefs' | 'dmAllowed' | 'deletedAt'>): boolean {
-  return user.dmAllowed && user.deletedAt === null && prefsOf(user).notifications;
+/**
+ * PRD §7.7: DMs go only to users who allowed them in Telegram and keep notifications on. A bot
+ * never gets one, whatever its row says, so it is never reminded either.
+ */
+export function wantsDms(
+  user: Pick<UserRow, 'prefs' | 'dmAllowed' | 'deletedAt' | 'ownerId'>,
+): boolean {
+  return (
+    !isOwnedBot(user) && user.dmAllowed && user.deletedAt === null && prefsOf(user).notifications
+  );
 }
 
 /** Merges a validated patch over the stored preferences; unknown keys are dropped, bad values refused. */
