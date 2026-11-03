@@ -135,15 +135,27 @@ Three decisions, each with the recommended option chosen by the owner.
   that bot (or any call for the owner, *builder's choice*). The app shows "active now" (within a few
   minutes) or "last active 3d ago". When someone picks a bot that has not been active for over a day,
   the app warns them before the challenge is sent. *(my call on the thresholds)*
-- **Clocks.** Bots play under the same time-per-move clocks as humans and forfeit on time the same way.
-  Bot games have no "no clock" option, so a silent agent cannot stall a game forever. *(my call)*
+- **Clocks.**
+  - Human vs bot: **always** a time-per-move clock; the "no clock" option is not offered. A silent
+    agent forfeits on time, so a human is never stuck in a dead game.
+  - Bot vs bot: **no clock by default.** `challenge_bot` may set a time per move if the challenger
+    wants one.
+  - A clockless bot-vs-bot game in which nobody has moved for 30 days is aborted (no result, no
+    rating change), so dead games don't pile up in the Bots tab. *(my call on the rule and the
+    number)*
 - **Results.**
   - Human vs bot: a result card is always posted, as for human games.
   - Bot vs bot: nothing is posted.
 - **Group cards for human → bot games** show the bot's activity ("waiting for Deep Goat · active 2m
   ago") and carry a "Challenge Deep Goat" button that opens New Game with that bot preselected.
-- **Draws, resignation, abort, premoves.** Bots can offer, accept, decline and claim draws, resign and
-  abort under the same rules as humans. Conditional premoves are not offered to bots. *(my call)*
+- **Draws, resignation, abort.** Bots can offer, accept, decline and claim draws, resign and abort
+  under the same rules as humans.
+- **Conditional premoves.** Bots get them, under the same rules as humans (2026-10-29 premoves spec):
+  a tree of opponent-move/reply pairs, every move legal, one reply per opponent move, replies played
+  automatically. An agent can build a deep tree in one call, which also cuts how often it has to check
+  in. Through MCP a tree has an **advertised limit** on the number of pairs, stated in the tool
+  description and in the error when it is exceeded. *Builder:* pick the number (suggested 500 pairs
+  per game), well under the 64 KB request limit.
 - **DMs.** Bots get none. Owners get none about their bots. Human opponents get their normal DMs.
 - **Lichess import, PGN, share images.** As for any game, with the bot labelled as in §1.
 
@@ -223,8 +235,9 @@ deterministic tool order.
 | Tool | Purpose |
 |---|---|
 | `get_inbox(bot?, wait_seconds 0–45)` | Everything needing attention: challenges received, games where it is the bot's move, draw offers. Without `bot`, covers all the owner's bots. With `wait_seconds`, returns as soon as something arrives (subscribing to the bus) or when the wait ends, sending progress notifications meanwhile. |
-| `get_game(bot, game_id, format)` | ASCII board and FEN, SAN move list, legal moves, current ply, clocks and deadline, opponent, draw state. `detailed` adds the PGN. |
-| `make_move(bot, game_id, move, expected_ply)` | SAN or UCI. Passed to the existing move path with `expectedPly` and a `clientMoveId` derived from the call, so a retried call cannot play twice and a move into a changed position is refused. Returns the new position and ply. Illegal moves return the legal list. |
+| `get_game(bot, game_id, format)` | ASCII board and FEN, SAN move list, legal moves, current ply, clocks and deadline, opponent, draw state, and the bot's current premove tree in the same JSON shape `set_premoves` takes. `detailed` adds the PGN. |
+| `make_move(bot, game_id, move, expected_ply, premoves?)` | SAN or UCI. Passed to the existing move path with `expectedPly` and a `clientMoveId` derived from the call, so a retried call cannot play twice and a move into a changed position is refused. Optional `premoves` sets the premove tree with the move, as the app's "confirmed with the move" does. Returns the new position and ply. Illegal moves return the legal list. |
+| `set_premoves(bot, game_id, expected_ply, tree)` | Replaces the bot's premove tree on the opponent's turn. `tree` is readable nested JSON (`[{ "opponent": "e5", "reply": "Nf3", "then": [...] }]`) in SAN; the server checks every pair and encodes it to the existing format, and computes the fingerprint itself, so the agent never handles `baseHash`. An empty list clears the tree. Errors name the first illegal pair by its path. The pair limit is in the description. |
 | `game_action(bot, game_id, action)` | `offer_draw`, `accept_draw`, `decline_draw`, `claim_draw`, `resign`, `abort`. |
 | `respond_to_challenge(bot, challenge_id, accept)` | Accept or decline. |
 | `find_bots(group, query?, sort?)` | Search bots in a group (to challenge). Paginated. |
@@ -293,7 +306,7 @@ Phases after this design, in rough order:
 ## Left to the builder
 
 - Column shape for bot users and the engine index (§1).
-- Numbers: bots per owner, rate limits, name length, activity thresholds.
+- Numbers: bots per owner, rate limits, name length, activity thresholds, the MCP premove pair limit.
 - Token format and storage (hashed; the exact prefix).
 - Exact wording of cards, the warning for inactive bots, server instructions and tool descriptions.
 - Bot browser layout and how the Bots tab fits the existing tab bar.
