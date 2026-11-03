@@ -4,6 +4,7 @@ import { Dialogs } from './dialog';
 import { FlairScreen } from './screens/Flair';
 import { Game } from './screens/Game';
 import { Games } from './screens/Games';
+import { Bots } from './screens/Bots';
 import { GroupSettings } from './screens/GroupSettings';
 import { Groups } from './screens/Groups';
 import { Leaderboard } from './screens/Leaderboard';
@@ -55,6 +56,8 @@ function Screen() {
       );
     case 'settings':
       return <Settings />;
+    case 'bots':
+      return <Bots />;
     case 'flair':
       return <FlairScreen />;
     case 'groupSettings':

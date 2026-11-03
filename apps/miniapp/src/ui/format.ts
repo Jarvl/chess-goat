@@ -19,6 +19,11 @@ const MONTH_DAY_YEAR = new Intl.DateTimeFormat('en-US', {
   year: 'numeric',
 });
 
+/** A date with its year, in the viewer's local time (en-US, as the flair dates). */
+export function dateLabel(iso: string): string {
+  return MONTH_DAY_YEAR.format(new Date(iso));
+}
+
 export function playerLabel(player: PlayerRef): string {
   return `${player.name} ${ratingLabel(player.rating, player.provisional)}`;
 }

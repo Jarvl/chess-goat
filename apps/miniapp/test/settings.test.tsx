@@ -242,6 +242,17 @@ describe('Settings', () => {
     expect(r.app.router.current.value).toEqual({ name: 'flair' });
   });
 
+  it('opens Bots from its row after Move confirmations', async () => {
+    const r = renderApp(
+      () => <Settings />,
+      withFlair(() => ({ status: 200, body: { ok: true } })),
+    );
+    const row = r.root.querySelector('[data-action="bots"]')!;
+    expect(r.root.querySelector('[data-pref="moveConfirmations"]')?.nextElementSibling).toBe(row);
+    await r.click('[data-action="bots"]');
+    expect(r.app.router.current.value).toEqual({ name: 'bots' });
+  });
+
   it('keeps the row working when the flair cannot load', async () => {
     const r = renderApp(
       () => <Settings />,
