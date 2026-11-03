@@ -3,6 +3,7 @@ import { eq, inArray } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client';
 import { userFlair, users, type GameRow, type UserRow } from '../db/schema';
 import { listMoves, requireGameById } from '../domain/games';
+import { isHuman } from '../domain/users';
 import { isCountedGame, loadCountedGames } from './history';
 import type { StoredMove } from './patterns';
 import { ruleHolds } from './rules';
@@ -16,7 +17,7 @@ type Scoring = {
 };
 
 /** A player's row as it was when the award locked it. */
-type LockedPlayer = Pick<UserRow, 'id' | 'isEngine' | 'deletedAt' | 'flairWorn'>;
+type LockedPlayer = Pick<UserRow, 'id' | 'isEngine' | 'ownerId' | 'deletedAt' | 'flairWorn'>;
 
 /**
  * Flair spec §3.2: scores both players of a finished game against every flair they do not hold yet,
@@ -49,6 +50,7 @@ export async function awardFlairForGame(
     .select({
       id: users.id,
       isEngine: users.isEngine,
+      ownerId: users.ownerId,
       deletedAt: users.deletedAt,
       flairWorn: users.flairWorn,
     })
@@ -56,6 +58,8 @@ export async function awardFlairForGame(
     .where(inArray(users.id, [game.whiteId, game.blackId]))
     .orderBy(users.id)
     .for('no key update');
+  // A game with a bot on either side awards nothing, not even to the person.
+  if (!locked.every(isHuman)) return;
   for (const side of ['white', 'black'] as const) {
     const userId = side === 'white' ? game.whiteId : game.blackId;
     const player = locked.find((row) => row.id === userId);
@@ -72,7 +76,7 @@ async function awardToPlayer(
   random: () => number,
 ): Promise<void> {
   // The bot and a player who deleted their data carry no flair.
-  if (player.isEngine || player.deletedAt !== null) return;
+  if (!isHuman(player) || player.deletedAt !== null) return;
   const userId = player.id;
   const heldRows = await tx
     .select({ flairId: userFlair.flairId })

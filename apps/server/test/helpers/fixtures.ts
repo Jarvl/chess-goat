@@ -2,6 +2,7 @@ import { INITIAL_FEN, type TimePerMove } from '@chess-goat/shared';
 import { eq, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../../src/db/client';
 import { generatePublicId } from '../../src/db/ids';
+import { displayName } from '../../src/domain/users';
 import { touchMember } from '../../src/domain/members';
 import {
   challenges,
@@ -28,6 +29,26 @@ export async function insertUser(
   const [row] = await db
     .insert(users)
     .values({ telegramUserId: 1_000_000 + counter, firstName: `User${counter}`, ...overrides })
+    .returning();
+  return row!;
+}
+
+export async function insertBot(
+  db: DbOrTx,
+  owner: Pick<UserRow, 'id'> & Partial<Pick<UserRow, 'username' | 'firstName'>>,
+  overrides: Partial<typeof users.$inferInsert> = {},
+): Promise<UserRow> {
+  counter += 1;
+  const ownerName = displayName({
+    firstName: owner.firstName ?? '',
+    username: owner.username ?? null,
+    deletedAt: null,
+    ownerId: null,
+    ownerName: null,
+  });
+  const [row] = await db
+    .insert(users)
+    .values({ firstName: `Bot${counter}`, ownerId: owner.id, ownerName, ...overrides })
     .returning();
   return row!;
 }

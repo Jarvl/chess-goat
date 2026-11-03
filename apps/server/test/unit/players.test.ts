@@ -12,6 +12,8 @@ const person = (overrides: Partial<UserRow>) =>
     isEngine: false,
     photoHash: null,
     flairWorn: [],
+    ownerId: null,
+    ownerName: null,
     ...overrides,
   }) as UserRow;
 

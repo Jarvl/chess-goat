@@ -6,7 +6,7 @@ import {
   type FlairEntry,
   type Prefs,
 } from '@chess-goat/shared';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client';
 import { users, type UserRow } from '../db/schema';
 import { DomainError } from './errors';
@@ -35,6 +35,17 @@ export async function ensureUser(tx: DbOrTx, info: TelegramUserInfo): Promise<Us
     })
     .returning();
   if (!row) throw new Error('ensureUser returned no row');
+  const label = displayName(row);
+  await tx
+    .update(users)
+    .set({ ownerName: label })
+    .where(
+      and(
+        eq(users.ownerId, row.id),
+        isNull(users.deletedAt),
+        sql`${users.ownerName} is distinct from ${label}`,
+      ),
+    );
   await queuePhotoRefresh(tx, row);
   return row;
 }
@@ -115,20 +126,38 @@ export async function setDmAllowed(tx: DbOrTx, userId: number, allowed: boolean)
   await tx.update(users).set({ dmAllowed: allowed }).where(eq(users.id, userId));
 }
 
-/** People are named by their Telegram handle; `first_name` only when they have no username. */
-export function displayName(user: Pick<UserRow, 'firstName' | 'username' | 'deletedAt'>): string {
+/** A bot is a user row owned by a human; the engine and humans have no owner. */
+export function isOwnedBot(user: Pick<UserRow, 'ownerId'>): boolean {
+  return user.ownerId !== null;
+}
+
+/** A real person: neither the engine nor an owned bot. */
+export function isHuman(user: Pick<UserRow, 'isEngine' | 'ownerId'>): boolean {
+  return !user.isEngine && !isOwnedBot(user);
+}
+
+/**
+ * People are named by their Telegram handle; `first_name` only when they have no username. A bot
+ * is `🤖 name (owner)`, or `🤖 Deleted bot` once deleted.
+ */
+export function displayName(
+  user: Pick<UserRow, 'firstName' | 'username' | 'deletedAt' | 'ownerId' | 'ownerName'>,
+): string {
+  if (isOwnedBot(user)) {
+    return user.deletedAt ? '🤖 Deleted bot' : `🤖 ${user.firstName} (${user.ownerName})`;
+  }
   if (user.deletedAt) return 'Deleted player';
   return user.username ? `@${user.username}` : user.firstName;
 }
 
-type Wearer = Pick<UserRow, 'deletedAt' | 'isEngine' | 'flairWorn'>;
+type Wearer = Pick<UserRow, 'deletedAt' | 'isEngine' | 'flairWorn' | 'ownerId'>;
 
 /**
- * What a player wears, in slot order. Deleted players and the bot wear none; a stored id the catalog
+ * What a player wears, in slot order. Deleted players, the engine and bots wear none; a stored id the catalog
  * no longer has is skipped, and a fourth is not worn: the app refuses a player with more.
  */
 export function wornFlair(user: Wearer): FlairEntry[] {
-  if (user.deletedAt || user.isEngine) return [];
+  if (user.deletedAt || user.isEngine || isOwnedBot(user)) return [];
   return user.flairWorn.flatMap((id) => flairById(id) ?? []).slice(0, MAX_WORN_FLAIR);
 }
 
@@ -141,8 +170,26 @@ export function flairEmoji(user: Wearer): string {
 
 /** A player as the group chat names them: the display name, then their worn flair. */
 export function nameWithFlair(
-  user: Pick<UserRow, 'firstName' | 'username' | 'deletedAt' | 'isEngine' | 'flairWorn'>,
+  user: Pick<
+    UserRow,
+    'firstName' | 'username' | 'deletedAt' | 'isEngine' | 'flairWorn' | 'ownerId' | 'ownerName'
+  >,
 ): string {
   const flair = flairEmoji(user);
   return flair ? `${displayName(user)} ${flair}` : displayName(user);
+}
+
+/**
+ * Loads `userId` with a row lock and requires a live human: not the engine, not a bot, not
+ * deleted, and with a Telegram id. Throws forbidden / not_a_human_owner otherwise. The lock only
+ * serialises concurrent callers when `tx` is a transaction.
+ */
+export async function lockLiveHumanOwner(tx: DbOrTx, userId: number): Promise<UserRow> {
+  const [owner] = await tx.select().from(users).where(eq(users.id, userId)).for('update');
+  if (!owner || !isHuman(owner) || owner.deletedAt !== null || owner.telegramUserId === null) {
+    throw new DomainError('forbidden', 'only a human can own bots', {
+      reason: 'not_a_human_owner',
+    });
+  }
+  return owner;
 }

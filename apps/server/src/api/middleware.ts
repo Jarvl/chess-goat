@@ -1,7 +1,7 @@
 import { PublicIdSchema, UserIdSchema } from '@chess-goat/shared';
 import type { Context, MiddlewareHandler } from 'hono';
 import { DomainError } from '../domain/errors';
-import { getUserById } from '../domain/users';
+import { getUserById, isHuman } from '../domain/users';
 import type { ApiContext, ApiEnv } from './context';
 import { verifyToken } from './session';
 
@@ -32,7 +32,8 @@ export function requireSession(ctx: ApiContext): MiddlewareHandler<ApiEnv> {
     if (scope === null && linkScope !== null && bearer === null)
       throw new DomainError('unauthorized', 'a download link needs its own token');
     const user = await getUserById(ctx.deps.db, userId);
-    if (!user || user.deletedAt) throw new DomainError('unauthorized', 'unknown session');
+    if (!user || user.deletedAt || !isHuman(user))
+      throw new DomainError('unauthorized', 'unknown session');
     c.set('user', user);
     await next();
   };

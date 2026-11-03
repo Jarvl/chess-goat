@@ -130,6 +130,7 @@ export async function runFlairBackfill(
       and(
         gt(users.id, afterUserId),
         eq(users.isEngine, false),
+        isNull(users.ownerId),
         isNull(users.deletedAt),
         exists(
           db

@@ -74,6 +74,7 @@ describe('database', () => {
       'groups',
       'jobs',
       'moves',
+      'owner_tokens',
       'ratings',
       'shares',
       'telegram_updates',

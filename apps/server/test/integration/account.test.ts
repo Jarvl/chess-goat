@@ -1,10 +1,19 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { dmMessages, games, jobs } from '../../src/db/schema';
+import { dmMessages, games, jobs, ownerTokens, users } from '../../src/db/schema';
 import { recordDm } from '../../src/domain/dms';
 import { deleteMyData } from '../../src/domain/account';
+import { deleteBot } from '../../src/domain/bots';
+import { createOwnerToken, resolveOwnerToken } from '../../src/domain/ownerTokens';
+import { displayName } from '../../src/domain/users';
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
-import { insertChallenge, insertGame, insertGroup, insertUser } from '../helpers/fixtures';
+import {
+  insertBot,
+  insertChallenge,
+  insertGame,
+  insertGroup,
+  insertUser,
+} from '../helpers/fixtures';
 
 const { db, close } = openTestDb();
 const deps = testDeps(db);
@@ -110,5 +119,68 @@ describe('deleteMyData DMs', () => {
     });
     await expect(deleting).resolves.toBeUndefined();
     expect(await db.select().from(dmMessages)).toEqual([]);
+  });
+});
+
+describe('deleteMyData bots', () => {
+  it('deleting an owner deletes their bots and revokes their token', async () => {
+    const group = await insertGroup(db);
+    const owner = await insertUser(db, { telegramUserId: 11 });
+    const bot = await insertBot(db, owner);
+    const human = await insertUser(db);
+    const game = await insertGame(db, group.id, bot.id, human.id);
+    const token = await createOwnerToken(db, owner.id);
+    const published: string[] = [];
+    deps.bus.subscribe(game.publicId, () => published.push(game.publicId));
+
+    await deleteMyData(deps, owner.id);
+
+    const [ended] = await db.select().from(games).where(eq(games.id, game.id));
+    expect(ended).toMatchObject({ status: 'finished', result: '0-1', endReason: 'resignation' });
+    const [row] = await db.select().from(users).where(eq(users.id, bot.id));
+    expect(displayName(row!)).toBe('🤖 Deleted bot');
+    expect(row!.deletedAt).not.toBeNull();
+    expect(await resolveOwnerToken(db, token)).toBeNull();
+    expect(await db.select().from(ownerTokens)).toEqual([]);
+    expect(published).toEqual([game.publicId]);
+  });
+
+  it('finishes a game between the owner and their own bot once', async () => {
+    const group = await insertGroup(db);
+    const owner = await insertUser(db, { telegramUserId: 11 });
+    const bot = await insertBot(db, owner);
+    const game = await insertGame(db, group.id, owner.id, bot.id);
+    const published: string[] = [];
+    deps.bus.subscribe(game.publicId, () => published.push(game.publicId));
+
+    await deleteMyData(deps, owner.id);
+
+    const [ended] = await db.select().from(games).where(eq(games.id, game.id));
+    expect(ended).toMatchObject({ status: 'finished', endReason: 'resignation' });
+    expect(published).toEqual([game.publicId]);
+  });
+
+  it('races deleteBot for the same bot without deadlocking', async () => {
+    const group = await insertGroup(db);
+    const owner = await insertUser(db, { telegramUserId: 11 });
+    const bot = await insertBot(db, owner);
+    const human = await insertUser(db);
+    await insertGame(db, group.id, owner.id, human.id);
+    const game = await insertGame(db, group.id, bot.id, human.id);
+    await insertChallenge(db, group.id, human.id, bot.id);
+
+    const [mine, its] = await Promise.allSettled([
+      deleteMyData(deps, owner.id),
+      deleteBot(deps, owner.id, bot.id),
+    ]);
+
+    expect(mine.status).toBe('fulfilled');
+    if (its.status === 'rejected') {
+      expect((its.reason as { details?: { reason?: string } }).details?.reason).toBe(
+        'bot_not_found',
+      );
+    }
+    const [ended] = await db.select().from(games).where(eq(games.id, game.id));
+    expect(ended).toMatchObject({ status: 'finished', result: '0-1' });
   });
 });
