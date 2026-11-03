@@ -41,6 +41,8 @@ export type ChallengeCardView = {
   status: ChallengeStatus;
   challenger: PersonView;
   opponent: PersonView | null;
+  /** The opponent is an owned bot: only its own client accepts, so the card offers no Accept. */
+  opponentIsBot: boolean;
   timePerMove: TimePerMove;
   rated: boolean;
   challengerColour: ColourChoice;
@@ -142,8 +144,9 @@ export function renderChallengeCard(view: ChallengeCardView): RenderedMessage {
       text: t('button.accept'),
       callback_data: encodeCallbackData({ action: 'accept_challenge', challengeId: view.publicId }),
     };
+    // The same callback withdraws the challenge when its challenger taps it.
     const declineOrCancel = {
-      text: t(view.opponent ? 'button.decline' : 'button.cancel'),
+      text: t(view.opponent && !view.opponentIsBot ? 'button.decline' : 'button.cancel'),
       callback_data: encodeCallbackData({
         action: 'decline_challenge',
         challengeId: view.publicId,
@@ -152,7 +155,10 @@ export function renderChallengeCard(view: ChallengeCardView): RenderedMessage {
     return {
       text: `${line1.text}\n${terms(view)}`,
       entities: line1.entities,
-      reply_markup: keyboard([[accept, declineOrCancel], lobbyRow(view)]),
+      reply_markup: keyboard([
+        view.opponentIsBot ? [declineOrCancel] : [accept, declineOrCancel],
+        lobbyRow(view),
+      ]),
     };
   }
   const params = { challenger, opponent: view.opponent ? label(view.opponent) : '' };

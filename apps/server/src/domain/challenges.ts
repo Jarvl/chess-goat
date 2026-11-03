@@ -7,6 +7,8 @@ import { challenges, games, type ChallengeRow, type GameRow, type UserRow } from
 import { enqueue } from '../jobs/queue';
 import type { Deps } from './deps';
 import { DomainError } from './errors';
+import { assertBotMayPlay } from './botGroups';
+import { countBotPlayers } from './bots';
 import { requireGroup, settingsOf } from './groups';
 import {
   MAX_PENDING_CHALLENGES,
@@ -17,7 +19,7 @@ import {
 import { isBlocked } from './members';
 import { challengeStub, type ChallengeOutcome } from './dmText';
 import { retireChallengeDms } from './dms';
-import { nameWithFlair, requireUser, wantsDms } from './users';
+import { isOwnedBot, nameWithFlair, requireUser, wantsDms } from './users';
 
 export type CreateChallengeInput = {
   groupId: number;
@@ -47,6 +49,34 @@ async function assertNotBlocked(tx: DbOrTx, groupId: number, user: UserRow): Pro
     throw new DomainError('forbidden', 'blocked in this group', {
       reason: 'blocked',
       userId: user.id,
+    });
+  }
+}
+
+/** Every bot among the players must be allowed to play in the group (it and its owner are members). */
+async function assertBotsMayPlay(
+  tx: DbOrTx,
+  groupId: number,
+  players: (UserRow | null)[],
+): Promise<void> {
+  for (const player of players) {
+    if (player && isOwnedBot(player)) await assertBotMayPlay(tx, groupId, player);
+  }
+}
+
+/** An owner against their own bot, or two bots of one owner: always casual. */
+function sameOwner(a: UserRow, b: UserRow | null): boolean {
+  if (!b) return false;
+  return (
+    (a.ownerId !== null && a.ownerId === b.ownerId) || a.ownerId === b.id || b.ownerId === a.id
+  );
+}
+
+/** A game with exactly one bot runs on a time-per-move clock. */
+function assertBotClock(botPlayers: number, timePerMove: TimePerMove): void {
+  if (botPlayers === 1 && timePerMove === null) {
+    throw new DomainError('validation', 'games against a bot need a time per move', {
+      reason: 'bot_games_need_clock',
     });
   }
 }
@@ -155,6 +185,14 @@ export async function createChallenge(
       }
       await assertNotBlocked(tx, group.id, opponent);
     }
+    if (isOwnedBot(challenger) && (opponent === null || !isOwnedBot(opponent))) {
+      throw new DomainError('forbidden', 'bots only challenge bots', {
+        reason: 'bots_challenge_bots_only',
+      });
+    }
+    await assertBotsMayPlay(tx, group.id, [challenger, opponent]);
+    const botPlayers = countBotPlayers(challenger, opponent);
+    assertBotClock(botPlayers, input.timePerMove);
     const [challenge] = await tx
       .insert(challenges)
       .values({
@@ -165,18 +203,21 @@ export async function createChallenge(
         opponentUsername,
         timePerMove: input.timePerMove,
         challengerColour: input.colour,
-        rated: input.rated,
+        rated: input.rated && !sameOwner(challenger, opponent),
+        botPlayers,
         threadId: input.threadId,
         expiresAt: sql`now() + interval '24 hours'`,
       })
       .returning();
     if (!challenge) throw new Error('challenge insert returned no row');
+    // Nothing about bot-vs-bot play reaches the chat; a bot gets no DMs.
+    if (botPlayers === 2) return challenge;
     await enqueue(tx, {
       kind: 'send_challenge_card',
       payload: { challengeId: challenge.id },
       dedupKey: `card:send:${challenge.publicId}`,
     });
-    if (opponent) {
+    if (opponent && !isOwnedBot(opponent)) {
       await enqueue(tx, {
         kind: 'send_dm',
         payload: { userId: opponent.id, template: 'challenge', challengeId: challenge.id },
@@ -185,6 +226,17 @@ export async function createChallenge(
     }
     return challenge;
   });
+}
+
+/** Edits the card and retires the DM of a settled challenge; bot-vs-bot challenges have neither. */
+async function settleInChat(
+  tx: DbOrTx,
+  challenge: Pick<ChallengeRow, 'id' | 'publicId' | 'challengerId' | 'botPlayers'>,
+  outcome: Exclude<ChallengeOutcome, 'accepted'>,
+): Promise<void> {
+  if (challenge.botPlayers === 2) return;
+  await editCard(tx, challenge);
+  await retireChallengeDm(tx, challenge, outcome);
 }
 
 async function lockPendingChallenge(tx: DbOrTx, challengeId: number): Promise<ChallengeRow> {
@@ -249,6 +301,10 @@ export async function acceptChallenge(
     const challenger = await requireUser(tx, challenge.challengerId);
     await assertNotBlocked(tx, group.id, accepter);
     await assertNotBlocked(tx, group.id, challenger);
+    // The owner may have left, or been blocked, since the challenge was made.
+    await assertBotsMayPlay(tx, group.id, [challenger, accepter]);
+    const botPlayers = countBotPlayers(challenger, accepter);
+    assertBotClock(botPlayers, challenge.timePerMove as TimePerMove);
 
     const challengerColour =
       challenge.challengerColour === 'random' ? randomColour() : challenge.challengerColour;
@@ -263,7 +319,8 @@ export async function acceptChallenge(
         whiteId: white.id,
         blackId: black.id,
         timePerMove,
-        rated: challenge.rated,
+        rated: challenge.rated && !sameOwner(challenger, accepter),
+        botPlayers,
         fen: INITIAL_FEN,
         deadlineAt: deadlineExpression(timePerMove),
         reminderAt: reminderExpression(timePerMove, wantsDms(white)),
@@ -289,12 +346,14 @@ export async function acceptChallenge(
       payload: { gameId: game.id },
       dedupKey: `card:g:${game.publicId}`,
     });
-    await enqueue(tx, {
-      kind: 'send_dm',
-      payload: { userId: white.id, template: 'turn', gameId: game.id },
-      dedupKey: `dm:${white.id}:g:${game.publicId}`,
-      mergePayload: true,
-    });
+    if (!isOwnedBot(white)) {
+      await enqueue(tx, {
+        kind: 'send_dm',
+        payload: { userId: white.id, template: 'turn', gameId: game.id },
+        dedupKey: `dm:${white.id}:g:${game.publicId}`,
+        mergePayload: true,
+      });
+    }
     return { challenge: accepted ?? challenge, game };
   });
   deps.bus.publish(result.game.publicId);
@@ -320,8 +379,7 @@ export async function declineChallenge(
       .set({ status: 'declined', resolvedAt: sql`now()` })
       .where(eq(challenges.id, challenge.id))
       .returning();
-    await editCard(tx, challenge);
-    await retireChallengeDm(tx, challenge, 'declined');
+    await settleInChat(tx, challenge, 'declined');
     return declined ?? challenge;
   });
 }
@@ -343,8 +401,7 @@ export async function cancelChallenge(
       .set({ status: 'cancelled', resolvedAt: sql`now()` })
       .where(eq(challenges.id, challenge.id))
       .returning();
-    await editCard(tx, challenge);
-    await retireChallengeDm(tx, challenge, 'cancelled');
+    await settleInChat(tx, challenge, 'cancelled');
     return cancelled ?? challenge;
   });
 }
@@ -357,6 +414,7 @@ export async function expireChallenges(deps: Deps, limit = 100): Promise<number>
         id: challenges.id,
         publicId: challenges.publicId,
         challengerId: challenges.challengerId,
+        botPlayers: challenges.botPlayers,
       })
       .from(challenges)
       .where(and(eq(challenges.status, 'pending'), lte(challenges.expiresAt, sql`now()`)))
@@ -368,8 +426,7 @@ export async function expireChallenges(deps: Deps, limit = 100): Promise<number>
         .update(challenges)
         .set({ status: 'expired', resolvedAt: sql`now()` })
         .where(and(eq(challenges.id, challenge.id), eq(challenges.status, 'pending')));
-      await editCard(tx, challenge);
-      await retireChallengeDm(tx, challenge, 'expired');
+      await settleInChat(tx, challenge, 'expired');
     }
     return due.length;
   });

@@ -17,6 +17,13 @@ export function replyFor(error: unknown): { key: MessageKey; params: MessagePara
       return { key: 'reply.pending_limit', params: { count } };
     case 'open_disabled':
       return { key: 'reply.open_disabled', params: {} };
+    case 'bots_challenge_bots_only':
+      return { key: 'reply.bots_challenge_bots_only', params: {} };
+    case 'bot_games_need_clock':
+      return { key: 'reply.bot_games_need_clock', params: {} };
+    case 'bot_not_in_group':
+    case 'owner_not_member':
+      return { key: 'reply.bot_unavailable', params: {} };
     default:
       return null;
   }

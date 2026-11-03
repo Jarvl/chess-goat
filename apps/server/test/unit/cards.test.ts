@@ -22,6 +22,7 @@ const challenge = (over: Partial<ChallengeCardView> = {}): ChallengeCardView => 
   status: 'pending',
   challenger: alice,
   opponent: bob,
+  opponentIsBot: false,
   timePerMove: 86400,
   rated: true,
   challengerColour: 'random',
