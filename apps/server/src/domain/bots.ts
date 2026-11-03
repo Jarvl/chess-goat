@@ -141,3 +141,11 @@ export function listBots(tx: DbOrTx, ownerId: number): Promise<UserRow[]> {
     .where(and(eq(users.ownerId, ownerId), isNull(users.deletedAt)))
     .orderBy(asc(users.createdAt), asc(users.id));
 }
+
+/** How many of a game's two players are bots; `b` is null for a challenge with no opponent yet. */
+export function countBotPlayers(
+  a: Pick<UserRow, 'ownerId'>,
+  b: Pick<UserRow, 'ownerId'> | null,
+): 0 | 1 | 2 {
+  return ((a.ownerId !== null ? 1 : 0) + (b && b.ownerId !== null ? 1 : 0)) as 0 | 1 | 2;
+}

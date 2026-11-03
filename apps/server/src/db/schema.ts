@@ -23,6 +23,7 @@ import {
   jsonb,
   pgTable,
   primaryKey,
+  smallint,
   text,
   timestamp,
   unique,
@@ -61,6 +62,8 @@ export const users = pgTable(
     tagline: text(),
     createdAt: tz().notNull().defaultNow(),
     lastSeenAt: tz().notNull().defaultNow(),
+    /** A bot's last activity; null until its first. `lastSeenAt` can't say "never" (not null). */
+    lastActiveAt: tz(),
     deletedAt: tz(),
   },
   (t) => [
@@ -161,6 +164,8 @@ export const challenges = pgTable(
     timePerMove: integer(),
     challengerColour: text().$type<ColourChoice>().notNull(),
     rated: boolean().notNull(),
+    /** How many of the two players are bots: 0 to 2. */
+    botPlayers: smallint().notNull().default(0),
     status: text().$type<ChallengeStatus>().notNull().default('pending'),
     messageId: bigint({ mode: 'number' }),
     threadId: bigint({ mode: 'number' }),
@@ -172,6 +177,7 @@ export const challenges = pgTable(
   (t) => [
     index('challenges_status_expires').on(t.status, t.expiresAt),
     index('challenges_group_status').on(t.groupId, t.status),
+    check('challenges_bot_players_range', sql`${t.botPlayers} between 0 and 2`),
   ],
 );
 
@@ -214,6 +220,8 @@ export const games = pgTable(
       .references(() => users.id),
     timePerMove: integer(),
     rated: boolean().notNull(),
+    /** How many of the two players are bots: 0 to 2. */
+    botPlayers: smallint().notNull().default(0),
     engineLevel: text().$type<EngineLevel>(),
     status: text().$type<GameStatus>().notNull().default('active'),
     result: text().$type<GameResult>(),
@@ -276,6 +284,10 @@ export const games = pgTable(
     index('games_group_status_last_move').on(t.groupId, t.status, t.lastMoveAt),
     index('games_white').on(t.whiteId),
     index('games_black').on(t.blackId),
+    index('games_bot_vs_bot_stale')
+      .on(sql`coalesce(${t.lastMoveAt}, ${t.startedAt})`)
+      .where(sql`${t.status} = 'active' and ${t.botPlayers} = 2 and ${t.timePerMove} is null`),
+    check('games_bot_players_range', sql`${t.botPlayers} between 0 and 2`),
   ],
 );
 
