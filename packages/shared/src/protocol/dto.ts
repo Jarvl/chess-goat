@@ -364,3 +364,18 @@ export const FlairDtoSchema = z.object({
 });
 
 export type FlairDto = z.infer<typeof FlairDtoSchema>;
+
+/** Bots spec: whether the viewer has an owner token, and when it was made and last used. */
+export const OwnerTokenStatusDtoSchema = z.object({
+  token: z.object({ createdAt: IsoDateSchema, lastUsedAt: IsoDateSchema.nullable() }).nullable(),
+});
+
+export type OwnerTokenStatusDto = z.infer<typeof OwnerTokenStatusDtoSchema>;
+
+/** A freshly made owner token; the only time its secret is shown. */
+export const OwnerTokenCreatedDtoSchema = z.object({
+  token: z.string().min(1),
+  createdAt: IsoDateSchema,
+});
+
+export type OwnerTokenCreatedDto = z.infer<typeof OwnerTokenCreatedDtoSchema>;
