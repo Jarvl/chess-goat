@@ -49,14 +49,14 @@
 - Check constraint `users_bot_shape`: `owner_id is null or (telegram_user_id is null and not is_engine)`.
 
 - [ ] **Step 1: Update the stats-views test first.** Add `vs_bot` as the last column of `VIEWS.games`, and add `bots: ['id', 'created_at', 'deleted']`. Extend `counts people, leaving out the engine…` so it also inserts a bot (owner set, no Telegram id) and asserts the bot's id is not in `stats.users`. Extend `classifies games` with a human-vs-bot game and assert that `ids('vs_bot')` equals exactly that game. Add `it('lists bots without names or owners', …)`: insert two bots, one deleted, and assert `select id, deleted from stats.bots` returns both with the right `deleted` flags.
-- [ ] **Step 2: Run it to see it fail.** `pnpm --filter @chess-goat/server test -- test/integration/stats-views.test.ts`. Expected: FAIL (`owner_id` does not exist).
+- [ ] **Step 2: Run it to see it fail.** `cd apps/server && pnpm exec vitest run test/integration/stats-views.test.ts`. Expected: FAIL (`owner_id` does not exist).
 - [ ] **Step 3: Add the columns, the table, the indexes and the check to `schema.ts`.** Run `pnpm --filter @chess-goat/server db:generate` to generate `0015_bot_accounts.sql`, and rename the file if drizzle chose another name, keeping the journal in step. Then append by hand, after a `--> statement-breakpoint`:
   - `create or replace view stats.users`, with `AND "u"."owner_id" IS NULL` added to the `WHERE`;
   - `create or replace view stats.games`, appending `EXISTS (… "b"."owner_id" IS NOT NULL AND "b"."id" IN ("g"."white_id","g"."black_id")) AS "vs_bot"` as the **last** column, because `create or replace` can only add columns at the end;
   - `create or replace view stats.bots as select id, created_at, deleted_at is not null as deleted from public.users where owner_id is not null`.
 
   Update `docs/operations.md`, and any list of stats views or columns, to mention `stats.bots` and `vs_bot`.
-- [ ] **Step 4: Run it to see it pass.** Same command. Expected: PASS. Also run `pnpm --filter @chess-goat/server test -- test/integration/db.test.ts test/integration/migrate-reset.test.ts`. Expected: PASS.
+- [ ] **Step 4: Run it to see it pass.** Same command. Expected: PASS. Also run `cd apps/server && pnpm exec vitest run test/integration/db.test.ts test/integration/migrate-reset.test.ts`. Expected: PASS.
 - [ ] **Step 5: Commit.** `git commit -m "Bot accounts schema: owned bot users, owner tokens, stats views"`
 
 ### Task 2: Bot identity and labels
@@ -85,13 +85,13 @@
   - Unit `isHuman`: false for `{isEngine:true}` and for `{ownerId:5}`, true otherwise.
   - Integration `bots.test.ts`, `refreshes owner labels when the owner is seen`: insert owner `{telegramUserId: 77, username: 'jo'}` and a bot via `insertBot`. Call `ensureUser(db, { telegramUserId: 77, firstName: 'Jo', username: 'joanna' })`. Assert the bot row's `ownerName` is `'@joanna'`. A second `ensureUser` with the same fields leaves the bot's `ownerName` unchanged, and the test checks this through the row.
   - Integration, `does not relabel deleted bots`: a deleted bot keeps its `ownerName`.
-- [ ] **Step 2: Run them to see them fail.** `pnpm --filter @chess-goat/server test -- test/unit/users.test.ts test/integration/bots.test.ts`. Expected: FAIL.
+- [ ] **Step 2: Run them to see them fail.** `cd apps/server && pnpm exec vitest run test/unit/users.test.ts test/integration/bots.test.ts`. Expected: FAIL.
 - [ ] **Step 3: Implement.**
   - `displayName`: a bot with `deletedAt` set gives `'🤖 Deleted bot'`; a live bot gives `` `🤖 ${firstName} (${ownerName})` ``; humans are unchanged.
   - `ensureUser`: after the upsert, run `update users set owner_name = <displayName(row)> where owner_id = row.id and deleted_at is null and owner_name is distinct from <that>`.
   - Fix every compile error the wider `Pick`s cause by adding `ownerId` and `ownerName` to the narrow picks and explicit column selections. `pnpm -r exec tsc --noEmit` (or the repo's `pnpm check`) lists them. Callers that pass full rows need no change.
   - Add `insertBot` to `fixtures.ts`.
-- [ ] **Step 4: Run them to see them pass.** Same command, plus `pnpm --filter @chess-goat/server test -- test/integration/users-groups.test.ts`. Expected: PASS.
+- [ ] **Step 4: Run them to see them pass.** Same command, plus `cd apps/server && pnpm exec vitest run test/integration/users-groups.test.ts`. Expected: PASS.
 - [ ] **Step 5: Commit.** `git commit -m "Bots: label bots with their owner, refresh the label when the owner is seen"`
 
 ### Task 3: Bot management domain
@@ -128,7 +128,7 @@
   - `only humans own bots`. A bot owner, the engine, a deleted user, and a user with no Telegram id each throw `not_a_human_owner`.
   - `updates name and tagline, and only for the owner`. Another owner's `updateBot` throws `bot_not_found`. Renaming to a taken name throws `bot_name_taken`. Renaming to the bot's own name in another case succeeds.
   - `lists live bots oldest first`.
-- [ ] **Step 2: Run them to see them fail.** `pnpm --filter @chess-goat/server test -- test/integration/bots.test.ts`. Expected: FAIL (module not found).
+- [ ] **Step 2: Run them to see them fail.** `cd apps/server && pnpm exec vitest run test/integration/bots.test.ts`. Expected: FAIL (module not found).
 - [ ] **Step 3: Implement `domain/bots.ts` and the limit.**
   - Validate names with the Unicode-aware pattern `/^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,31}$/u` after normalising.
   - Translate a unique violation on `users_bot_name` (Postgres `23505`) into `bot_name_taken`.
@@ -160,7 +160,7 @@
   - `stops resolving once the owner is deleted`: set `deletedAt` directly.
   - `refuses tokens for bots and the engine`.
   - `ownerTokenStatus` reports `createdAt`, and `lastUsedAt` after a resolve.
-- [ ] **Step 2: Run them to see them fail.** `pnpm --filter @chess-goat/server test -- test/integration/owner-tokens.test.ts`. Expected: FAIL.
+- [ ] **Step 2: Run them to see them fail.** `cd apps/server && pnpm exec vitest run test/integration/owner-tokens.test.ts`. Expected: FAIL.
 - [ ] **Step 3: Implement** with `crypto.randomBytes(32)` for the token and `crypto.createHash('sha256')` for the hash. Look tokens up by hash with an indexed equality match. A hash lookup needs no constant-time comparison.
 - [ ] **Step 4: Run them to see them pass.** Same command. Expected: PASS.
 - [ ] **Step 5: Commit.** `git commit -m "Owner tokens: create, rotate, revoke and resolve, stored hashed"`
@@ -186,7 +186,7 @@
   - `DELETE` revokes.
   - A sixth `POST` within a minute gets `rate_limited` (HTTP status from `HTTP_STATUS_BY_ERROR_CODE`).
   - **The token is not a session:** `GET /api/me/groups` with `Authorization: Bearer <owner token>` is rejected with the same status as an invalid session.
-- [ ] **Step 2: Run them to see them fail.** `pnpm --filter @chess-goat/server test -- test/integration/api-owner-token.test.ts`. Expected: FAIL.
+- [ ] **Step 2: Run them to see them fail.** `cd apps/server && pnpm exec vitest run test/integration/api-owner-token.test.ts`. Expected: FAIL.
 - [ ] **Step 3: Implement the DTO schemas and the three routes** in `meRoutes`.
 - [ ] **Step 4: Run them to see them pass.** Same command, plus `test/integration/api-auth.test.ts`. Expected: PASS.
 - [ ] **Step 5: Commit.** `git commit -m "Owner token API under /me"`
@@ -232,7 +232,7 @@
   - A failed request toasts `app.common.error`.
   - The token is gone after leaving and reopening the screen: it's held only in component state.
   - `settings.test.tsx`: a `[data-action="bots"]` row pushes `{ name: 'bots' }`.
-- [ ] **Step 2: Run them to see them fail.** `pnpm --filter @chess-goat/miniapp test -- test/bots.test.tsx test/settings.test.tsx`. Expected: FAIL.
+- [ ] **Step 2: Run them to see them fail.** `cd apps/miniapp && pnpm exec vitest run test/bots.test.tsx test/settings.test.tsx`. Expected: FAIL.
 - [ ] **Step 3: Implement** the route, the screen and the Settings row, following `Settings.tsx`'s card and row classes and dialog helpers.
 - [ ] **Step 4: Run them to see them pass.** Same command. Expected: PASS.
 - [ ] **Step 5: Commit.** `git commit -m "Mini App: Bots screen with the owner token"`
@@ -265,7 +265,7 @@ Bot game DMs and rating pools belong to milestone 2.
   - `a bot cannot wear flair`. `setWornFlair` for a bot is refused, and `wornFlair` returns `[]`.
   - `the leaderboard leaves bots out`. A bot with a `ratings` row and `gamesPlayed > 0` is not in `getLeaderboard`.
   - `the opponent picker leaves bots out`. A bot with a `group_members` row is not in `listKnownPlayers`.
-- [ ] **Step 2: Run them to see them fail.** `pnpm --filter @chess-goat/server test -- test/integration/bots.test.ts`. Expected: FAIL.
+- [ ] **Step 2: Run them to see them fail.** `cd apps/server && pnpm exec vitest run test/integration/bots.test.ts`. Expected: FAIL.
 - [ ] **Step 3: Implement.**
   - Exclude games with a bot on either side from `COUNTED` with a `not exists` on `users.owner_id`, and apply the same rule wherever the award job decides a game counts. If `isCountedGame` can't see the players, check the two player rows in the award handler; it already loads them.
   - In `award.ts`, skip when `!isHuman(player)`.
@@ -292,7 +292,7 @@ Bot game DMs and rating pools belong to milestone 2.
   - `a deleted bot frees its slot`. With 20 bots, delete one and create another, which succeeds.
   - `deleteBot refuses other owners' bots and already-deleted bots`. Both throw `bot_not_found`.
   - `deleting an owner deletes their bots and revokes their token` (`account.test.ts`). The owner's bot is mid-game against a human. After `deleteMyData(owner)`, the human has won by resignation, `displayName` of the bot is `'🤖 Deleted bot'`, `resolveOwnerToken(oldToken)` is null, and the `owner_tokens` row is gone.
-- [ ] **Step 2: Run them to see them fail.** `pnpm --filter @chess-goat/server test -- test/integration/bots.test.ts test/integration/account.test.ts`. Expected: FAIL.
+- [ ] **Step 2: Run them to see them fail.** `cd apps/server && pnpm exec vitest run test/integration/bots.test.ts test/integration/account.test.ts`. Expected: FAIL.
 - [ ] **Step 3: Implement.**
   - `deleteBot`: in one transaction, lock with `FOR UPDATE` in the order `deleteMyData` already uses (games, then challenges, then rows); run the shared helper; set `firstName = 'Deleted bot'`, `tagline = null` and `deletedAt = now`; publish after commit.
   - `deleteMyData`: inside its transaction, delete each of the user's live bots the same way, then revoke the token.
