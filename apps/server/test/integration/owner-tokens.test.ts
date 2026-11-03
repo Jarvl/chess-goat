@@ -97,5 +97,12 @@ describe('owner tokens', () => {
     const first = after!.lastUsedAt!.getTime();
     await resolveOwnerToken(db, token);
     expect((await ownerTokenStatus(db, owner.id))!.lastUsedAt!.getTime()).toBe(first);
+
+    const stale = new Date(first - 2 * 60_000);
+    await db.update(ownerTokens).set({ lastUsedAt: stale }).where(eq(ownerTokens.userId, owner.id));
+    await resolveOwnerToken(db, token);
+    expect((await ownerTokenStatus(db, owner.id))!.lastUsedAt!.getTime()).toBeGreaterThan(
+      stale.getTime() + 60_000,
+    );
   });
 });

@@ -2,8 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client';
 import { ownerTokens, users, type UserRow } from '../db/schema';
-import { DomainError } from './errors';
-import { isHuman } from './users';
+import { lockLiveHumanOwner } from './users';
 
 export const OWNER_TOKEN_PREFIX = 'cgbot_';
 /** 32 random bytes in base64url, unpadded. */
@@ -14,12 +13,7 @@ const hashToken = (token: string): Buffer => createHash('sha256').update(token).
 
 /** Creates the owner's token, replacing any existing one. Returns the plaintext once. */
 export async function createOwnerToken(tx: DbOrTx, userId: number): Promise<string> {
-  const [owner] = await tx.select().from(users).where(eq(users.id, userId)).for('update');
-  if (!owner || !isHuman(owner) || owner.deletedAt !== null || owner.telegramUserId === null) {
-    throw new DomainError('forbidden', 'only a human can own bots', {
-      reason: 'not_a_human_owner',
-    });
-  }
+  await lockLiveHumanOwner(tx, userId);
   const token = OWNER_TOKEN_PREFIX + randomBytes(32).toString('base64url');
   const tokenHash = hashToken(token);
   await tx

@@ -3,7 +3,7 @@ import type { DbOrTx } from '../db/client';
 import { users, type UserRow } from '../db/schema';
 import { DomainError } from './errors';
 import { MAX_BOTS_PER_OWNER } from './limits';
-import { displayName, isHuman } from './users';
+import { displayName, lockLiveHumanOwner } from './users';
 
 const NAME_PATTERN = /^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,31}$/u;
 const RESERVED_NAMES = new Set(['stockfish', 'deleted player', 'deleted bot']);
@@ -50,12 +50,7 @@ export async function createBot(
   const name = validName(input.name);
   const tagline = validTagline(input.tagline);
 
-  const [owner] = await tx.select().from(users).where(eq(users.id, ownerId)).for('update');
-  if (!owner || !isHuman(owner) || owner.deletedAt !== null || owner.telegramUserId === null) {
-    throw new DomainError('forbidden', 'only a human can own bots', {
-      reason: 'not_a_human_owner',
-    });
-  }
+  const owner = await lockLiveHumanOwner(tx, ownerId);
   const [counted] = await tx
     .select({ n: sql<number>`count(*)::int` })
     .from(users)

@@ -178,3 +178,18 @@ export function nameWithFlair(
   const flair = flairEmoji(user);
   return flair ? `${displayName(user)} ${flair}` : displayName(user);
 }
+
+/**
+ * Loads `userId` with a row lock and requires a live human: not the engine, not a bot, not
+ * deleted, and with a Telegram id. Throws forbidden / not_a_human_owner otherwise. The lock only
+ * serialises concurrent callers when `tx` is a transaction.
+ */
+export async function lockLiveHumanOwner(tx: DbOrTx, userId: number): Promise<UserRow> {
+  const [owner] = await tx.select().from(users).where(eq(users.id, userId)).for('update');
+  if (!owner || !isHuman(owner) || owner.deletedAt !== null || owner.telegramUserId === null) {
+    throw new DomainError('forbidden', 'only a human can own bots', {
+      reason: 'not_a_human_owner',
+    });
+  }
+  return owner;
+}
