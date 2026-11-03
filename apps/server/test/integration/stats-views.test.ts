@@ -24,11 +24,13 @@ const VIEWS = {
     'ply_count',
     'voided',
     'counted',
+    'vs_bot',
   ],
   moves: ['game_id', 'ply', 'played_at'],
   shares: ['id', 'game_id', 'user_id', 'created_at'],
   challenges: ['id', 'group_id', 'created_at', 'resolved_at', 'status', 'rated'],
   tips: ['id', 'paid_at', 'stars', 'refunded'],
+  bots: ['id', 'created_at', 'deleted'],
 } as const;
 
 let database: ScratchDatabase | undefined;
@@ -75,6 +77,13 @@ afterAll(async () => {
 async function seedUser(name: string): Promise<number> {
   const [row] = await scratch<{ id: number }[]>`
     insert into users (first_name) values (${name}) returning id`;
+  return Number(row!.id);
+}
+
+async function seedBot(name: string, ownerId: number): Promise<number> {
+  const [row] = await scratch<{ id: number }[]>`
+    insert into users (first_name, owner_id, owner_name) values (${name}, ${ownerId}, 'Owner')
+    returning id`;
   return Number(row!.id);
 }
 
@@ -160,6 +169,10 @@ describe('stats views', () => {
     expect(byId.get(bob)).toMatchObject({ has_played: true, deleted: true });
     expect(byId.get(carol)).toMatchObject({ has_played: false, deleted: false });
     expect(byId.has(await engineId())).toBe(false);
+    const bot = await seedBot('CountBot', alice);
+    const after = await scratch<{ id: number }[]>`select id from stats.users`;
+    expect(after.map((r) => Number(r.id))).not.toContain(bot);
+    expect(after).toHaveLength(3);
   });
 
   it('classifies games', async () => {
@@ -178,20 +191,37 @@ describe('stats views', () => {
       voided: true,
     });
     const vsEngine = await seedGame('gm-engine', group, a, engine);
+    const bot = await seedBot('GameBot', a);
+    const vsBot = await seedGame('gm-bot', group, a, bot);
     const rows = await scratch<
-      { id: number; counted: boolean; voided: boolean; vs_engine: boolean }[]
-    >`select id, counted, voided, vs_engine from stats.games where group_id = ${group}`;
-    expect(rows).toHaveLength(5);
+      { id: number; counted: boolean; voided: boolean; vs_engine: boolean; vs_bot: boolean }[]
+    >`select id, counted, voided, vs_engine, vs_bot from stats.games where group_id = ${group}`;
+    expect(rows).toHaveLength(6);
     for (const row of rows) {
       expect(row.counted).not.toBeNull();
       expect(row.voided).not.toBeNull();
       expect(row.vs_engine).not.toBeNull();
+      expect(row.vs_bot).not.toBeNull();
     }
-    const ids = (flag: 'counted' | 'voided' | 'vs_engine') =>
+    const ids = (flag: 'counted' | 'voided' | 'vs_engine' | 'vs_bot') =>
       rows.filter((r) => r[flag]).map((r) => Number(r.id));
     expect(ids('counted')).toEqual([mate]);
     expect(ids('voided')).toEqual([voided]);
     expect(ids('vs_engine')).toEqual([vsEngine]);
+    expect(ids('vs_bot')).toEqual([vsBot]);
+  });
+
+  it('lists bots without names or owners', async () => {
+    const owner = await seedUser('BotOwner');
+    const live = await seedBot('LiveBot', owner);
+    const gone = await seedBot('GoneBot', owner);
+    await scratch`update users set deleted_at = now() where id = ${gone}`;
+    const rows = await scratch<{ id: number; deleted: boolean }[]>`
+      select id, deleted from stats.bots where id in (${live}, ${gone}) order by id`;
+    expect(rows.map((r) => ({ id: Number(r.id), deleted: r.deleted }))).toEqual([
+      { id: live, deleted: false },
+      { id: gone, deleted: true },
+    ]);
   });
 
   it('flags groups without the bot and refunded tips', async () => {

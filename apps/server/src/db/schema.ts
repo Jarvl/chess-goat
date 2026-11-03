@@ -12,6 +12,7 @@ import type {
 } from '@chess-goat/shared';
 import { sql } from 'drizzle-orm';
 import {
+  type AnyPgColumn,
   bigint,
   boolean,
   check,
@@ -52,6 +53,12 @@ export const users = pgTable(
       .array()
       .notNull()
       .default(sql`'{}'::text[]`),
+    /** Set on bot accounts: the human who owns the bot. No cascade; bots are soft-deleted. */
+    ownerId: bigint({ mode: 'number' }).references((): AnyPgColumn => users.id),
+    /** The owner's display name at creation, for the label; null on humans. */
+    ownerName: text(),
+    /** Optional one-line description of a bot. */
+    tagline: text(),
     createdAt: tz().notNull().defaultNow(),
     lastSeenAt: tz().notNull().defaultNow(),
     deletedAt: tz(),
@@ -60,8 +67,26 @@ export const users = pgTable(
     uniqueIndex('users_single_engine')
       .on(t.isEngine)
       .where(sql`${t.isEngine}`),
+    index('users_owner_id').on(t.ownerId),
+    uniqueIndex('users_bot_name')
+      .on(sql`lower(${t.firstName})`)
+      .where(sql`${t.ownerId} is not null and ${t.deletedAt} is null`),
+    check(
+      'users_bot_shape',
+      sql`${t.ownerId} is null or (${t.telegramUserId} is null and not ${t.isEngine})`,
+    ),
   ],
 );
+
+/** Bot accounts spec §1: one hashed owner token per human; deleting the user deletes it. */
+export const ownerTokens = pgTable('owner_tokens', {
+  userId: bigint({ mode: 'number' })
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  tokenHash: bytea().notNull().unique(),
+  createdAt: tz().notNull().defaultNow(),
+  lastUsedAt: tz(),
+});
 
 /**
  * Profile photos spec: the small Telegram photo, or an all-null row meaning "checked, none".
@@ -453,6 +478,7 @@ export const tips = pgTable('tips', {
 });
 
 export type UserRow = typeof users.$inferSelect;
+export type OwnerTokenRow = typeof ownerTokens.$inferSelect;
 export type UserPhotoRow = typeof userPhotos.$inferSelect;
 export type GroupRow = typeof groups.$inferSelect;
 export type GroupMemberRow = typeof groupMembers.$inferSelect;

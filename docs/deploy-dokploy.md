@@ -146,7 +146,7 @@ the full suite on every pull request, and the end-to-end suite plus a Docker ima
 
 ## Usage dashboard (Metabase)
 
-An optional read-only dashboard over anonymised views of the database (`stats.*`). It shows how many groups, people, games, shares and tips there are, and how they grow. It sees ids, timestamps and categories only: no names, usernames, Telegram ids or chat titles.
+An optional read-only dashboard over anonymised views of the database (`stats.*`). It shows how many groups, people, games, shares and tips there are, and how they grow. It sees ids, timestamps and categories only: no names, usernames, Telegram ids or chat titles. Bot accounts are counted apart, in `stats.bots` (and `vs_bot` on `stats.games`), never in `stats.users`.
 
 **Check the RAM first.** Metabase wants 1-2 GB on top of the app, and Dokploy runs everything on its own host. Look at the host's free memory before adding it.
 

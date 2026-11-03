@@ -75,7 +75,7 @@ Logs are JSON (pino) with numeric and public ids only; bound query parameters ar
   revoke all on schema public from metabase_reader;
   ```
 
-  The `stats` views carry only ids, timestamps and categories: no names, usernames, Telegram ids or chat titles. `metabase_reader` can read the `stats` views and none of the app's tables (it can still see system catalogs, as every role can); the `revoke all on schema public` line is belt-and-braces. Metabase is set up against it in [deploy-dokploy.md](deploy-dokploy.md#usage-dashboard-metabase). `apps/server/test/integration/stats-views.test.ts` runs the same grant statements (with its own `nologin` role without a password, and its own database), so keep the two in sync.
+  The `stats` views carry only ids, timestamps and categories: no names, usernames, Telegram ids or chat titles. Bot accounts are not people: `stats.users` leaves them out, `stats.bots` lists them by id, creation time and deleted flag only (no names or owners), and `stats.games.vs_bot` marks games with a bot on either side. `metabase_reader` can read the `stats` views and none of the app's tables (it can still see system catalogs, as every role can); the `revoke all on schema public` line is belt-and-braces. Metabase is set up against it in [deploy-dokploy.md](deploy-dokploy.md#usage-dashboard-metabase). `apps/server/test/integration/stats-views.test.ts` runs the same grant statements (with its own `nologin` role without a password, and its own database), so keep the two in sync.
 
 ## Known limits of the alpha
 
