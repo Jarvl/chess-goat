@@ -266,6 +266,27 @@ describe('deletion', () => {
     expect(published).toEqual([game.publicId]);
   });
 
+  it('deleteBot settles bot-vs-bot challenges without touching the chat', async () => {
+    const group = await insertGroup(db);
+    const owner = await insertUser(db);
+    const otherOwner = await insertUser(db);
+    const bot = await insertBot(db, owner);
+    const rival = await insertBot(db, otherOwner);
+    const from = await insertChallenge(db, group.id, bot.id, rival.id, { botPlayers: 2 });
+    const to = await insertChallenge(db, group.id, rival.id, bot.id, { botPlayers: 2 });
+
+    await deleteBot(deps, owner.id, bot.id);
+
+    const settled = await db.select().from(challenges).orderBy(challenges.id);
+    expect(settled.map((c) => [c.id, c.status])).toEqual([
+      [from.id, 'cancelled'],
+      [to.id, 'declined'],
+    ]);
+    const kinds = (await db.select().from(jobs)).map((job) => job.kind);
+    expect(kinds).not.toContain('edit_card');
+    expect(kinds).not.toContain('retire_dm');
+  });
+
   it('a deleted bot is anonymised and frees its name', async () => {
     const group = await insertGroup(db);
     const owner = await insertUser(db);

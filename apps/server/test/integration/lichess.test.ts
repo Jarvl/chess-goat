@@ -124,6 +124,15 @@ describe('lichess_import', () => {
     ]);
   });
 
+  it('imports a bot-vs-bot game but edits no card, as it has none', async () => {
+    const game = await finishedGame();
+    await db.update(games).set({ botPlayers: 2 }).where(eq(games.id, game.id));
+    await importJob(game.id, game.publicId);
+    await workerWith().runOnce();
+    expect((await gameRow(game.id)).lichessImportStatus).toBe('done');
+    expect((await jobRows()).filter((job) => job.doneAt === null)).toEqual([]);
+  });
+
   it('sends no authorization header without a token', async () => {
     const game = await finishedGame();
     await importJob(game.id, game.publicId);

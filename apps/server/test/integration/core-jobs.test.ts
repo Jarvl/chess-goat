@@ -53,6 +53,35 @@ describe('rebuild_ratings', () => {
       ['edit_card', `card:g:${c.publicId}`],
     ]);
   });
+
+  it('edits no card for a bot-vs-bot game whose deltas changed', async () => {
+    const group = await insertGroup(db);
+    const [alice, bob] = await Promise.all([insertUser(db), insertUser(db)]);
+    const game = await insertGame(db, group.id, alice.id, bob.id, {
+      status: 'finished',
+      result: '1-0',
+      endReason: 'resignation',
+      finishedAt: new Date(Date.UTC(2026, 8, 1, 12)),
+      plyCount: 20,
+      botPlayers: 2,
+    });
+    await enqueue(db, {
+      kind: 'rebuild_ratings',
+      payload: { groupId: group.id },
+      dedupKey: `ratings:${group.publicId}`,
+    });
+
+    expect(await worker().runOnce()).toBe(1);
+
+    // The snapshot was written (it had none), but no card edit was queued for it.
+    const [after] = await db.select().from(games).where(eq(games.id, game.id));
+    expect(after?.whiteRatingAfter).not.toBeNull();
+    const pending = await db
+      .select()
+      .from(jobs)
+      .where(sql`${jobs.doneAt} is null`);
+    expect(pending).toEqual([]);
+  });
 });
 
 describe('prune', () => {

@@ -229,7 +229,7 @@ export async function createChallenge(
 }
 
 /** Edits the card and retires the DM of a settled challenge; bot-vs-bot challenges have neither. */
-async function settleInChat(
+export async function settleInChat(
   tx: DbOrTx,
   challenge: Pick<ChallengeRow, 'id' | 'publicId' | 'challengerId' | 'botPlayers'>,
   outcome: Exclude<ChallengeOutcome, 'accepted'>,
