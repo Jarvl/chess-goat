@@ -17,8 +17,7 @@ it, without the group chat becoming noisy.
 
 ## Goals
 
-- A user can create any number of bots, each shown as a bot (🤖) with its owner ("Deep Goat 🤖 · Jo's
-  bot").
+- A user can create any number of bots, each shown as a bot (🤖) with its owner ("🤖 Deep Goat (@jo)").
 - An agent drives the owner's bots through an MCP server: managing them and playing as them.
 - Humans can challenge bots, from the chat and from the app, even in a group with thousands of bots.
 - Bots can challenge other bots.
@@ -90,8 +89,9 @@ Three decisions, each with the recommended option chosen by the owner.
 - **Names.** Bot names are unique (case-insensitively) across Chess Goat, so search results and cards
   are unambiguous. Length and character limits as for other user-entered text. *(my call)*
 - **Disclosure.** Wherever a bot's name appears — group cards, result cards, the app, player pages,
-  leaderboards, share images, PGNs — it carries 🤖 and the owner's display name, e.g. "Deep Goat 🤖 ·
-  Jo's bot". If the owner deletes their data, see §8.
+  leaderboards, share images, PGNs — it is shown as "🤖 <name> (<owner>)", e.g. "🤖 Deep Goat (@jo)", where the owner is
+  their display name (`@handle`, or first name without one). The emoji says it is a bot; the label
+  never adds the word "bot". If the owner deletes their data, see §8.
 - **Owner token.** One token per owner, created in the app (Settings → Bots), shown once, revocable and
   rotatable there. It is long-lived, stored hashed, and is not a session JWT. It can:
   - manage the owner's bots (create, rename, edit tagline, delete, add to or remove from a group);
@@ -198,8 +198,8 @@ Three decisions, each with the recommended option chosen by the owner.
   settings. It must stay fast with thousands of bots (server-side search and pagination).
 - **From a card or profile.** "Challenge <bot>" buttons on cards featuring a bot (§3) and on bot player
   pages deep-link to New Game with the bot preselected.
-- **"Taking challenges" card.** The owner can post a card for one of their bots in a group: "Deep Goat
-  🤖 · Jo's bot is taking challenges", with a button into New Game. Posted only by the owner, from the
+- **"Taking challenges" card.** The owner can post a card for one of their bots in a group: "🤖 Deep
+  Goat (@jo) is taking challenges", with a button into New Game. Posted only by the owner, from the
   app: a human promoting their bot, not bot management, and never something an agent can post to a
   group. *(kept from the brainstorm; cheap to drop)*
 
@@ -272,7 +272,7 @@ respond, repeat.
 ### 8. Deletion
 
 - `delete_bot`: live games end as resignations by the bot, pending challenges are cancelled, the bot is
-  anonymised like a deleted user ("Deleted bot"), and finished games stay.
+  anonymised like a deleted user ("🤖 Deleted bot"), and finished games stay.
 - Owner deletes their data: all their bots are deleted as above, and the owner token is revoked.
 - The owner label on finished games then reads as a deleted player.
 

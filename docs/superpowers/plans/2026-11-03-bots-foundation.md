@@ -4,7 +4,7 @@
 
 **Goal:** Bot accounts exist as labelled, non-human `users` rows owned by a human. Owners can create, rotate and revoke an owner token in the app. Bots are kept out of human-only features, and deleting a bot or its owner works. This covers milestone "Bots 1: foundation", issues #92–#95.
 
-**Architecture:** A bot is a `users` row with `owner_id` set, no Telegram id and `is_engine = false`. The owner's display name is copied onto the bot as `owner_name` and refreshed whenever the owner is seen. That way `displayName(user)` can return the full label ("Deep Goat 🤖 · @jo's bot") without a join, and every existing caller of `displayName` labels bots for free. Owner tokens live in their own table and are stored hashed. This milestone creates and stores them; nothing accepts them yet, because the MCP server that will is milestone 3. Bot management is domain functions only. The MCP tools in milestone 3 call them, and the app gets no management screens.
+**Architecture:** A bot is a `users` row with `owner_id` set, no Telegram id and `is_engine = false`. The owner's display name is copied onto the bot as `owner_name` and refreshed whenever the owner is seen. That way `displayName(user)` can return the full label ("🤖 Deep Goat (@jo)") without a join, and every existing caller of `displayName` labels bots for free. Owner tokens live in their own table and are stored hashed. This milestone creates and stores them; nothing accepts them yet, because the MCP server that will is milestone 3. Bot management is domain functions only. The MCP tools in milestone 3 call them, and the app gets no management screens.
 
 **Tech Stack:** TypeScript, Node 22, Hono, drizzle-orm 0.45 and drizzle-kit, PostgreSQL 18, zod 4, Preact (Mini App), vitest.
 
@@ -19,7 +19,7 @@
 - **Tagline:** optional, at most 80 characters, one line (no line breaks).
 - **At most 20 live bots per owner** (`MAX_BOTS_PER_OWNER = 20` in `apps/server/src/domain/limits.ts`).
 - **Only a live human can own bots:** not the engine, not a bot, not deleted, and with a Telegram id.
-- **Label:** a live bot is shown as `{name} 🤖 · {ownerName}'s bot`, where `ownerName` is the owner's `displayName` (`@handle`, or first name if they have no handle). A deleted bot is shown as `Deleted bot`.
+- **Label:** a live bot is shown as `🤖 {name} ({ownerName})`, where `ownerName` is the owner's `displayName` (`@handle`, or first name if they have no handle). The label never adds the word "bot"; the emoji says it. A deleted bot is shown as `🤖 Deleted bot`.
 - **Bots earn and wear no flair.** A game with a bot on either side awards no flair to anyone.
 - **Usage stats:** bots never count as users in `stats.users`.
 - **Run commands with Node on PATH:** `export PATH=$HOME/.nvm/versions/node/v22.23.4/bin:$PATH`. Integration tests need local Postgres (`scripts/local-postgres.sh start`; see `docs/testing.md`).
@@ -29,7 +29,7 @@
 1. **An owner changes their Telegram handle.** Every bot they own should show the new handle the next time the owner is seen. Test in Task 2.
 2. **Bot names that differ only in case or spacing**, e.g. `Deep  Goat` and `deep goat`, are the same name. The second is refused as taken, including when two creates race each other. Test in Task 3.
 3. **A token pasted with whitespace or a trailing newline, a session JWT, or random junk sent as an owner token** resolves to no user. It never throws. Test in Task 4.
-4. **An owner deletes their data while their bot is mid-game against a human.** The human wins by resignation, the bot shows as "Deleted bot", and the token stops resolving. Test in Task 8.
+4. **An owner deletes their data while their bot is mid-game against a human.** The human wins by resignation, the bot shows as "🤖 Deleted bot", and the token stops resolving. Test in Task 8.
 5. **A deleted bot's name and slot become free.** An owner at the limit who deletes a bot can create another, and can reuse the deleted bot's name. Test in Task 8.
 
 ---
@@ -77,8 +77,8 @@
 
 - [ ] **Step 1: Write the failing tests.**
   - Unit `displayName`:
-    - a bot `{firstName:'Deep Goat', ownerId:1, ownerName:'@jo'}` gives `"Deep Goat 🤖 · @jo's bot"`;
-    - a deleted bot gives `"Deleted bot"`;
+    - a bot `{firstName:'Deep Goat', ownerId:1, ownerName:'@jo'}` gives `"🤖 Deep Goat (@jo)"`;
+    - a deleted bot gives `"🤖 Deleted bot"`;
     - a deleted human still gives `"Deleted player"`;
     - a human with a username still gives `"@x"`.
   - Unit `wornFlair`: a bot with `flairWorn: ['rank_1500']` returns `[]`.
@@ -87,7 +87,7 @@
   - Integration, `does not relabel deleted bots`: a deleted bot keeps its `ownerName`.
 - [ ] **Step 2: Run them to see them fail.** `pnpm --filter @chess-goat/server test -- test/unit/users.test.ts test/integration/bots.test.ts`. Expected: FAIL.
 - [ ] **Step 3: Implement.**
-  - `displayName`: a bot with `deletedAt` set gives `'Deleted bot'`; a live bot gives `` `${firstName} 🤖 · ${ownerName}'s bot` ``; humans are unchanged.
+  - `displayName`: a bot with `deletedAt` set gives `'🤖 Deleted bot'`; a live bot gives `` `🤖 ${firstName} (${ownerName})` ``; humans are unchanged.
   - `ensureUser`: after the upsert, run `update users set owner_name = <displayName(row)> where owner_id = row.id and deleted_at is null and owner_name is distinct from <that>`.
   - Fix every compile error the wider `Pick`s cause by adding `ownerId` and `ownerName` to the narrow picks and explicit column selections. `pnpm -r exec tsc --noEmit` (or the repo's `pnpm check`) lists them. Callers that pass full rows need no change.
   - Add `insertBot` to `fixtures.ts`.
@@ -118,7 +118,7 @@
   - `not_found` / `bot_not_found`
 
 - [ ] **Step 1: Write the failing tests** in `bots.test.ts`:
-  - `creates a bot with no Telegram id and its owner's label`. It asserts `ownerId`, `ownerName === '@jo'`, `telegramUserId === null`, `isEngine === false`, and that `displayName(bot)` is `"Deep Goat 🤖 · @jo's bot"`.
+  - `creates a bot with no Telegram id and its owner's label`. It asserts `ownerId`, `ownerName === '@jo'`, `telegramUserId === null`, `isEngine === false`, and that `displayName(bot)` is `"🤖 Deep Goat (@jo)"`.
   - `normalises names`. `'  Deep   Goat '` is stored as `'Deep Goat'`.
   - `refuses invalid names`. Each of `''`, `'   '`, a 33-character name, `'@goat'`, `'-goat'`, `'goat!'` and `'stockfish'` throws `invalid_bot_name`.
   - `refuses taken names case-insensitively`. `'Deep Goat'` then `'deep  goat'` (from another owner) throws `bot_name_taken`.
@@ -288,10 +288,10 @@ Bot game DMs and rating pools belong to milestone 2.
 
 - [ ] **Step 1: Write the failing tests:**
   - `deleteBot resigns live games and settles challenges`. A bot playing white against a human ends `0-1` by resignation. A pending challenge from the bot is `cancelled`, and one to the bot is `declined`. `edit_card` jobs are queued as `deleteMyData` queues them. The bus is published for the finished game.
-  - `a deleted bot is anonymised and frees its name`. `firstName` becomes `'Deleted bot'` and `deletedAt` is set. `displayName` gives `'Deleted bot'`. The finished game still references the bot id. `createBot` with the old name now succeeds.
+  - `a deleted bot is anonymised and frees its name`. `firstName` becomes `'Deleted bot'` and `deletedAt` is set. `displayName` gives `'🤖 Deleted bot'`. The finished game still references the bot id. `createBot` with the old name now succeeds.
   - `a deleted bot frees its slot`. With 20 bots, delete one and create another, which succeeds.
   - `deleteBot refuses other owners' bots and already-deleted bots`. Both throw `bot_not_found`.
-  - `deleting an owner deletes their bots and revokes their token` (`account.test.ts`). The owner's bot is mid-game against a human. After `deleteMyData(owner)`, the human has won by resignation, the bot is `'Deleted bot'`, `resolveOwnerToken(oldToken)` is null, and the `owner_tokens` row is gone.
+  - `deleting an owner deletes their bots and revokes their token` (`account.test.ts`). The owner's bot is mid-game against a human. After `deleteMyData(owner)`, the human has won by resignation, `displayName` of the bot is `'🤖 Deleted bot'`, `resolveOwnerToken(oldToken)` is null, and the `owner_tokens` row is gone.
 - [ ] **Step 2: Run them to see them fail.** `pnpm --filter @chess-goat/server test -- test/integration/bots.test.ts test/integration/account.test.ts`. Expected: FAIL.
 - [ ] **Step 3: Implement.**
   - `deleteBot`: in one transaction, lock with `FOR UPDATE` in the order `deleteMyData` already uses (games, then challenges, then rows); run the shared helper; set `firstName = 'Deleted bot'`, `tagline = null` and `deletedAt = now`; publish after commit.
