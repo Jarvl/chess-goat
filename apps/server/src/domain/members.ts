@@ -89,6 +89,7 @@ export async function listKnownPlayers(
     eq(groupMembers.status, 'member'),
     isNull(groupMembers.blockedAt),
     isNull(users.deletedAt),
+    isNull(users.ownerId),
   ];
   if (options.excludeUserId !== undefined) conditions.push(ne(users.id, options.excludeUserId));
   const rows = await tx

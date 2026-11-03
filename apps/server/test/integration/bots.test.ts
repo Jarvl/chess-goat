@@ -1,10 +1,17 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { users } from '../../src/db/schema';
+import { groupMembers, ratings, users } from '../../src/db/schema';
+import { getLeaderboard } from '../../src/domain/ratings';
+import { listKnownPlayers } from '../../src/domain/members';
+import { awardFlairForGame } from '../../src/flair/award';
+import { runFlairBackfill } from '../../src/flair/backfill';
+import { setWornFlair } from '../../src/flair/profile';
+import { LINES } from '../helpers/chess';
+import { earned, finishedGame } from '../helpers/flair';
 import { createBot, listBots, normaliseBotName, updateBot } from '../../src/domain/bots';
-import { displayName, ensureUser } from '../../src/domain/users';
+import { displayName, ensureUser, wornFlair } from '../../src/domain/users';
 import { openTestDb, truncateAll } from '../helpers/db';
-import { insertBot, insertUser } from '../helpers/fixtures';
+import { insertBot, insertGroup, insertUser } from '../helpers/fixtures';
 
 const { db, close } = openTestDb();
 
@@ -147,5 +154,68 @@ describe('bot management', () => {
     await insertBot(db, owner, { deletedAt: new Date() });
     const second = await createBot(db, owner.id, { name: 'Second' });
     expect((await listBots(db, owner.id)).map((b) => b.id)).toEqual([first.id, second.id]);
+  });
+});
+
+describe('bots are not people', () => {
+  it('awards no flair for a game against a bot', async () => {
+    const group = await insertGroup(db);
+    const alice = await insertUser(db);
+    const bot = await insertBot(db, alice);
+    const game = await finishedGame(db, group.id, alice.id, bot.id, 2, '1-0', {
+      line: LINES.scholarsMateQh5,
+    });
+    await awardFlairForGame(db, game.id);
+    expect(await earned(db, alice.id)).toEqual([]);
+    expect(await earned(db, bot.id)).toEqual([]);
+  });
+
+  it('the backfill ignores games against bots', async () => {
+    const group = await insertGroup(db);
+    const alice = await insertUser(db);
+    const bot = await insertBot(db, alice);
+    for (let d = 2; d < 12; d += 1) await finishedGame(db, group.id, alice.id, bot.id, d, '1/2-1/2');
+    const summary = await runFlairBackfill(db, [{ id: 'draws_10', version: 1 }]);
+    expect(summary.players).toBe(0);
+    expect(await earned(db, alice.id)).toEqual([]);
+    expect(await earned(db, bot.id)).toEqual([]);
+  });
+
+  it('a bot cannot wear flair', async () => {
+    const alice = await insertUser(db);
+    const bot = await insertBot(db, alice, { flairWorn: ['draws_10'] });
+    await expect(setWornFlair(db, bot.id, [])).rejects.toMatchObject({ code: 'forbidden' });
+    expect(wornFlair(bot)).toEqual([]);
+  });
+
+  it('the leaderboard leaves bots out', async () => {
+    const group = await insertGroup(db);
+    const alice = await insertUser(db);
+    const bot = await insertBot(db, alice);
+    for (const u of [alice, bot]) {
+      await db.insert(ratings).values({
+        groupId: group.id,
+        userId: u.id,
+        rating: 1500,
+        rd: 100,
+        volatility: 0.06,
+        gamesPlayed: 3,
+      });
+    }
+    const board = await getLeaderboard(db, group.id);
+    expect(board.map((e) => e.id)).toEqual([String(alice.id)]);
+  });
+
+  it('the opponent picker leaves bots out', async () => {
+    const group = await insertGroup(db);
+    const alice = await insertUser(db);
+    const bot = await insertBot(db, alice);
+    const bob = await insertUser(db);
+    await db.insert(groupMembers).values([
+      { groupId: group.id, userId: bot.id },
+      { groupId: group.id, userId: bob.id },
+    ]);
+    const known = await listKnownPlayers(db, group.id);
+    expect(known.map((p) => p.id)).toEqual([String(bob.id)]);
   });
 });

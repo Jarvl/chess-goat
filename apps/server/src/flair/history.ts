@@ -1,7 +1,7 @@
 import type { GameResult, PlayerResult } from '@chess-goat/shared';
-import { and, asc, eq, inArray, isNull, lt, lte, or } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client';
-import { games, type GameRow } from '../db/schema';
+import { games, users, type GameRow } from '../db/schema';
 import type { CountedGame } from './rules';
 
 // `finishGame` uses `isCountedGame` (flair spec §3.2), so nothing here may import `domain/games.ts`.
@@ -17,7 +17,8 @@ function isDecided(result: GameResult | null): result is DecidedResult {
 
 /**
  * Flair spec §1.3: a counted game is finished, not voided, decided, and not against the bot. Keep
- * `COUNTED` below in step with it.
+ * `COUNTED` below in step with it. It cannot see the players, so it does not rule out a game against
+ * an owned bot: `COUNTED` does, and the award job checks both player rows.
  */
 export function isCountedGame(
   game: Pick<GameRow, 'status' | 'voidedAt' | 'result' | 'engineLevel'>,
@@ -38,6 +39,8 @@ export const COUNTED = and(
   isNull(games.voidedAt),
   inArray(games.result, [...DECIDED_RESULTS]),
   isNull(games.engineLevel),
+  // No flair for a game with an owned bot on either side, to the person or to the bot.
+  sql`not exists (select 1 from users bot where bot.owner_id is not null and bot.id in (${games.whiteId}, ${games.blackId}))`,
 );
 
 /** A decided game's result from one side: `1-0` is a win for White and a loss for Black. */

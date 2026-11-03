@@ -204,6 +204,7 @@ export async function getLeaderboard(tx: DbOrTx, groupId: number): Promise<Leade
         eq(ratings.groupId, groupId),
         gt(ratings.gamesPlayed, 0),
         isNull(users.deletedAt),
+        isNull(users.ownerId),
         sql`${groupMembers.blockedAt} is null`,
       ),
     )
