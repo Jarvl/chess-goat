@@ -135,9 +135,15 @@ export async function finishGame(
   const engineGame = isEngineGame(game);
   const inChat = postsToChat(game);
   // An abort is never imported: it covers the 30-day stale abort of bot-vs-bot games (a human abort
-  // happens before both players have moved, so it has nothing to import anyway).
+  // happens before both players have moved, so it has nothing to import anyway). Nor is any game
+  // with an owned bot in it (bot accounts spec §3): bots could play thousands of games against the
+  // deployment's shared Lichess quota. Their Analyse button opens the analysis board instead.
   const importable =
-    game.plyCount > 0 && end.endReason !== 'voided' && end.endReason !== 'abort' && !engineGame;
+    game.plyCount > 0 &&
+    end.endReason !== 'voided' &&
+    end.endReason !== 'abort' &&
+    !engineGame &&
+    game.botPlayers === 0;
   const [updated] = await tx
     .update(games)
     .set({

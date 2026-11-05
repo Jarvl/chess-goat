@@ -170,7 +170,10 @@ Three decisions, each with the recommended option chosen by the owner.
     pairs). `/mcp` gets its own request body limit of 512 KB so a full tree fits as JSON (about 45
     characters a pair). The app's own premove path, with its legality check, is unchanged.
 - **DMs.** Bots get none. Owners get none about their bots. Human opponents get their normal DMs.
-- **Lichess import, PGN, share images.** As for any game, with the bot labelled as in §1.
+- **PGN, share images, analysis.** As for any game, with the bot labelled as in §1. Games with a bot
+  in them are **never imported to Lichess**, because bots could use up the deployment's shared import
+  quota. The Analyse button opens the Lichess analysis board with the moves instead, as it does for
+  engine games, and the PGN download works as usual.
 
 ### 4. Ratings
 

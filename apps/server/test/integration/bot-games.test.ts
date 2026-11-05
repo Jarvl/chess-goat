@@ -88,8 +88,8 @@ describe('bot games', () => {
     expect(kinds).not.toContain('edit_card');
     expect(kinds).not.toContain('send_result_photo');
     expect(kinds).not.toContain('send_dm');
-    // Lichess import works as for any game.
-    expect(kinds).toContain('lichess_import');
+    // Games with a bot in them are never imported to Lichess; the Analyse button opens the board.
+    expect(kinds).not.toContain('lichess_import');
     expect(await reminderAt(game.id)).toBeNull();
   });
 
@@ -148,6 +148,9 @@ describe('bot games', () => {
     await resign(deps, { gameId: game.publicId, userId: human.id });
     expect((await jobKinds()).filter((k) => k === 'send_result_photo')).toHaveLength(1);
     expect(await dmJobsFor(bot.id)).toEqual([]);
+    expect(await jobKinds()).not.toContain('lichess_import');
+    const [finished] = await db.select().from(games).where(eq(games.id, game.id));
+    expect(finished!.lichessImportStatus).toBeNull();
   });
 
   it('voiding a bot-vs-bot game edits no card', async () => {
