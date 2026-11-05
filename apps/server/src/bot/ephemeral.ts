@@ -1,5 +1,6 @@
 import { GrammyError, HttpError, type Api } from 'grammy';
 import type { InlineKeyboardButton, InlineKeyboardMarkup } from 'grammy/types';
+import type { Logger } from '../logger';
 
 // Ephemeral messages (Bot API 10.2/10.3) are group messages only one user sees. grammY 1.46 has no
 // types for them, so these go through the raw API and carry their own markup types.
@@ -20,7 +21,8 @@ const raw = (api: Api) => api.raw as unknown as RawCalls;
 
 /**
  * Posts a message only `receiverId` sees. Null when it fails, so the caller can answer publicly;
- * a 429 is rethrown, so the update retries instead of going public.
+ * a 429 is rethrown, so the update retries instead of going public. A refusal is logged with
+ * Telegram's error code and description (no message text), so a public answer can be explained.
  */
 export async function sendEphemeral(
   api: Api,
@@ -32,6 +34,7 @@ export async function sendEphemeral(
     text: string;
     replyMarkup?: EphemeralMarkup;
   },
+  log?: Pick<Logger, 'warn'>,
 ): Promise<{ ephemeralMessageId: number } | null> {
   const { trigger } = input;
   try {
@@ -50,8 +53,17 @@ export async function sendEphemeral(
     })) as { ephemeral_message_id: number };
     return { ephemeralMessageId: message.ephemeral_message_id };
   } catch (error) {
-    if (error instanceof GrammyError && error.error_code !== 429) return null;
-    if (error instanceof HttpError) return null;
+    if (error instanceof GrammyError && error.error_code !== 429) {
+      log?.warn(
+        { code: error.error_code, description: error.description },
+        'ephemeral send refused',
+      );
+      return null;
+    }
+    if (error instanceof HttpError) {
+      log?.warn({ code: 'http', description: error.message }, 'ephemeral send refused');
+      return null;
+    }
     throw error;
   }
 }

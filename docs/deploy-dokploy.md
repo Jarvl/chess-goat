@@ -388,6 +388,7 @@ games rather than using those cards.
 | Blank screen inside Telegram | The Web App URL in BotFather is missing the trailing slash, or points somewhere other than `/app/` |
 | Bot ignores every command | The webhook never registered. Check `PUBLIC_URL` exactly matches the domain, then redeploy |
 | Moves work, the opponent's board does not update | More than one replica. Set it back to 1 |
+| A `/challenge` prompt shows for everyone in the group, not just the sender | Search the app's logs for `challenge prompt posted publicly`. `reason: not_private_command` means the sender's Telegram app sent an ordinary command and the bot isn't an admin there. `reason: private_send_refused` comes with an `ephemeral send refused` line that gives Telegram's error. A `late update` line nearby means Telegram delivered the command long after it was sent |
 | Group card never updates | The bot is not an administrator in that group |
 
 The metrics to watch and the runbook for day-to-day operation are in
