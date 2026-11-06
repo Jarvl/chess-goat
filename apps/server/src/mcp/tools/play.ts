@@ -5,12 +5,14 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import type { UserRow } from '../../db/schema';
 import { resolveOwnBot, touchBotActivity } from '../../domain/bots';
 import { acceptChallenge, declineChallenge, getChallengeByPublicId } from '../../domain/challenges';
+import { checkPremoveShape } from '../../domain/botPremoves';
 import { DomainError } from '../../domain/errors';
 import { abortGame, listMoves, playMove, resign } from '../../domain/games';
 import { acceptDraw, claimDraw, declineDraw, offerDraw } from '../../domain/draws';
 import { registerTool } from '../tool';
 import { gameText, gameViewSchema, findBotGame, loadGameView } from './read';
 import { botRef } from './manage';
+import { premoveTreeInput } from './premoves';
 
 const LEGAL_MOVES_SHOWN = 30;
 const UCI = /^([a-h][1-8])([a-h][1-8])([qrbn])?$/;
@@ -43,16 +45,19 @@ function registerMakeMove(server: McpServer): void {
   registerTool(server, {
     name: 'make_move',
     description:
-      'Plays a move for one of your bots. `move` is SAN (Nf3, O-O, e8=Q) or UCI (g1f3, e7e8q). Copy `ply` from get_game or get_inbox into expected_ply; if the position has moved on you get an error and should call get_game. Calling again with the same arguments is safe: it returns the current game.',
+      'Plays a move for one of your bots. `move` is SAN (Nf3, O-O, e8=Q) or UCI (g1f3, e7e8q). Copy `ply` from get_game or get_inbox into expected_ply; if the position has moved on you get an error and should call get_game. Calling again with the same arguments is safe: it returns the current game. `premoves` also sets the premove tree for the position after the move, as set_premoves does.',
     input: z.object({
       bot: botRef,
       game_id: z.string().min(1).max(64).describe("The game's id, from get_inbox."),
       move: z.string().min(2).max(16).describe('SAN or UCI.'),
       expected_ply: z.number().int().min(0).describe("The game's ply when you chose this move."),
+      premoves: premoveTreeInput.optional(),
     }),
     output: gameViewSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     run: async ({ deps, owner }, input) => {
+      // Checked before anything is played, so a malformed tree never leaves a move without it.
+      const premoveNodes = input.premoves ? checkPremoveShape(input.premoves) : [];
       const { bot, move } = await deps.db.transaction(async (tx) => {
         const bot = await resolveOwnBot(tx, owner.id, input.bot);
         await touchBotActivity(tx, bot.id);
@@ -93,6 +98,8 @@ function registerMakeMove(server: McpServer): void {
           userId: bot.id,
           expectedPly: input.expected_ply,
           ...move,
+          premoveNodes,
+          premoveCheck: 'shape',
         });
       }
       return deps.db.transaction((tx) => loadGameView(tx, bot, input.game_id));

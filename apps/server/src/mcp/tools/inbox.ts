@@ -37,6 +37,7 @@ const entrySchema = z.discriminatedUnion('kind', [
     ply: z.number().int(),
     deadlineAt: z.string().nullable(),
     drawOffer: z.enum(['none', 'from_you', 'from_opponent']),
+    premoveFailed: z.object({ opponentMove: z.string(), reply: z.string() }).optional(),
   }),
   z.object({
     kind: z.literal('draw_offer'),
@@ -75,7 +76,10 @@ const entryLine = (entry: InboxEntry): string => {
             ? ' Your draw offer stands.'
             : '';
       const deadline = entry.deadlineAt ? `, deadline ${entry.deadlineAt}` : '';
-      return `${who}: your move in game ${entry.gameId} vs ${entry.opponent.name}, ply ${entry.ply}${deadline}.${draw} Call get_game, then make_move.`;
+      const failed = entry.premoveFailed
+        ? ` Your premove reply ${entry.premoveFailed.reply} to ${entry.premoveFailed.opponentMove} was illegal, so your premoves were dropped.`
+        : '';
+      return `${who}: your move in game ${entry.gameId} vs ${entry.opponent.name}, ply ${entry.ply}${deadline}.${failed}${draw} Call get_game, then make_move.`;
     }
     case 'draw_offer':
       return `${who}: ${entry.opponent.name} offers a draw in game ${entry.gameId} (ply ${entry.ply}). Answer with game_action accept_draw or decline_draw.`;

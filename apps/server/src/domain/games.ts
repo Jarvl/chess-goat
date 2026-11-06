@@ -23,6 +23,7 @@ import {
   moves,
   type GameRow,
   type MoveRow,
+  type PremoveFailure,
   type UserRow,
 } from '../db/schema';
 import { isCountedGame } from '../flair/history';
@@ -291,6 +292,13 @@ export type PlayMoveInput = {
    * API). Absent or `''`, as for an engine move, means none.
    */
   premoveTree?: string;
+  /**
+   * For a bot (bots spec §3): its tree for the position after `uci`, already checked by
+   * `checkPremoveShape` and never for legality, which is checked as each reply fires. Read only
+   * with `premoveCheck: 'shape'`, in place of `premoveTree`.
+   */
+  premoveNodes?: readonly PremoveNode[];
+  premoveCheck?: 'shape';
 };
 
 type LegalMove = Extract<ApplyMoveResult, { legal: true }>;
@@ -410,6 +418,8 @@ async function commitMove(tx: DbOrTx, input: CommitInput): Promise<GameRow> {
   let waiting = input.premoveTree;
   let toMove: readonly PremoveNode[] = decodePremoveBytes(storedPremoveTree(input.game));
   let missed: boolean;
+  // Set when a stored reply turns out illegal: a bot's tree is checked for shape only.
+  let failure: PremoveFailure | null = null;
   for (;;) {
     const branch = branchFor(toMove, last);
     if (!branch) {
@@ -418,10 +428,18 @@ async function commitMove(tx: DbOrTx, input: CommitInput): Promise<GameRow> {
     }
     const { game, history } = committed;
     const reply = applyMove(game.fen, positionKeys(history), branch.reply);
-    // Always legal, since its line was checked from this very position; were the arbiter ever to
-    // refuse it, the tree counts as missed.
+    // A tree from the app is always legal here, since its line was checked from this very
+    // position. A bot's is checked for shape only, so its reply may not be: the tree is discarded
+    // from here, and the bot, now to move, is told which reply failed.
     if (!reply.legal) {
       missed = true;
+      const owner = opposite(mover);
+      failure = {
+        ply: game.plyCount,
+        opponentMove: last,
+        reply: branch.reply,
+        botId: owner === 'white' ? game.whiteId : game.blackId,
+      };
       break;
     }
     mover = opposite(mover);
@@ -443,10 +461,17 @@ async function commitMove(tx: DbOrTx, input: CommitInput): Promise<GameRow> {
   // per-move updates above leave it alone, so the row still holds the stored tree read at the start.
   let moved = committed.game;
   const bytes = encodePremoveBytes(waiting);
-  if (bytes.length > 0 || moved.premoveTree.length > 0) {
+  // An earlier failure is the first mover's, who was to move: moving clears it.
+  const moverId = input.colour === 'white' ? input.game.whiteId : input.game.blackId;
+  const clearFailure = input.game.premoveFailure?.botId === moverId;
+  if (bytes.length > 0 || moved.premoveTree.length > 0 || failure || clearFailure) {
     const [stored] = await tx
       .update(games)
-      .set({ premoveTree: Buffer.from(bytes), premoveTreePly: moved.plyCount })
+      .set({
+        premoveTree: Buffer.from(bytes),
+        premoveTreePly: moved.plyCount,
+        ...(failure || clearFailure ? { premoveFailure: failure } : {}),
+      })
       .where(eq(games.id, moved.id))
       .returning();
     if (!stored) throw new DomainError('not_found', 'game not found');
@@ -490,9 +515,14 @@ async function commitMove(tx: DbOrTx, input: CommitInput): Promise<GameRow> {
  * API); anything the locked checks refuse is left to them, so their error is the one reported.
  */
 export async function playMove(deps: Deps, input: PlayMoveInput): Promise<GameDto> {
-  const parsed = input.premoveTree ? parseTree(input.premoveTree) : { tree: [] };
+  const shapeOnly = input.premoveCheck === 'shape';
+  const parsed = shapeOnly
+    ? { tree: input.premoveNodes ?? [] }
+    : input.premoveTree
+      ? parseTree(input.premoveTree)
+      : { tree: [] };
   let checkedAtPly: number | null = null;
-  if (parsed && parsed.tree.length > 0) {
+  if (!shapeOnly && parsed && parsed.tree.length > 0) {
     const seen = await requireGameByPublicId(deps.db, input.gameId);
     if (
       seen.status === 'active' &&
@@ -527,7 +557,7 @@ export async function playMove(deps: Deps, input: PlayMoveInput): Promise<GameDt
     // expected state between the two reads) or an illegal move left it unchecked. The tree is never
     // checked under the lock, which it would hold for as long as the tree takes: an illegal move is
     // refused as such, and a race is refused as stale, so the device reloads and sends again.
-    if (parsed.tree.length > 0 && checkedAtPly !== game.plyCount) {
+    if (!shapeOnly && parsed.tree.length > 0 && checkedAtPly !== game.plyCount) {
       if (!applyMove(game.fen, [], input.uci).legal) {
         throw new DomainError('illegal_move', 'illegal move');
       }

@@ -3,6 +3,7 @@ import { registerChallengeTools } from './tools/challenge';
 import { registerInboxTools } from './tools/inbox';
 import { registerManageTools } from './tools/manage';
 import { registerPlayTools } from './tools/play';
+import { registerPremoveTools } from './tools/premoves';
 import { registerReadTools } from './tools/read';
 
 /** Sent in the server's identity; clients show it to the agent before any tool call. */
@@ -15,6 +16,7 @@ const TOOLS: readonly ((server: McpServer) => void)[] = [
   registerReadTools,
   registerInboxTools,
   registerPlayTools,
+  registerPremoveTools,
   registerChallengeTools,
 ];
 

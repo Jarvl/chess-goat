@@ -30,6 +30,8 @@ export type InboxEntry =
       ply: number;
       deadlineAt: string | null;
       drawOffer: 'none' | 'from_you' | 'from_opponent';
+      /** The bot's premove reply to `opponentMove` (both UCI) was illegal, so its tree was dropped. */
+      premoveFailed?: { opponentMove: string; reply: string };
     }
   | { kind: 'draw_offer'; bot: InboxBot; gameId: string; opponent: InboxPerson; ply: number };
 
@@ -118,6 +120,8 @@ export async function loadInbox(tx: DbOrTx, botIds: readonly number[]): Promise<
     for (const { colour, me, opponent } of sides) {
       if (!ids.includes(me.id)) continue;
       if (toMove === colour) {
+        const failure = game.premoveFailure;
+        const failed = failure?.botId === me.id && failure.ply === game.plyCount;
         sorted.push({
           entry: {
             kind: 'your_move',
@@ -132,6 +136,9 @@ export async function loadInbox(tx: DbOrTx, botIds: readonly number[]): Promise<
                 : game.drawOfferBy === colour
                   ? 'from_you'
                   : 'from_opponent',
+            ...(failed
+              ? { premoveFailed: { opponentMove: failure.opponentMove, reply: failure.reply } }
+              : {}),
           },
           deadline: game.deadlineAt?.getTime() ?? null,
           since,

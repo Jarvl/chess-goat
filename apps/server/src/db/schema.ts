@@ -273,6 +273,11 @@ export const games = pgTable(
      * it behind, and it must never show or fire in a position its owner did not see.
      */
     premoveTreePly: integer().notNull().default(0),
+    /**
+     * A premove reply found illegal as it fired (bots spec §3): the tree was discarded at `ply`,
+     * where `botId` is to move. Cleared when that side next moves or sets a tree.
+     */
+    premoveFailure: jsonb().$type<PremoveFailure>(),
   },
   (t) => [
     index('games_deadline_active')
@@ -290,6 +295,9 @@ export const games = pgTable(
     check('games_bot_players_range', sql`${t.botPlayers} between 0 and 2`),
   ],
 );
+
+/** A fired premove reply that was illegal (`games.premoveFailure`); moves in UCI. */
+export type PremoveFailure = { ply: number; opponentMove: string; reply: string; botId: number };
 
 export type DmKind = 'turn' | 'reminder' | 'draw_offer' | 'waiting' | 'challenge';
 
