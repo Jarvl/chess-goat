@@ -17,7 +17,7 @@ export async function startTestMcp(
 }
 
 type JsonRpcError = { code: number; message: string; data?: unknown };
-type JsonRpcMessage = {
+export type JsonRpcMessage = {
   jsonrpc: '2.0';
   id?: number | string;
   method?: string;
@@ -65,18 +65,13 @@ function parseSse(text: string): JsonRpcMessage[] {
   return messages;
 }
 
-/**
- * Posts one JSON-RPC request to `/mcp` the way a 2026-07-28 client does: the `_meta` envelope, and
- * the `MCP-Protocol-Version`, `Mcp-Method` and (for `tools/call`) `Mcp-Name` headers. Reads an SSE
- * or a JSON answer. `token` null sends no `authorization` header.
- */
-export async function mcpCall(
-  app: RequestApp,
+/** The `/mcp` POST for one JSON-RPC request, as a 2026-07-28 client sends it. */
+function requestInit(
   token: string | null,
   method: string,
-  params: Record<string, unknown> = {},
-  options: McpCallOptions = {},
-): Promise<McpReply> {
+  params: Record<string, unknown>,
+  options: McpCallOptions,
+): { id: number; init: RequestInit } {
   nextId += 1;
   const id = nextId;
   const meta: Record<string, unknown> = {
@@ -92,12 +87,31 @@ export async function mcpCall(
   };
   if (method === 'tools/call' && typeof params.name === 'string') headers['mcp-name'] = params.name;
   if (token !== null) headers.authorization = `Bearer ${token}`;
-  const res = await app.request('/mcp', {
-    method: 'POST',
-    headers: { ...headers, ...options.headers },
-    body: JSON.stringify({ jsonrpc: '2.0', id, method, params: { ...params, _meta: meta } }),
-    signal: options.signal,
-  });
+  return {
+    id,
+    init: {
+      method: 'POST',
+      headers: { ...headers, ...options.headers },
+      body: JSON.stringify({ jsonrpc: '2.0', id, method, params: { ...params, _meta: meta } }),
+      signal: options.signal,
+    },
+  };
+}
+
+/**
+ * Posts one JSON-RPC request to `/mcp` the way a 2026-07-28 client does: the `_meta` envelope, and
+ * the `MCP-Protocol-Version`, `Mcp-Method` and (for `tools/call`) `Mcp-Name` headers. Reads an SSE
+ * or a JSON answer. `token` null sends no `authorization` header.
+ */
+export async function mcpCall(
+  app: RequestApp,
+  token: string | null,
+  method: string,
+  params: Record<string, unknown> = {},
+  options: McpCallOptions = {},
+): Promise<McpReply> {
+  const { id, init } = requestInit(token, method, params, options);
+  const res = await app.request('/mcp', init);
   const text = await res.text();
   const contentType = res.headers.get('content-type') ?? '';
   let messages: JsonRpcMessage[] = [];
@@ -181,4 +195,38 @@ export async function openListen(target: RequestApp | string, token: string): Pr
     }),
   };
   return typeof target === 'string' ? fetch(target, init) : target.request('/mcp', init);
+}
+
+/**
+ * Starts a tool call and returns the live response without reading it, so a test can watch
+ * notifications as they arrive (`sseMessages`) or abort the request part-way.
+ */
+export async function openToolCall(
+  app: RequestApp,
+  token: string,
+  name: string,
+  args: Record<string, unknown> = {},
+  options: McpCallOptions = {},
+): Promise<Response> {
+  const { init } = requestInit(token, 'tools/call', { name, arguments: args }, options);
+  return app.request('/mcp', init);
+}
+
+/** The JSON-RPC messages of a live SSE response, each as soon as its frame is complete. */
+export async function* sseMessages(response: Response): AsyncGenerator<JsonRpcMessage> {
+  if (!response.body) return;
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = '';
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += value;
+      const frames = buffer.split(/\r?\n\r?\n/);
+      buffer = frames.pop() ?? '';
+      for (const message of parseSse(frames.join('\n\n'))) yield message;
+    }
+  } finally {
+    reader.releaseLock();
+  }
 }

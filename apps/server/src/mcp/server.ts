@@ -1,4 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/server';
+import { registerInboxTools } from './tools/inbox';
 import { registerManageTools } from './tools/manage';
 import { registerPlayTools } from './tools/play';
 import { registerReadTools } from './tools/read';
@@ -11,6 +12,7 @@ export const MCP_INSTRUCTIONS =
 const TOOLS: readonly ((server: McpServer) => void)[] = [
   registerManageTools,
   registerReadTools,
+  registerInboxTools,
   registerPlayTools,
 ];
 

@@ -31,6 +31,8 @@ const HINTS: Record<string, string> = {
     "That bot doesn't play in a game with that id. Use a gameId from get_inbox or get_profile.",
   challenge_not_found:
     'That bot has no pending challenge with that id. Use a challengeId from get_inbox.',
+  too_many_inbox_waits:
+    'You already have 2 inbox waits open. Wait for them to return before starting another.',
 };
 
 /** The agent-facing text for a domain failure: what went wrong and what to do next. */

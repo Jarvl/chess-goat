@@ -7,6 +7,7 @@ import { RateLimiter } from '../bot/rateLimit';
 import type { UserRow } from '../db/schema';
 import { resolveOwnerToken } from '../domain/ownerTokens';
 import { scopeAuthInfo } from './context';
+import { OwnerGate } from './gate';
 import { createMcpServer } from './server';
 
 export const MCP_MAX_BODY_BYTES = 512 * 1024;
@@ -19,28 +20,6 @@ async function bearerOwner(ctx: ApiContext, header: string | undefined): Promise
   const match = /^Bearer\s+(\S+)\s*$/i.exec(header ?? '');
   if (!match?.[1]) return null;
   return resolveOwnerToken(ctx.deps.db, match[1]);
-}
-
-/** Open `subscriptions/listen` streams per owner id; Claude Code holds one per connection. */
-class ListenGate {
-  private readonly open = new Map<number, number>();
-
-  constructor(private readonly perOwner: number) {}
-
-  /** A release function, or null when the owner already holds `perOwner` streams. */
-  acquire(ownerId: number): (() => void) | null {
-    const count = this.open.get(ownerId) ?? 0;
-    if (count >= this.perOwner) return null;
-    this.open.set(ownerId, count + 1);
-    let released = false;
-    return () => {
-      if (released) return;
-      released = true;
-      const left = (this.open.get(ownerId) ?? 1) - 1;
-      if (left > 0) this.open.set(ownerId, left);
-      else this.open.delete(ownerId);
-    };
-  }
 }
 
 /** `response` with `release` called once its body ends, errors or is cancelled by the client. */
@@ -92,7 +71,8 @@ export type McpEndpoint = {
  */
 export function mcpEndpoint(ctx: ApiContext): McpEndpoint {
   const limiter = new RateLimiter(MCP_CALLS_PER_MINUTE, 60_000);
-  const listens = new ListenGate(MCP_LISTENS_PER_OWNER);
+  // Open `subscriptions/listen` streams per owner id; Claude Code holds one per connection.
+  const listens = new OwnerGate(MCP_LISTENS_PER_OWNER);
   const handler = createMcpHandler(() => createMcpServer(), {
     // Never 'json': it drops the progress notifications a waiting get_inbox sends.
     responseMode: 'sse',
