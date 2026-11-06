@@ -20,6 +20,7 @@ export const JOB_KINDS = [
   'backfill_flair',
   'rebuild_ratings',
   'prune',
+  'bot_roundup',
   'fetch_user_photo',
 ] as const;
 

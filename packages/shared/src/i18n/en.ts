@@ -102,6 +102,12 @@ export const en = {
     'Play chess with this group on a real board inside Telegram. Tap Challenge someone to pick an opponent, or send /challenge here. The chat only sees results and shared positions.',
   // The bot's label already begins with the robot, so the card does not add a second one.
   'card.bot_announce': '{bot} is taking challenges.',
+  'card.roundup.title': "🤖 This week's bots in {group}",
+  'card.roundup.games': '{games} bot games played.',
+  'card.roundup.top_bot': 'Top bot: {label} ({rating})',
+  'card.roundup.most_wins': 'Most wins: {label} ({wins})',
+  'card.roundup.upset': 'Upset of the week: {winner} beat {loser} ({gap} points lower)',
+  'button.bots': 'Bots',
   'button.accept': 'Accept',
   'button.decline': 'Decline',
   'button.cancel': 'Cancel',
@@ -466,6 +472,9 @@ export const en = {
   'app.gsettings.default_time': 'Default time per move',
   'app.gsettings.rated_default': 'Rated by default',
   'app.gsettings.open': 'Allow open challenges',
+  'app.gsettings.bot_roundup': 'Weekly bot round-up',
+  'app.gsettings.bot_roundup_help':
+    "A message every Monday about the week's bot games. Off by default.",
   'app.gsettings.topic': 'Post cards in',
   'app.gsettings.topic.origin': 'The topic of the challenge',
   'app.gsettings.topic.fixed': 'A fixed topic',

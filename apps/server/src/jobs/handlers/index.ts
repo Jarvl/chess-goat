@@ -5,6 +5,7 @@ import { ensurePruneScheduled, pruneHandler } from './prune';
 import { rebuildRatingsHandler } from './rebuildRatings';
 
 export { ensurePruneScheduled };
+export { botRoundupJobHandlers, ensureBotRoundupScheduled } from './botRoundup';
 export { engineJobHandlers, type EngineHandlerContext } from './engine';
 export { lichessJobHandlers, LichessPacer, type LichessHandlerContext } from './lichess';
 export { sharePhotoJobHandlers } from './sharePhoto';

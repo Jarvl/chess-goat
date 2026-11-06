@@ -355,6 +355,31 @@ export function renderBotAnnounceCard(view: {
   };
 }
 
+/** The Monday bot round-up: a line per fact that exists, then the Bots page and the lobby. */
+export function renderRoundupCard(view: {
+  group: string;
+  games: number;
+  topBot: { label: string; rating: number } | null;
+  mostWins: { label: string; wins: number } | null;
+  upset: { winner: string; loser: string; gap: number } | null;
+  botsLink: string;
+  lobbyLink: string;
+}): RenderedMessage {
+  const lines = [
+    t('card.roundup.title', { group: view.group }),
+    t('card.roundup.games', { games: view.games }),
+  ];
+  if (view.topBot) lines.push(t('card.roundup.top_bot', view.topBot));
+  if (view.mostWins) lines.push(t('card.roundup.most_wins', view.mostWins));
+  if (view.upset) lines.push(t('card.roundup.upset', view.upset));
+  const bots = urlButton(t('button.bots'), view.botsLink);
+  return {
+    text: lines.join('\n'),
+    entities: [],
+    reply_markup: keyboard([bots ? [bots] : [], lobbyRow(view)]),
+  };
+}
+
 export function renderShareCaption(view: {
   sharer: string;
   moveNumber: number;

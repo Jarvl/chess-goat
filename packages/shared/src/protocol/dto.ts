@@ -213,6 +213,8 @@ export const GroupSettingsSchema = z.object({
   allowOpenChallenges: z.boolean(),
   cardTopicMode: z.enum(['origin', 'fixed']),
   fixedTopicId: z.number().int().positive().nullable(),
+  /** A Monday message about the week's bot games; off until an admin turns it on. */
+  botRoundup: z.boolean(),
 });
 
 export type GroupSettings = z.infer<typeof GroupSettingsSchema>;
@@ -223,6 +225,7 @@ export const GROUP_SETTINGS_DEFAULTS: GroupSettings = {
   allowOpenChallenges: true,
   cardTopicMode: 'origin',
   fixedTopicId: null,
+  botRoundup: false,
 };
 
 export const FinishedPageDtoSchema = z.object({
