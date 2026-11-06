@@ -36,6 +36,9 @@ type BotOut = {
   liveGames: number;
 };
 
+const NOT_FOUND =
+  "Bot not found. Call list_bots for your bots' names and ids. A string is always a name; pass an id as a number.";
+
 const call = <O = Record<string, unknown>>(name: string, args: Record<string, unknown> = {}) =>
   callTool<O>(api.app, token, name, args);
 const listed = async () => (await call<{ bots: BotOut[] }>('list_bots')).structuredContent!.bots;
@@ -67,14 +70,16 @@ describe('create_bot and list_bots', () => {
     await call('create_bot', { name: 'Taken' });
     const taken = await call('create_bot', { name: 'taken' });
     expect(taken.isError).toBe(true);
-    expect(resultText(taken)).toMatch(/name taken/i);
+    expect(resultText(taken)).toBe('Bot name taken. Choose a different name.');
     const invalid = await call('create_bot', { name: '!!!' });
     expect(invalid.isError).toBe(true);
-    expect(resultText(invalid)).toMatch(/invalid bot name/i);
+    expect(resultText(invalid)).toMatch(/^Invalid bot name\. Names are 1–32 characters/);
     for (let i = 1; i < 20; i += 1) await call('create_bot', { name: `Bot ${i}` });
     const over = await call('create_bot', { name: 'One too many' });
     expect(over.isError).toBe(true);
-    expect(resultText(over)).toMatch(/too many bots/i);
+    expect(resultText(over)).toBe(
+      'Too many bots. You have the maximum of 20 bots. Delete one with delete_bot first.',
+    );
     expect(await listed()).toHaveLength(20);
   });
 
@@ -117,6 +122,12 @@ describe('update_bot and delete_bot', () => {
     expect(byName.structuredContent!.bot).toMatchObject({ id, name: 'Second', tagline: 'hello' });
     const byId = await call<{ bot: BotOut }>('update_bot', { bot: id, name: 'Third' });
     expect(byId.structuredContent!.bot).toMatchObject({ id, name: 'Third', tagline: 'hello' });
+  });
+
+  it('returns a fresh lastActiveAt from update_bot', async () => {
+    await call('create_bot', { name: 'Fresh' });
+    const result = await call<{ bot: BotOut }>('update_bot', { bot: 'Fresh', tagline: 'hi' });
+    expect(result.structuredContent!.bot.lastActiveAt).not.toBeNull();
   });
 
   it('refuses a rename to a taken name', async () => {
@@ -186,9 +197,12 @@ describe('list_my_groups, add_bot_to_group and remove_bot_from_group', () => {
     const group = await insertGroup(db);
     const notIn = await call('add_bot_to_group', { bot: bot.id, group: group.publicId });
     expect(notIn.isError).toBe(true);
+    expect(resultText(notIn)).toBe(
+      'Join the group before adding a bot. You must be a member of that group. Call list_my_groups for groups you can use.',
+    );
     const unknown = await call('add_bot_to_group', { bot: bot.id, group: 'nope' });
     expect(unknown.isError).toBe(true);
-    expect(resultText(unknown)).toMatch(/group not found/i);
+    expect(resultText(unknown)).toBe('Group not found. Use a groupId from list_my_groups.');
   });
 });
 
@@ -214,7 +228,7 @@ describe("bot arguments never reach anyone else's bot, a deleted bot or the owne
       for (const bot of refs) {
         const result = await call(name, { bot, ...extra });
         expect(result.isError, `${name} ${bot}`).toBe(true);
-        expect(resultText(result), `${name} ${bot}`).toBe('Bot not found.');
+        expect(resultText(result), `${name} ${bot}`).toBe(NOT_FOUND);
       }
     }
     const [row] = await db.select().from(users).where(eq(users.id, theirs.id));

@@ -20,7 +20,9 @@ import { registerTool } from '../tool';
 /** A bot by name (case-insensitive) or numeric id. */
 const botRef = z
   .union([z.string().min(1).max(64), z.number().int()])
-  .describe('The bot: its name (case-insensitive) or its numeric id.');
+  .describe(
+    'The bot: a string is always its name (case-insensitive); a number is its id. Pass an id as a number, not a string.',
+  );
 const groupRef = z.string().min(1).max(64).describe("The group's id, from list_my_groups.");
 
 const botGroupSchema = z.object({
@@ -183,6 +185,7 @@ function registerDeleteBot(server: McpServer): void {
     output: z.object({ deleted: z.string(), resignedGames: z.number().int() }),
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     run: async ({ deps, owner }, input) => {
+      // No touchBotActivity: deleting anonymises the row and clears lastActiveAt.
       const bot = await deps.db.transaction((tx) => resolveOwnBot(tx, owner.id, input.bot));
       const resignedGames = await deleteBot(deps, owner.id, bot.id);
       return { deleted: bot.firstName, resignedGames };

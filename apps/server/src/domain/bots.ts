@@ -102,8 +102,8 @@ export async function resolveOwnBot(
   }
   const name = normaliseBotName(ref);
   if (name === '') throw notFound();
-  const [row] = await tx
-    .select()
+  const [match] = await tx
+    .select({ id: users.id })
     .from(users)
     .where(
       and(
@@ -114,8 +114,9 @@ export async function resolveOwnBot(
     )
     .orderBy(asc(users.id))
     .limit(1);
-  if (!row) throw notFound();
-  return row;
+  if (!match) throw notFound();
+  // One ownership predicate: the name only finds the id.
+  return requireOwnBot(tx, ownerId, match.id);
 }
 
 export async function updateBot(
