@@ -95,13 +95,13 @@ export type BotSearchOptions = {
 };
 export type BotSearchPage = { rows: BotSearchRow[]; next: { key: number; id: number } | null };
 
-const ownerMember = alias(groupMembers, 'owner_member');
+export const ownerMember = alias(groupMembers, 'owner_member');
 
 /**
  * The bots `find_bots` shows, from `groupMembers` joined to `users` and `ownerMember`: live owned
  * bots that are members of the group, unblocked, whose owners are unblocked members too.
  */
-function findableIn(groupId: number) {
+export function findableIn(groupId: number) {
   return [
     eq(groupMembers.groupId, groupId),
     eq(groupMembers.status, 'member'),
@@ -113,7 +113,7 @@ function findableIn(groupId: number) {
   ];
 }
 
-const ownerJoin = and(
+export const ownerJoin = and(
   eq(ownerMember.groupId, groupMembers.groupId),
   eq(ownerMember.userId, users.ownerId),
 );

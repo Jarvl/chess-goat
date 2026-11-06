@@ -16,6 +16,7 @@ export function GroupBots(props: { groupId: string }) {
   if (!lobby.data) return <Loading />;
   const { live, standings, recent } = lobby.data;
   const viewerId = session.value?.user.id ?? null;
+  // Both game sections use dim="finished" so live games are not greyed out as "not your turn".
   const openGame = (gameId: string) => router.push({ name: 'game', gameId });
   const nothing = live.length === 0 && standings.length === 0 && recent.length === 0;
   return (

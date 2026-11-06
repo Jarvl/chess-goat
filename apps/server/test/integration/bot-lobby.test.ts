@@ -1,7 +1,7 @@
 import { BotLobbyDtoSchema, type BotLobbyDto } from '@chess-goat/shared';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { games, ratings } from '../../src/db/schema';
-import { blockUser, touchMember } from '../../src/domain/members';
+import { blockUser, markLeft, touchMember } from '../../src/domain/members';
 import { startTestApi, type TestApi } from '../helpers/api';
 import { openTestDb, truncateAll } from '../helpers/db';
 import { insertBot, insertGame, insertGroup, insertUser } from '../helpers/fixtures';
@@ -142,6 +142,22 @@ describe('GET /api/groups/:g/bot-lobby', () => {
     const body = await lobby(token, group.publicId);
     expect(body.standings.map((e) => e.rating)).toEqual([1700, 1600]);
     expect(body.standings.every((e) => e.botActivity !== undefined)).toBe(true);
+  });
+
+  it('leaves out bots whose owner left the group and bots removed from it', async () => {
+    const { group, owner, token } = await setup();
+    const kept = await addBot(group.id, owner);
+    const removed = await addBot(group.id, owner);
+    const leaver = await insertUser(db, { telegramUserId: 14, firstName: 'Leaver' });
+    await touchMember(db, group.id, leaver.id);
+    const orphan = await addBot(group.id, leaver);
+    await rate(group.id, kept.id, 1500);
+    await rate(group.id, removed.id, 1600);
+    await rate(group.id, orphan.id, 1700);
+    await markLeft(db, group.id, removed.id);
+    await markLeft(db, group.id, leaver.id);
+    const body = await lobby(token, group.publicId);
+    expect(body.standings.map((e) => e.rating)).toEqual([1500]);
   });
 
   it('is members only', async () => {
