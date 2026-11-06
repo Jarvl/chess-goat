@@ -26,7 +26,18 @@ export function landingFor(
       prefetched.lobby = route.lobby;
       return {
         tab: 'groups',
-        route: { name: 'newGame', groupId: route.lobby.group.id },
+        route: {
+          name: 'newGame',
+          groupId: route.lobby.group.id,
+          ...(route.opponentId !== undefined && { opponentId: route.opponentId }),
+        },
+        below: [{ name: 'lobby', groupId: route.lobby.group.id }],
+      };
+    case 'bots':
+      prefetched.lobby = route.lobby;
+      return {
+        tab: 'groups',
+        route: { name: 'botBrowser', groupId: route.lobby.group.id },
         below: [{ name: 'lobby', groupId: route.lobby.group.id }],
       };
     case 'settings':

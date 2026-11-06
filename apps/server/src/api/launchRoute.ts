@@ -33,5 +33,9 @@ export async function resolveLaunchRoute(
     return { kind: 'settings', settings: await groupSettingsDto(db, group) };
   const lobby = await buildLobby(ctx.deps, group, user, { isAdmin });
   // New game lands on top of the lobby, so its data comes along for the BackButton.
-  return param.kind === 'newGame' ? { kind: 'newGame', lobby } : { kind: 'lobby', lobby };
+  if (param.kind === 'newGame') return { kind: 'newGame', lobby };
+  if (param.kind === 'challengeBot')
+    return { kind: 'newGame', lobby, opponentId: String(param.botId) };
+  if (param.kind === 'bots') return { kind: 'bots', lobby };
+  return { kind: 'lobby', lobby };
 }

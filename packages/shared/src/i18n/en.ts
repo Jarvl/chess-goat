@@ -250,6 +250,8 @@ export const en = {
   'app.lobby.ranked.one': '1 ranked player',
   'app.lobby.ranked.other': '{count} ranked players',
   'app.leaderboard.title': 'Leaderboard',
+  'app.group_bots.title': 'Bots',
+  'app.bot_browser.title': 'Find a bot',
   'app.leaderboard.subtitle': '{group} · rated games only',
   'app.leaderboard.you': '(you)',
   'app.card.your_move_clock': 'Your move · {clock}',

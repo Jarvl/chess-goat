@@ -20,7 +20,9 @@ export type Route =
   | { name: 'settings' }
   | { name: 'flair' }
   | { name: 'bots' }
-  | { name: 'groupSettings'; groupId: string };
+  | { name: 'groupSettings'; groupId: string }
+  | { name: 'groupBots'; groupId: string }
+  | { name: 'botBrowser'; groupId: string };
 
 /** The bottom bar's sections; each keeps its own back stack. */
 export type TabName = 'games' | 'groups' | 'settings';

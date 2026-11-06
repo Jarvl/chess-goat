@@ -301,7 +301,14 @@ export const LaunchRouteSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('game'), game: GameDtoSchema }),
   z.object({ kind: z.literal('lobby'), lobby: LobbyDtoSchema }),
   /** A "challenge someone" link: the lobby's data, landed with New game on top of it. */
-  z.object({ kind: z.literal('newGame'), lobby: LobbyDtoSchema }),
+  z.object({
+    kind: z.literal('newGame'),
+    lobby: LobbyDtoSchema,
+    /** The player picked in the link (a bot, for a challenge-bot link). */
+    opponentId: z.string().optional(),
+  }),
+  /** A link to the group's bots: the lobby's data, landed with the bot browser on top of it. */
+  z.object({ kind: z.literal('bots'), lobby: LobbyDtoSchema }),
   z.object({ kind: z.literal('settings'), settings: GroupSettingsDtoSchema }),
   z.object({ kind: z.literal('home'), games: MeGamesDtoSchema }),
   z.object({ kind: z.literal('locked'), group: GroupRefSchema }),
