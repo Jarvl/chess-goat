@@ -197,6 +197,82 @@ describe('set_premoves', () => {
   });
 });
 
+describe('premove line depth', () => {
+  const line = (n: number): Node[] => {
+    let tree: Node[] = [];
+    for (let i = 0; i < n; i += 1) tree = [{ move: 'g8f6', reply: 'g1f3', children: tree }];
+    return tree;
+  };
+  /** Arguments as JSON text, with a tree nested `n` pairs deep: too deep for JSON.stringify. */
+  const rawArgs = (head: string, key: string, n: number) =>
+    `{${head},"${key}":[${'{"move":"g8f6","reply":"g1f3","children":['.repeat(n)}${']}'.repeat(n)}]}`;
+
+  it('stores and shows a line 200 pairs deep', async () => {
+    const { game } = await setup();
+    const out = await call<View>('set_premoves', {
+      bot: 'Rook',
+      game_id: game.publicId,
+      expected_ply: 1,
+      tree: line(200),
+    });
+    expect(out.isError).toBeFalsy();
+    expect(out.structuredContent!.premoveTree).toEqual(line(200));
+    const got = await call<View>('get_game', { bot: 'Rook', game_id: game.publicId });
+    expect(got.isError).toBeFalsy();
+    expect(got.structuredContent!.premoveTree).toEqual(line(200));
+  });
+
+  it('refuses a line 201 pairs deep, naming the limit', async () => {
+    const { game, row } = await setup();
+    const out = await call('set_premoves', {
+      bot: 'Rook',
+      game_id: game.publicId,
+      expected_ply: 1,
+      tree: line(201),
+    });
+    expect(out.isError).toBe(true);
+    expect(resultText(out)).toContain('at most 200 pairs deep');
+    expect(resultText(out)).toContain('Shorten that line and call set_premoves again.');
+    expect((await row()).premoveTree).toHaveLength(0);
+  });
+
+  it('refuses a payload nested 10,000 deep cleanly, in set_premoves and make_move', async () => {
+    const { game, humanMove, row } = await setup();
+    const set = await callTool(
+      api.app,
+      token,
+      'set_premoves',
+      {},
+      {
+        rawArguments: rawArgs(
+          `"bot":"Rook","game_id":"${game.publicId}","expected_ply":1`,
+          'tree',
+          10_000,
+        ),
+      },
+    );
+    expect(set.isError).toBe(true);
+    expect(resultText(set)).toContain('at most 200 pairs deep');
+    await humanMove('e7e5', 1);
+    const move = await callTool(
+      api.app,
+      token,
+      'make_move',
+      {},
+      {
+        rawArguments: rawArgs(
+          `"bot":"Rook","game_id":"${game.publicId}","move":"Nf3","expected_ply":2`,
+          'premoves',
+          10_000,
+        ),
+      },
+    );
+    expect(move.isError).toBe(true);
+    expect(resultText(move)).toContain('at most 200 pairs deep');
+    expect((await row()).plyCount).toBe(2);
+  });
+});
+
 describe('make_move with premoves', () => {
   it('sets the tree in the same call, and it fires', async () => {
     const group = await insertGroup(db);

@@ -37,6 +37,7 @@ const HINTS: Record<string, string> = {
   pending_limit:
     'This bot already has 3 pending challenges in this group. Wait for one to be answered or to expire.',
   invalid_premove_tree: 'Fix that node and call set_premoves again.',
+  premove_too_deep: 'Shorten that line and call set_premoves again.',
   too_many_inbox_waits:
     'You already have 2 inbox waits open. Wait for them to return before starting another.',
 };

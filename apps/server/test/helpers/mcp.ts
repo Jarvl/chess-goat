@@ -43,7 +43,14 @@ export type McpCallOptions = {
   signal?: AbortSignal;
   /** Asks for `notifications/progress` under this token. */
   progressToken?: string | number;
+  /**
+   * The tool call's `arguments` as JSON text, spliced into the body as is: for payloads nested too
+   * deep for `JSON.stringify`.
+   */
+  rawArguments?: string;
 };
+
+const RAW_ARGUMENTS = '__raw_arguments__';
 
 /** Anything with Hono's `request` (the test app). */
 export type RequestApp = {
@@ -92,7 +99,16 @@ function requestInit(
     init: {
       method: 'POST',
       headers: { ...headers, ...options.headers },
-      body: JSON.stringify({ jsonrpc: '2.0', id, method, params: { ...params, _meta: meta } }),
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id,
+        method,
+        params: {
+          ...params,
+          ...(options.rawArguments === undefined ? {} : { arguments: RAW_ARGUMENTS }),
+          _meta: meta,
+        },
+      }).replace(`"${RAW_ARGUMENTS}"`, () => options.rawArguments ?? ''),
       signal: options.signal,
     },
   };

@@ -72,16 +72,43 @@ describe('checkPremoveShape', () => {
     expect(refusal(children(219)).details.path).toBe('tree');
   });
 
-  it('rejects 8,001 pairs and accepts 8,000, even in one deep line', () => {
-    const line = (n: number) => {
-      let tree: PremoveNode[] = [];
-      for (let i = 0; i < n; i += 1) tree = [{ move: 'g8f6', reply: 'g1f3', children: tree }];
-      return tree;
-    };
-    expect(checkPremoveShape(line(8000))).toHaveLength(1);
-    const error = refusal(line(8001));
+  /** A line of `n` pairs. */
+  const line = (n: number, move = 'g8f6'): PremoveNode[] => {
+    let tree: PremoveNode[] = [];
+    for (let i = 0; i < n; i += 1) tree = [{ move, reply: 'g1f3', children: tree }];
+    return tree;
+  };
+
+  it('rejects 8,001 pairs and accepts 8,000', () => {
+    // 40 lines of 200 pairs, each under its own first opponent move.
+    const squares = [...'abcdefgh'].flatMap((f) => [...'12345678'].map((r) => `${f}${r}`));
+    const firsts = squares.slice(0, 41).map((to) => `a1${to}`);
+    const lines = (n: number) => firsts.slice(0, n).flatMap((move) => line(200, move));
+    expect(checkPremoveShape(lines(40))).toHaveLength(40);
+    const error = refusal([...lines(40), leaf('h8h7', 'a1a2')]);
     expect(error.code).toBe('validation');
     expect(error.details.reason).toBe('invalid_premove_tree');
     expect(error.message).toContain('8000');
+  });
+
+  it('accepts a line 200 pairs deep and refuses 201', () => {
+    expect(checkPremoveShape(line(200))).toHaveLength(1);
+    const error = refusal(line(201));
+    expect(error.code).toBe('validation');
+    expect(error.details.reason).toBe('premove_too_deep');
+    expect(error.message).toContain('200 pairs deep');
+    expect(error.details.path).toBe(`tree[0]${'.children[0]'.repeat(200)}`);
+  });
+
+  it('refuses a payload nested 10,000 deep without overflowing the stack', () => {
+    const deep = JSON.parse(
+      `[${'{"move":"g8f6","reply":"g1f3","children":['.repeat(10_000)}${']}'.repeat(10_000)}]`,
+    ) as unknown;
+    expect(refusal(deep).details.reason).toBe('premove_too_deep');
+    // A deeply nested value where a move should be is described, not walked.
+    let nested: unknown = [];
+    for (let i = 0; i < 10_000; i += 1) nested = [nested];
+    const error = refusal([{ move: nested, reply: 'g1f3', children: [] }]);
+    expect(error.details.path).toBe('tree[0].move');
   });
 });

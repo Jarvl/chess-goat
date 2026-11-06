@@ -10,12 +10,29 @@ const UCI = /^[a-h][1-8][a-h][1-8][qrbn]?$/;
 /** One count byte per sibling list in the stored codec. */
 export const MAX_PREMOVE_CHILDREN = 218;
 export const MAX_PREMOVE_PAIRS = 8000;
+/**
+ * Pairs on any root-to-leaf line (400 plies), far beyond any real premove line. It keeps every
+ * recursive reader of a stored tree (the GameView's output schema, JSON) well inside the stack.
+ */
+export const MAX_PREMOVE_DEPTH = 200;
 
-const refuse = (path: string, problem: string) =>
-  new DomainError('validation', `premove tree ${path}: ${problem}`, {
-    reason: 'invalid_premove_tree',
-    path,
-  });
+const refuse = (
+  path: string,
+  problem: string,
+  reason: 'invalid_premove_tree' | 'premove_too_deep' = 'invalid_premove_tree',
+) => new DomainError('validation', `premove tree ${path}: ${problem}`, { reason, path });
+
+/** A value for an error message; never walks into it, as it may be nested arbitrarily deep. */
+const shown = (value: unknown): string =>
+  typeof value === 'string'
+    ? JSON.stringify(value.slice(0, 20))
+    : value === undefined
+      ? 'nothing'
+      : Array.isArray(value)
+        ? 'a list'
+        : typeof value === 'object' && value !== null
+          ? 'an object'
+          : String(value);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -23,19 +40,29 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 /**
  * Checks the shape of a tree an agent sent, never its legality (bots spec §3): a list of
  * `{ move, reply, children }` with UCI moves, no opponent move twice among siblings, at most 218
- * children at any node and 8,000 pairs in all. Returns the tree as plain nodes, extra keys dropped;
- * throws `validation` naming the first bad path, like `tree[0].children[1].reply`. Walks with its
- * own stack: a line may be thousands of plies deep.
+ * children at any node, 8,000 pairs in all and lines at most 200 pairs deep. Returns the tree as
+ * plain nodes, extra keys dropped; throws `validation` naming the first bad path, like
+ * `tree[0].children[1].reply` (reason `premove_too_deep` for a line too deep). Walks with its own
+ * stack and never recurses into the input: a hostile payload may be nested thousands deep, so this
+ * runs before anything recursive (zod, JSON.stringify) sees the tree.
  */
 export function checkPremoveShape(tree: unknown): PremoveNode[] {
   const root: PremoveNode[] = [];
-  const pending: { list: unknown; path: string; into: PremoveNode[] }[] = [
-    { list: tree, path: 'tree', into: root },
+  /** `depth` is the number of pairs on the line down to and including the list's nodes. */
+  const pending: { list: unknown; path: string; into: PremoveNode[]; depth: number }[] = [
+    { list: tree, path: 'tree', into: root, depth: 1 },
   ];
   let pairs = 0;
   for (let next = pending.pop(); next; next = pending.pop()) {
-    const { list, path, into } = next;
+    const { list, path, into, depth } = next;
     if (!Array.isArray(list)) throw refuse(path, 'must be a list of { move, reply, children }');
+    if (list.length > 0 && depth > MAX_PREMOVE_DEPTH) {
+      throw refuse(
+        `${path}[0]`,
+        `lines may be at most ${MAX_PREMOVE_DEPTH} pairs deep`,
+        'premove_too_deep',
+      );
+    }
     if (list.length > MAX_PREMOVE_CHILDREN) {
       throw refuse(path, `has ${list.length} entries; at most ${MAX_PREMOVE_CHILDREN} are allowed`);
     }
@@ -46,10 +73,7 @@ export function checkPremoveShape(tree: unknown): PremoveNode[] {
       for (const key of ['move', 'reply'] as const) {
         const uci = entry[key];
         if (typeof uci !== 'string' || !UCI.test(uci)) {
-          throw refuse(
-            `${at}.${key}`,
-            `${JSON.stringify(uci) ?? 'nothing'} is not a UCI move like e2e4 or e7e8q`,
-          );
+          throw refuse(`${at}.${key}`, `${shown(uci)} is not a UCI move like e2e4 or e7e8q`);
         }
       }
       const move = entry.move as string;
@@ -61,7 +85,12 @@ export function checkPremoveShape(tree: unknown): PremoveNode[] {
       }
       const node: PremoveNode = { move, reply: entry.reply as string, children: [] };
       into.push(node);
-      pending.push({ list: entry.children, path: `${at}.children`, into: node.children });
+      pending.push({
+        list: entry.children,
+        path: `${at}.children`,
+        into: node.children,
+        depth: depth + 1,
+      });
     });
   }
   return root;
