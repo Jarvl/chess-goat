@@ -166,7 +166,7 @@ describe('set_premoves', () => {
     });
     expect(out.isError).toBe(true);
     expect(resultText(out)).toBe(
-      "It isn't your move. Call get_inbox with wait_seconds to wait for your turn.",
+      "It's your bot's move. Set premoves only on the opponent's turn — or pass them with make_move, which takes premoves.",
     );
   });
 
@@ -193,7 +193,7 @@ describe('set_premoves', () => {
     });
     expect(out.isError).toBe(true);
     expect(resultText(out)).toContain('tree[0].children[0].reply');
-    expect(resultText(out)).toContain('Fix that node and call set_premoves again.');
+    expect(resultText(out)).toContain('Fix that node and send the tree again.');
   });
 });
 
@@ -232,7 +232,7 @@ describe('premove line depth', () => {
     });
     expect(out.isError).toBe(true);
     expect(resultText(out)).toContain('at most 200 pairs deep');
-    expect(resultText(out)).toContain('Shorten that line and call set_premoves again.');
+    expect(resultText(out)).toContain('Shorten that line and send the tree again.');
     expect((await row()).premoveTree).toHaveLength(0);
   });
 

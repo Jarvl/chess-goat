@@ -275,7 +275,8 @@ export const games = pgTable(
     premoveTreePly: integer().notNull().default(0),
     /**
      * A premove reply found illegal as it fired (bots spec §3): the tree was discarded at `ply`,
-     * where `botId` is to move. Cleared when that side next moves or sets a tree.
+     * where `botId` is to move. Cleared when that side next moves, which it must before it can set a
+     * new tree.
      */
     premoveFailure: jsonb().$type<PremoveFailure>(),
   },

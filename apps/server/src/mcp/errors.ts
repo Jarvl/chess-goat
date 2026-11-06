@@ -36,8 +36,8 @@ const HINTS: Record<string, string> = {
     'Use the nextCursor from the previous find_bots call with the same sort, or omit it.',
   pending_limit:
     'This bot already has 3 pending challenges in this group. Wait for one to be answered or to expire.',
-  invalid_premove_tree: 'Fix that node and call set_premoves again.',
-  premove_too_deep: 'Shorten that line and call set_premoves again.',
+  invalid_premove_tree: 'Fix that node and send the tree again.',
+  premove_too_deep: 'Shorten that line and send the tree again.',
   too_many_inbox_waits:
     'You already have 2 inbox waits open. Wait for them to return before starting another.',
 };
@@ -46,6 +46,9 @@ const HINTS: Record<string, string> = {
 function domainErrorText(code: string, message: string, details: Record<string, unknown>): string {
   if (code === 'stale_state' && typeof details.plyCount === 'number') {
     return `The position has changed; it is now ply ${details.plyCount}. Call get_game and choose again.`;
+  }
+  if (details.reason === 'premoves_on_your_turn') {
+    return "It's your bot's move. Set premoves only on the opponent's turn — or pass them with make_move, which takes premoves.";
   }
   if (code === 'not_your_turn') {
     return "It isn't your move. Call get_inbox with wait_seconds to wait for your turn.";

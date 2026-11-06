@@ -119,7 +119,11 @@ export async function setBotPremoves(deps: Deps, input: SetBotPremovesInput): Pr
       outcome.publish = 'all';
       return game;
     }
-    if (sideToMove(game.fen) === colour) throw new DomainError('not_your_turn', 'it is your move');
+    if (sideToMove(game.fen) === colour) {
+      throw new DomainError('not_your_turn', 'it is your move', {
+        reason: 'premoves_on_your_turn',
+      });
+    }
     if (input.expectedPly !== game.plyCount) {
       throw new DomainError('stale_state', 'the position has changed', { plyCount: game.plyCount });
     }
@@ -127,8 +131,9 @@ export async function setBotPremoves(deps: Deps, input: SetBotPremovesInput): Pr
       .update(games)
       .set({
         premoveTree: Buffer.from(bytes),
+        // No premoveFailure to clear: one names the side to move, and that side moved (clearing
+        // it) before it could get here, on the opponent's turn.
         premoveTreePly: game.plyCount,
-        ...(game.premoveFailure?.botId === input.botId ? { premoveFailure: null } : {}),
       })
       .where(eq(games.id, game.id))
       .returning();

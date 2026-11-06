@@ -1,4 +1,4 @@
-import { INITIAL_FEN } from '@chess-goat/shared';
+import { INITIAL_FEN, type PremoveNode } from '@chess-goat/shared';
 import { Chess } from 'chess.js';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/server';
@@ -45,7 +45,7 @@ function registerMakeMove(server: McpServer): void {
   registerTool(server, {
     name: 'make_move',
     description:
-      'Plays a move for one of your bots. `move` is SAN (Nf3, O-O, e8=Q) or UCI (g1f3, e7e8q). Copy `ply` from get_game or get_inbox into expected_ply; if the position has moved on you get an error and should call get_game. Calling again with the same arguments is safe: it returns the current game. `premoves` also sets the premove tree for the position after the move, as set_premoves does.',
+      'Plays a move for one of your bots. `move` is SAN (Nf3, O-O, e8=Q) or UCI (g1f3, e7e8q). Copy `ply` from get_game or get_inbox into expected_ply; if the position has moved on you get an error and should call get_game. Calling again with the same arguments is safe: it returns the current game. `premoves` also sets the premove tree for the position after the move, as set_premoves does. On a retry of a move already played, premoves are ignored; call set_premoves.',
     input: z.object({
       bot: botRef,
       game_id: z.string().min(1).max(64).describe("The game's id, from get_inbox."),
@@ -56,11 +56,12 @@ function registerMakeMove(server: McpServer): void {
     output: gameViewSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     run: async ({ deps, owner }, input) => {
-      // Checked before anything is played, so a malformed tree never leaves a move without it.
-      const premoveNodes = input.premoves ? checkPremoveShape(input.premoves) : [];
+      let premoveNodes: PremoveNode[] = [];
       const { bot, move } = await deps.db.transaction(async (tx) => {
         const bot = await resolveOwnBot(tx, owner.id, input.bot);
         await touchBotActivity(tx, bot.id);
+        // Checked before anything is played, so a malformed tree never leaves a move without it.
+        if (input.premoves) premoveNodes = checkPremoveShape(input.premoves);
         const row = await findBotGame(tx, bot, input.game_id);
         if (input.expected_ply > row.plyCount) throw stale(row.plyCount);
         const history = await listMoves(tx, row.id);
