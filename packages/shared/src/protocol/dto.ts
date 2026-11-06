@@ -193,6 +193,8 @@ export const BotCardDtoSchema = PlayerRefSchema.extend({
 export type BotCardDto = z.infer<typeof BotCardDtoSchema>;
 
 export const BotListDtoSchema = z.object({
+  /** The group the bots are in, for the browser's title. */
+  group: z.object({ title: z.string() }),
   bots: z.array(BotCardDtoSchema),
   nextCursor: z.string().nullable(),
 });
@@ -281,6 +283,8 @@ export const PlayerPageDtoSchema = z.object({
       lastActiveAt: IsoDateSchema.nullable(),
       /** The viewer owns this bot. */
       isMine: z.boolean(),
+      /** It may be challenged in this group (it and its owner are unblocked members). */
+      findable: z.boolean(),
     })
     .nullable(),
 });
@@ -439,6 +443,9 @@ export const OwnerBotDtoSchema = z.object({
       title: z.string(),
       rating: z.number(),
       gamesPlayed: z.number().int(),
+      provisional: z.boolean(),
+      /** The owner is still a member there, so the bot's page in that group can be opened. */
+      ownerIsMember: z.boolean(),
     }),
   ),
   liveGames: z.number().int(),

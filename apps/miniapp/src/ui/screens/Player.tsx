@@ -21,7 +21,7 @@ export function Player(props: { groupId: string; userId: string }) {
       toast(t('app.player.announced'));
     } catch (error) {
       toast(
-        error instanceof ApiError && error.code === 'rate_limited'
+        error instanceof ApiError && error.reason === 'announce_limit'
           ? t('app.player.announce_limit')
           : error instanceof ApiError && error.code === 'network'
             ? t('app.common.offline')
@@ -62,7 +62,10 @@ export function Player(props: { groupId: string; userId: string }) {
         </div>
       </header>
       <p class="hint">{t('app.player.head_to_head', headToHead)}</p>
-      {player.id === session.value?.user.id || bot?.isMine || deleted ? null : (
+      {player.id === session.value?.user.id ||
+      bot?.isMine ||
+      (bot && !bot.findable) ||
+      deleted ? null : (
         <button
           class="btn block"
           data-action="challenge"

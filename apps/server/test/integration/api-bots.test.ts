@@ -48,6 +48,11 @@ const list = async (token: string, publicId: string, query = ''): Promise<BotLis
 };
 
 describe('GET /api/groups/:g/bots', () => {
+  it("carries the group's title", async () => {
+    const { group, token } = await setup();
+    expect((await list(token, group.publicId)).group).toEqual({ title: group.title });
+  });
+
   it('pages 25 bots as 20 plus 5', async () => {
     const { group, owner, token } = await setup();
     for (let i = 0; i < 25; i += 1) await addBot(group.id, owner);
@@ -209,6 +214,15 @@ describe('GET /api/groups/:g/bots/:id', () => {
     expect((await one(token, group.publicId, elsewhere.id)).status).toBe(404);
     expect((await one(token, group.publicId, owner.id)).status).toBe(404);
     expect((await one(token, group.publicId, 'abc')).status).toBe(404);
+  });
+
+  it('404s for an id that is a number only loosely', async () => {
+    const { group, owner, token } = await setup();
+    const bot = await addBot(group.id, owner);
+    expect((await one(token, group.publicId, bot.id)).status).toBe(200);
+    for (const loose of [`${bot.id}.0`, `0x${bot.id.toString(16)}`, `%20${bot.id}`]) {
+      expect((await one(token, group.publicId, loose)).status).toBe(404);
+    }
   });
 
   it('refuses a non-member', async () => {

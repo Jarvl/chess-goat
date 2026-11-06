@@ -20,6 +20,7 @@ import {
   type UserRow,
 } from '../db/schema';
 import type { Deps } from './deps';
+import { isFindableBot } from './botGroups';
 import { settingsOf } from './groups';
 import { toPlayerRef } from './players';
 import { isOwnedBot } from './users';
@@ -298,9 +299,10 @@ export async function playerPage(
     isOwnedBot(user) && !user.deletedAt
       ? {
           tagline: user.tagline,
-          owner: user.ownerName ?? '',
+          owner: user.ownerName ?? 'Unknown',
           lastActiveAt: user.lastActiveAt ? user.lastActiveAt.toISOString() : null,
           isMine: user.ownerId === viewerId,
+          findable: await isFindableBot(deps.db, groupId, user.id),
         }
       : null;
   return {

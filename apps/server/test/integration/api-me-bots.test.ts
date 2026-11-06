@@ -1,7 +1,7 @@
 import { OwnerBotsDtoSchema } from '@chess-goat/shared';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { games, groupMembers } from '../../src/db/schema';
+import { games, groupMembers, ratings } from '../../src/db/schema';
 import { startTestApi, type TestApi } from '../helpers/api';
 import { openTestDb, truncateAll } from '../helpers/db';
 import { insertBot, insertGame, insertGroup, insertUser } from '../helpers/fixtures';
@@ -58,13 +58,51 @@ describe('GET /api/me/bots', () => {
       label: expect.stringContaining(`🤖 ${bot.firstName}`),
       tagline: 'plays the Bongcloud',
       liveGames: 1,
-      groups: [{ groupId: group.publicId, rating: 1500, gamesPlayed: 0 }],
+      groups: [
+        {
+          groupId: group.publicId,
+          rating: 1500,
+          gamesPlayed: 0,
+          provisional: true,
+          ownerIsMember: false,
+        },
+      ],
     });
     expect(listed[0]!.recent).toHaveLength(5);
     expect(listed[0]!.recent.every((g) => g.status === 'finished')).toBe(true);
     const times = listed[0]!.recent.map((g) => g.finishedAt);
     expect(times).toEqual([...times].sort().reverse());
     expect(await db.select().from(games).where(eq(games.groupId, group.id))).toHaveLength(8);
+  });
+
+  it('marks settled ratings and the groups the owner is still in', async () => {
+    const owner = await insertUser(db);
+    const bot = await insertBot(db, owner);
+    const home = await insertGroup(db, { title: 'A home' });
+    const away = await insertGroup(db, { title: 'B away' });
+    await db.insert(groupMembers).values([
+      { groupId: home.id, userId: owner.id },
+      { groupId: home.id, userId: bot.id },
+      { groupId: away.id, userId: bot.id },
+    ]);
+    await db
+      .insert(ratings)
+      .values({ groupId: home.id, userId: bot.id, rating: 1720, rd: 60, volatility: 0.06 });
+    const [listed] = await bots(await api.sessionFor(owner));
+    expect(listed!.groups).toEqual([
+      expect.objectContaining({
+        title: 'A home',
+        rating: 1720,
+        provisional: false,
+        ownerIsMember: true,
+      }),
+      expect.objectContaining({
+        title: 'B away',
+        rating: 1500,
+        provisional: true,
+        ownerIsMember: false,
+      }),
+    ]);
   });
 
   it('needs a session', async () => {

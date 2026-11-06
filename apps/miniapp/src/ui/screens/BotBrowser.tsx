@@ -1,23 +1,18 @@
-import {
-  BotListDtoSchema,
-  LobbyDtoSchema,
-  ratingLabel,
-  t,
-  type BotCardDto,
-} from '@chess-goat/shared';
+import { BotListDtoSchema, ratingLabel, t, type BotListDto } from '@chess-goat/shared';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { ApiError } from '../../api/client';
+import { serverNow } from '../../state/session';
 import { Avatar } from '../Avatar';
 import { Flair } from '../Flair';
 import { useApp } from '../context';
 import { Segmented } from '../controls';
 import { botActivityLabel } from '../format';
-import { useResource } from '../hooks';
 import { toast } from '../toast';
 import { ErrorScreen, Loading } from './Status';
 
 type Sort = 'rating' | 'active' | 'newest';
-type Listing = { bots: BotCardDto[]; nextCursor: string | null };
+type Listing = BotListDto;
+type BotCardDto = BotListDto['bots'][number];
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -41,12 +36,12 @@ function BotRow(props: { bot: BotCardDto; now: Date; onOpen: (id: string) => voi
   );
 }
 
-/** A group's bots to challenge: searched by name, sorted, and paged 20 at a time. */
-export function BotBrowser(props: { groupId: string }) {
+/**
+ * A group's bots to challenge: searched by name, sorted, and paged 20 at a time. Opened from New
+ * game (`from: 'newGame'`) it stands in for that form, so a pick replaces it with a fresh one.
+ */
+export function BotBrowser(props: { groupId: string; from?: 'newGame' }) {
   const { client, router } = useApp();
-  const lobby = useResource(`bot-browser:${props.groupId}`, () =>
-    client.get(`/api/groups/${props.groupId}`, LobbyDtoSchema),
-  );
   const [typed, setTyped] = useState('');
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<Sort>('rating');
@@ -89,7 +84,7 @@ export function BotBrowser(props: { groupId: string }) {
     try {
       const page = await client.get(path(listing.nextCursor), BotListDtoSchema);
       if (seq === latest.current) {
-        setListing({ bots: [...listing.bots, ...page.bots], nextCursor: page.nextCursor });
+        setListing({ ...page, bots: [...listing.bots, ...page.bots] });
       }
     } catch (error) {
       toast(
@@ -102,22 +97,18 @@ export function BotBrowser(props: { groupId: string }) {
     }
   };
 
-  if (lobby.error || failed) {
-    return (
-      <ErrorScreen
-        onRetry={() => {
-          if (lobby.error) void lobby.reload();
-          void load();
-        }}
-      />
-    );
-  }
-  if (!lobby.data || !listing) return <Loading />;
-  const now = new Date();
+  if (failed) return <ErrorScreen onRetry={() => void load()} />;
+  if (!listing) return <Loading />;
+  const now = serverNow();
+  const open = (opponentId: string) => {
+    const next = { name: 'newGame', groupId: props.groupId, opponentId } as const;
+    if (props.from === 'newGame') router.replace(next);
+    else router.push(next);
+  };
 
   return (
     <div class="screen">
-      <h1 class="title">{t('app.bots.browse_title', { group: lobby.data.group.title })}</h1>
+      <h1 class="title">{t('app.bots.browse_title', { group: listing.group.title })}</h1>
       <input
         class="search-input"
         type="search"
@@ -138,18 +129,13 @@ export function BotBrowser(props: { groupId: string }) {
         ]}
       />
       {listing.bots.length === 0 ? (
-        <div class="card empty">{t('app.bots.none')}</div>
+        <div class="card empty">
+          {query ? t('app.bots.no_match', { query }) : t('app.bots.none')}
+        </div>
       ) : (
         <div class="card">
           {listing.bots.map((bot) => (
-            <BotRow
-              key={bot.id}
-              bot={bot}
-              now={now}
-              onOpen={(opponentId) =>
-                router.push({ name: 'newGame', groupId: props.groupId, opponentId })
-              }
-            />
+            <BotRow key={bot.id} bot={bot} now={now} onOpen={open} />
           ))}
         </div>
       )}

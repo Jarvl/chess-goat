@@ -1,5 +1,6 @@
-import { freshPlayerState, type GameSummary } from '@chess-goat/shared';
+import { freshPlayerState, GLICKO2, isProvisional, type GameSummary } from '@chess-goat/shared';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { dbNow, type DbOrTx } from '../db/client';
 import { games, groupMembers, groups, ratings, users, type UserRow } from '../db/schema';
 import { deletedBotFields, leavePlay, lockPlay } from './account';
@@ -266,25 +267,74 @@ export async function botViews(tx: DbOrTx, bots: readonly UserRow[]): Promise<Bo
 
 const RECENT_PER_BOT = 5;
 
+const dashboardOwner = alias(groupMembers, 'dashboard_owner');
+
+export type OwnerBotGroup = BotView['groups'][number] & {
+  provisional: boolean;
+  /** The owner is a member there too, so the bot's page in that group is theirs to open. */
+  ownerIsMember: boolean;
+};
+
 /** The owner's bots with each one's last finished games, for the dashboard. */
 export async function ownerBots(
   tx: DbOrTx,
   ownerId: number,
-): Promise<(BotView & { recent: GameSummary[] })[]> {
+): Promise<(Omit<BotView, 'groups'> & { groups: OwnerBotGroup[]; recent: GameSummary[] })[]> {
   const views = await botViews(tx, await listBots(tx, ownerId));
-  return Promise.all(
-    views.map(async (view) => {
-      const rows = await gameSummaryRows(
-        tx,
-        and(
-          eq(games.status, 'finished'),
-          isNull(games.voidedAt),
-          or(eq(games.whiteId, view.id), eq(games.blackId, view.id)),
+  if (views.length === 0) return [];
+  const standing = await tx
+    .select({
+      botId: groupMembers.userId,
+      groupId: groups.publicId,
+      rd: ratings.rd,
+      ownerStatus: dashboardOwner.status,
+    })
+    .from(groupMembers)
+    .innerJoin(groups, eq(groups.id, groupMembers.groupId))
+    .leftJoin(
+      ratings,
+      and(eq(ratings.groupId, groupMembers.groupId), eq(ratings.userId, groupMembers.userId)),
+    )
+    .leftJoin(
+      dashboardOwner,
+      and(eq(dashboardOwner.groupId, groupMembers.groupId), eq(dashboardOwner.userId, ownerId)),
+    )
+    .where(
+      and(
+        inArray(
+          groupMembers.userId,
+          views.map((view) => view.id),
         ),
-        [desc(games.finishedAt), desc(games.id)],
-        RECENT_PER_BOT,
-      );
-      return { ...view, recent: rows.map((row) => toGameSummary(row, ownerId)) };
-    }),
-  );
+        eq(groupMembers.status, 'member'),
+      ),
+    );
+  const key = (botId: number, groupId: string) => `${botId}:${groupId}`;
+  const standingOf = new Map(standing.map((row) => [key(row.botId, row.groupId), row]));
+  // One bot at a time: a dashboard of many bots must not take a connection per bot at once.
+  const out = [];
+  for (const view of views) {
+    const rows = await gameSummaryRows(
+      tx,
+      and(
+        eq(games.status, 'finished'),
+        isNull(games.voidedAt),
+        or(eq(games.whiteId, view.id), eq(games.blackId, view.id)),
+      ),
+      [desc(games.finishedAt), desc(games.id)],
+      RECENT_PER_BOT,
+    );
+    out.push({
+      ...view,
+      groups: view.groups.map((group) => {
+        const row = standingOf.get(key(view.id, group.groupId));
+        return {
+          ...group,
+          provisional: isProvisional(row?.rd ?? GLICKO2.initialRd),
+          ownerIsMember: row?.ownerStatus === 'member',
+        };
+      }),
+      recent: rows.map((row) => toGameSummary(row, ownerId)),
+    });
+  }
+  return out;
 }

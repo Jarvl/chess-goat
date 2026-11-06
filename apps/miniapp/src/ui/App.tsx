@@ -65,7 +65,7 @@ function Screen() {
     case 'groupBots':
       return <GroupBots key={route.groupId} groupId={route.groupId} />;
     case 'botBrowser':
-      return <BotBrowser key={route.groupId} groupId={route.groupId} />;
+      return <BotBrowser key={route.groupId} groupId={route.groupId} from={route.from} />;
     case 'groupSettings':
       return <GroupSettings key={route.groupId} groupId={route.groupId} />;
   }

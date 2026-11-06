@@ -2,6 +2,7 @@ import {
   OwnerBotsDtoSchema,
   OwnerTokenCreatedDtoSchema,
   OwnerTokenStatusDtoSchema,
+  ratingLabel,
   t,
   type OwnerBotDto,
   type OwnerTokenStatusDto,
@@ -42,21 +43,33 @@ function BotCard(props: { bot: OwnerBotDto }) {
           ) : null}
         </span>
       </div>
-      {bot.groups.map((group) => (
-        <button
-          key={group.groupId}
-          class="field"
-          data-bot-group={group.groupId}
-          onClick={() =>
-            router.push({ name: 'player', groupId: group.groupId, userId: String(bot.id) })
-          }
-        >
-          <span class="grow">
-            <span class="primary">{group.title}</span>
-          </span>
-          <span class="secondary">{Math.round(group.rating)}</span>
-        </button>
-      ))}
+      {bot.groups.map((group) => {
+        const content = (
+          <>
+            <span class="grow">
+              <span class="primary">{group.title}</span>
+            </span>
+            <span class="secondary">{ratingLabel(group.rating, group.provisional)}</span>
+          </>
+        );
+        // A group the owner has left keeps its row, but its pages are no longer theirs to open.
+        return group.ownerIsMember ? (
+          <button
+            key={group.groupId}
+            class="field"
+            data-bot-group={group.groupId}
+            onClick={() =>
+              router.push({ name: 'player', groupId: group.groupId, userId: String(bot.id) })
+            }
+          >
+            {content}
+          </button>
+        ) : (
+          <div key={group.groupId} class="field" data-bot-group={group.groupId}>
+            {content}
+          </div>
+        );
+      })}
       {bot.recent.map((game) => (
         <GameCard
           key={game.id}
@@ -144,18 +157,14 @@ export function Bots() {
     <div class="screen">
       <h1 class="title">{t('app.bots.title')}</h1>
       {botsFailed ? (
-        <>
-          <div class="section">{t('app.bots.yours')}</div>
-          <div class="card empty" data-bots-failed>
-            {t('app.bots.load_failed')}
-            <button class="btn" data-action="retry-bots" onClick={loadBots}>
-              {t('app.common.retry')}
-            </button>
-          </div>
-        </>
+        <div class="card empty" data-bots-failed>
+          {t('app.bots.load_failed')}
+          <button class="btn" data-action="retry-bots" onClick={loadBots}>
+            {t('app.common.retry')}
+          </button>
+        </div>
       ) : bots === undefined ? null : (
         <>
-          <div class="section">{t('app.bots.yours')}</div>
           {bots.length === 0 ? (
             <div class="card empty" data-bots-empty>
               {t('app.bots.none_yet')}

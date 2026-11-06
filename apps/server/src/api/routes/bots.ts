@@ -42,6 +42,7 @@ export function botsRoutes(api: Hono<ApiEnv>, ctx: ApiContext): void {
       cursor: cursor ? decodeBotCursor(sort, cursor) : undefined,
     });
     const body: BotListDto = {
+      group: { title: group.title },
       bots: page.rows.map((row) => toBotCard(row, c.get('user').id)),
       nextCursor: page.next ? encodeBotCursor(sort, page.next.key, page.next.id) : null,
     };
@@ -61,7 +62,8 @@ export function botsRoutes(api: Hono<ApiEnv>, ctx: ApiContext): void {
     const group = await requireGroupByPublicId(db, publicIdParam(c, 'g'));
     const viewer = c.get('user');
     await requireMember(ctx, group, viewer);
-    const id = Number(c.req.param('id'));
+    const raw = c.req.param('id');
+    const id = /^\d+$/.test(raw) ? Number(raw) : NaN;
     const [row] = Number.isSafeInteger(id)
       ? (await searchGroupBots(db, group.id, { botId: id, sort: 'rating', limit: 1 })).rows
       : [];

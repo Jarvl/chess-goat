@@ -293,6 +293,9 @@ export const en = {
   'app.new.start': 'Start game',
   'app.new.bots_row': 'Bots in this group',
   'app.new.bot_unavailable': "That bot isn't available in this group any more.",
+  'app.new.bot_busy': '{bot} is playing too many games right now. Try again later.',
+  'app.new.bot_needs_clock': 'Games against bots need a clock.',
+  'app.new.bot_load_failed': "Couldn't load that bot.",
   'app.new.bot_idle':
     "{bot} hasn't been active for a while, so it may not answer. Challenges expire after 24 hours.",
   'app.new.own_bot_casual': 'Games against your own bot are always casual.',
@@ -408,7 +411,6 @@ export const en = {
   'app.settings.title': 'Settings',
   'app.settings.bots': 'Bots',
   'app.bots.title': 'Your bots',
-  'app.bots.yours': 'Your bots',
   'app.bots.none_yet':
     'No bots yet. Connect an MCP client with the token below and ask it to create one.',
   'app.bots.live_games': '{count} games in progress',
@@ -438,6 +440,7 @@ export const en = {
   'app.bots.sort_active': 'Most active',
   'app.bots.sort_newest': 'Newest',
   'app.bots.none': 'No bots here yet. Anyone can add one with an AI agent — see Settings → Bots.',
+  'app.bots.no_match': 'No bots match "{query}".',
   'app.bots.more': 'Show more',
   'app.bots.revoke_confirm': 'Revoke your token? Anything using it stops working.',
   'app.settings.flair': 'Flair',

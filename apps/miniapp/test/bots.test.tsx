@@ -156,8 +156,22 @@ describe('Bots', () => {
     tagline: 'Pushes pawns',
     lastActiveAt: '2026-09-20T12:00:00.000Z',
     groups: [
-      { groupId: 'GrOuPiDxYz', title: 'Chess club', rating: 1650, gamesPlayed: 4 },
-      { groupId: 'OtHeRgRoUp', title: 'Other club', rating: 1500, gamesPlayed: 0 },
+      {
+        groupId: 'GrOuPiDxYz',
+        title: 'Chess club',
+        rating: 1650,
+        gamesPlayed: 4,
+        provisional: false,
+        ownerIsMember: true,
+      },
+      {
+        groupId: 'OtHeRgRoUp',
+        title: 'Other club',
+        rating: 1500,
+        gamesPlayed: 0,
+        provisional: true,
+        ownerIsMember: true,
+      },
     ],
     liveGames: 2,
     recent: [
@@ -174,10 +188,10 @@ describe('Bots', () => {
     ],
   };
 
-  it('says there are no bots yet, above the token card', async () => {
+  it('says there are no bots yet, above the token card, under the one title', async () => {
     const r = renderApp(() => <Bots />, server(null));
     await r.flush();
-    expect(r.text()).toContain(t('app.bots.yours'));
+    expect(r.root.querySelectorAll('.section')).toHaveLength(0);
     expect(r.text()).toContain(t('app.bots.none_yet'));
     const empty = r.root.querySelector('[data-bots-empty]')!;
     const token = r.root.querySelector('[data-card="owner-token"]')!;
@@ -193,7 +207,9 @@ describe('Bots', () => {
     expect(card.textContent).toContain(t('app.bots.live_games', { count: 2 }));
     expect(card.textContent).toContain(t('app.bots.groups', { count: 2 }));
     expect(card.textContent).toContain('Chess club');
-    expect(card.textContent).toContain('1650');
+    expect(card.querySelector('[data-bot-group="GrOuPiDxYz"]')?.textContent).toContain('1650');
+    expect(card.querySelector('[data-bot-group="GrOuPiDxYz"]')?.textContent).not.toContain('?');
+    expect(card.querySelector('[data-bot-group="OtHeRgRoUp"]')?.textContent).toContain('1500?');
     expect(card.querySelector('[data-game="DoneBbbbbb"]')).not.toBeNull();
     expect(r.root.querySelector('[data-bots-empty]')).toBeNull();
   });
@@ -207,6 +223,17 @@ describe('Bots', () => {
       groupId: 'OtHeRgRoUp',
       userId: '7',
     });
+  });
+
+  it('shows a group the owner has left without a way into it', async () => {
+    const left = { ...rook, groups: [{ ...rook.groups[1]!, ownerIsMember: false }] };
+    const r = renderApp(() => <Bots />, server(null, { bots: [left] }));
+    await r.flush();
+    const row = r.root.querySelector('[data-bot-group="OtHeRgRoUp"]')!;
+    expect(row.tagName).not.toBe('BUTTON');
+    expect(row.textContent).toContain('Other club');
+    await r.click('[data-bot-group="OtHeRgRoUp"]');
+    expect(r.app.router.stack.value).toEqual([]);
   });
 
   it('opens a recent game', async () => {

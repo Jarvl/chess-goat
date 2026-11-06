@@ -31,6 +31,17 @@ describe('createApiClient', () => {
     });
   });
 
+  it('keeps the refusal reason of an error body', async () => {
+    const { fetch } = fakeFetch(() => ({
+      status: 429,
+      body: { error: { code: 'rate_limited', message: 'busy', reason: 'too_many_live_games' } },
+    }));
+    await expect(createApiClient({ fetch }).get('/api/x', Hello)).rejects.toMatchObject({
+      code: 'rate_limited',
+      reason: 'too_many_live_games',
+    });
+  });
+
   it('treats a non-JSON failure as internal', async () => {
     const { fetch } = fakeFetch(() => ({ status: 502 }));
     await expect(createApiClient({ fetch }).get('/api/x', Hello)).rejects.toMatchObject({

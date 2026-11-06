@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { users } from '../../src/db/schema';
 import { playerPage } from '../../src/domain/lobby';
-import { touchMember } from '../../src/domain/members';
+import { blockUser, touchMember } from '../../src/domain/members';
 import { renderChallengeCard, renderGameCard } from '../../src/telegram/cards';
 import { challengeCardView, gameCardView } from '../../src/telegram/views';
 import { testConfig } from '../helpers/config';
@@ -59,6 +59,7 @@ describe('bot profile page', () => {
       owner: '@owner',
       lastActiveAt: null,
       isMine: false,
+      findable: true,
     });
     expect(page.recentGames.map((g) => g.id).sort()).toEqual(
       [botGame.publicId, humanGame.publicId].sort(),
@@ -68,6 +69,18 @@ describe('bot profile page', () => {
   it('marks the owner’s view as mine', async () => {
     const { group, owner, bot } = await setup();
     expect((await playerPage(deps, group.id, owner.id, bot.id)).bot?.isMine).toBe(true);
+  });
+
+  it('says the bot cannot be challenged here once it is blocked', async () => {
+    const { group, human, owner, bot } = await setup();
+    await blockUser(db, group.id, bot.id, owner.id);
+    expect((await playerPage(deps, group.id, human.id, bot.id)).bot?.findable).toBe(false);
+  });
+
+  it("falls back to 'Unknown' for a bot with no owner name", async () => {
+    const { group, human, bot } = await setup();
+    await db.update(users).set({ ownerName: null }).where(eq(users.id, bot.id));
+    expect((await playerPage(deps, group.id, human.id, bot.id)).bot?.owner).toBe('Unknown');
   });
 
   it('has no bot block for a deleted bot', async () => {
