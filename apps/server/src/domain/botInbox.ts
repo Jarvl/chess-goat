@@ -1,5 +1,5 @@
-import type { Colour, ColourChoice } from '@chess-goat/shared';
-import { and, eq, gt, inArray, or, sql } from 'drizzle-orm';
+import { sideToMove, type ColourChoice } from '@chess-goat/shared';
+import { and, asc, eq, gt, inArray, or, sql, type AnyColumn } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { DbOrTx } from '../db/client';
 import { challenges, games, groups, users, type UserRow } from '../db/schema';
@@ -37,8 +37,28 @@ export type InboxEntry =
 
 type Sorted = { entry: InboxEntry; deadline: number | null; since: number };
 
-const botOf = (row: UserRow): InboxBot => ({ id: row.id, name: row.firstName });
-const personOf = (row: UserRow): InboxPerson => ({
+/** At most this many entries per read; `more` says there are others. */
+export const INBOX_PAGE = 50;
+
+export type Inbox = { entries: InboxEntry[]; more: boolean };
+
+/** The user columns an entry needs: a name, and whether it is a bot. */
+type PersonKey = 'id' | 'firstName' | 'username' | 'deletedAt' | 'ownerId' | 'ownerName';
+type Person = Pick<UserRow, PersonKey>;
+
+function personColumns<U extends Record<PersonKey, AnyColumn>>(user: U): Pick<U, PersonKey> {
+  return {
+    id: user.id,
+    firstName: user.firstName,
+    username: user.username,
+    deletedAt: user.deletedAt,
+    ownerId: user.ownerId,
+    ownerName: user.ownerName,
+  };
+}
+
+const botOf = (row: Person): InboxBot => ({ id: row.id, name: row.firstName });
+const personOf = (row: Person): InboxPerson => ({
   name: displayName(row),
   isBot: isOwnedBot(row),
 });
@@ -57,19 +77,44 @@ function byUrgency(a: Sorted, b: Sorted): number {
 
 /**
  * The inbox of `botIds`: pending challenges sent to them, active games where one is to move, and
- * draw offers made to them on the opponent's turn. One query per kind, whatever the number of bots.
+ * draw offers made to them on the opponent's turn. Soonest deadline first, at most `INBOX_PAGE`
+ * entries; `more` when there are others. One query per kind, whatever the number of bots.
  */
-export async function loadInbox(tx: DbOrTx, botIds: readonly number[]): Promise<InboxEntry[]> {
-  if (botIds.length === 0) return [];
+export async function loadInbox(tx: DbOrTx, botIds: readonly number[]): Promise<Inbox> {
+  if (botIds.length === 0) return { entries: [], more: false };
   const ids = [...botIds];
   const bot = alias(users, 'bot');
   const challenger = alias(users, 'challenger');
   const white = alias(users, 'white');
   const black = alias(users, 'black');
+  const side = sql`split_part(${games.fen}, ' ', 2)`;
+  // The game needs one of the bots: on its move, or answering a draw offer on the opponent's.
+  const whiteActs = and(
+    inArray(games.whiteId, ids),
+    or(sql`${side} = 'w'`, eq(games.drawOfferBy, 'black')),
+  );
+  const blackActs = and(
+    inArray(games.blackId, ids),
+    or(sql`${side} = 'b'`, eq(games.drawOfferBy, 'white')),
+  );
+  // As `byUrgency` sorts: a deadline counts only while a bot's own clock runs.
+  const botToMove = sql`((${side} = 'w' and ${inArray(games.whiteId, ids)}) or (${side} = 'b' and ${inArray(games.blackId, ids)}))`;
 
   const [challengeRows, gameRows] = await Promise.all([
     tx
-      .select({ challenge: challenges, group: groups, bot, challenger })
+      .select({
+        challenge: {
+          publicId: challenges.publicId,
+          timePerMove: challenges.timePerMove,
+          rated: challenges.rated,
+          challengerColour: challenges.challengerColour,
+          expiresAt: challenges.expiresAt,
+          createdAt: challenges.createdAt,
+        },
+        group: { publicId: groups.publicId, title: groups.title },
+        bot: personColumns(bot),
+        challenger: personColumns(challenger),
+      })
       .from(challenges)
       .innerJoin(groups, eq(groups.id, challenges.groupId))
       .innerJoin(bot, eq(bot.id, challenges.opponentId))
@@ -80,18 +125,34 @@ export async function loadInbox(tx: DbOrTx, botIds: readonly number[]): Promise<
           inArray(challenges.opponentId, ids),
           gt(challenges.expiresAt, sql`now()`),
         ),
-      ),
+      )
+      .orderBy(asc(challenges.expiresAt), asc(challenges.createdAt), asc(challenges.id))
+      .limit(INBOX_PAGE + 1),
     tx
-      .select({ game: games, white, black })
+      .select({
+        game: {
+          publicId: games.publicId,
+          fen: games.fen,
+          plyCount: games.plyCount,
+          deadlineAt: games.deadlineAt,
+          drawOfferBy: games.drawOfferBy,
+          premoveFailure: games.premoveFailure,
+          lastMoveAt: games.lastMoveAt,
+          startedAt: games.startedAt,
+        },
+        white: personColumns(white),
+        black: personColumns(black),
+      })
       .from(games)
       .innerJoin(white, eq(white.id, games.whiteId))
       .innerJoin(black, eq(black.id, games.blackId))
-      .where(
-        and(
-          eq(games.status, 'active'),
-          or(inArray(games.whiteId, ids), inArray(games.blackId, ids)),
-        ),
-      ),
+      .where(and(eq(games.status, 'active'), or(whiteActs, blackActs)))
+      .orderBy(
+        sql`case when ${botToMove} then ${games.deadlineAt} end asc nulls last`,
+        sql`coalesce(${games.lastMoveAt}, ${games.startedAt}) asc`,
+        asc(games.id),
+      )
+      .limit(INBOX_PAGE + 1),
   ]);
 
   const sorted: Sorted[] = challengeRows.map(({ challenge, group, bot, challenger }) => ({
@@ -111,7 +172,7 @@ export async function loadInbox(tx: DbOrTx, botIds: readonly number[]): Promise<
   }));
 
   for (const { game, white, black } of gameRows) {
-    const toMove: Colour = game.plyCount % 2 === 0 ? 'white' : 'black';
+    const toMove = sideToMove(game.fen);
     const since = (game.lastMoveAt ?? game.startedAt).getTime();
     const sides = [
       { colour: 'white' as const, me: white, opponent: black },
@@ -159,5 +220,13 @@ export async function loadInbox(tx: DbOrTx, botIds: readonly number[]): Promise<
       }
     }
   }
-  return sorted.sort(byUrgency).map(({ entry }) => entry);
+  const more =
+    challengeRows.length > INBOX_PAGE || gameRows.length > INBOX_PAGE || sorted.length > INBOX_PAGE;
+  return {
+    entries: sorted
+      .sort(byUrgency)
+      .slice(0, INBOX_PAGE)
+      .map(({ entry }) => entry),
+    more,
+  };
 }

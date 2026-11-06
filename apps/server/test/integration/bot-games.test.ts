@@ -1,14 +1,16 @@
 import { t } from '@chess-goat/shared';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { challenges, games, jobs, type GameRow } from '../../src/db/schema';
+import { challenges, games, jobs, users, type GameRow } from '../../src/db/schema';
 import { replyFor } from '../../src/bot/replies';
 import { addBotToGroup } from '../../src/domain/botGroups';
-import { acceptChallenge, declineChallenge } from '../../src/domain/challenges';
+import { acceptChallenge, createChallenge, declineChallenge } from '../../src/domain/challenges';
+import { MAX_LIVE_GAMES_PER_BOT } from '../../src/domain/limits';
 import { offerDraw } from '../../src/domain/draws';
 import { playMove, resign, voidGame } from '../../src/domain/games';
 import { activeGames, listFinished, pendingChallenges } from '../../src/domain/lobby';
 import { touchMember } from '../../src/domain/members';
+import { displayName } from '../../src/domain/users';
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
 import {
   insertBot,
@@ -222,6 +224,78 @@ describe('bots and challenge buttons', () => {
     const silent = await insertChallenge(db, group.id, bot.id, rival.id, { botPlayers: 2 });
     expect(await reason(declineChallenge(deps, { challengeId: silent.id, userId: human.id }))).toBe(
       'not_the_challenger',
+    );
+  });
+});
+
+describe('live games per bot', () => {
+  /** `count` active games for `bot` against `opponent`. */
+  async function busy(groupId: number, botId: number, opponentId: number, count: number) {
+    for (let i = 0; i < count; i++) {
+      await insertGame(
+        db,
+        groupId,
+        i % 2 === 0 ? botId : opponentId,
+        i % 2 === 0 ? opponentId : botId,
+      );
+    }
+  }
+  const challenge = (groupId: number, challengerId: number, opponentId: number) =>
+    createChallenge(deps, {
+      groupId,
+      challengerId,
+      opponentId,
+      opponentUsername: null,
+      timePerMove: 86400,
+      colour: 'random',
+      rated: true,
+      threadId: null,
+    });
+
+  it('a bot with 50 games going cannot challenge; with 49 it can', async () => {
+    const { group, human, bot, rival } = await setup();
+    await busy(group.id, bot.id, human.id, MAX_LIVE_GAMES_PER_BOT - 1);
+    // A finished game does not count.
+    const done = await insertGame(db, group.id, bot.id, human.id);
+    await db.update(games).set({ status: 'finished' }).where(eq(games.id, done.id));
+    await challenge(group.id, bot.id, rival.id);
+    await busy(group.id, bot.id, human.id, 1);
+    const error = await challenge(group.id, bot.id, rival.id).catch((e: unknown) => e);
+    expect(error).toMatchObject({
+      code: 'limit_exceeded',
+      details: { reason: 'too_many_live_games', limit: 50 },
+    });
+  });
+
+  it('a person challenging a busy bot is told it has too many games', async () => {
+    const { group, human, bot } = await setup();
+    const [named] = await db.select().from(users).where(eq(users.id, bot.id));
+    await busy(group.id, bot.id, human.id, MAX_LIVE_GAMES_PER_BOT);
+    const error = await challenge(group.id, human.id, bot.id).catch((e: unknown) => e);
+    expect(error).toMatchObject({ details: { reason: 'too_many_live_games' } });
+    const reply = replyFor(error);
+    expect(reply && t(reply.key, reply.params)).toBe(
+      `${displayName(named!)} has too many games in progress right now.`,
+    );
+  });
+
+  it('a busy bot cannot accept a challenge made to it', async () => {
+    const { group, human, bot } = await setup();
+    const pending = await insertChallenge(db, group.id, human.id, bot.id, { botPlayers: 1 });
+    await busy(group.id, bot.id, human.id, MAX_LIVE_GAMES_PER_BOT);
+    expect(await reason(acceptChallenge(deps, { challengeId: pending.id, userId: bot.id }))).toBe(
+      'too_many_live_games',
+    );
+    const [row] = await db.select().from(challenges).where(eq(challenges.id, pending.id));
+    expect(row?.status).toBe('pending');
+  });
+
+  it('a bot cannot accept from a busy bot challenger', async () => {
+    const { group, human, bot, rival } = await setup();
+    const pending = await insertChallenge(db, group.id, rival.id, bot.id, { botPlayers: 2 });
+    await busy(group.id, rival.id, human.id, MAX_LIVE_GAMES_PER_BOT);
+    expect(await reason(acceptChallenge(deps, { challengeId: pending.id, userId: bot.id }))).toBe(
+      'too_many_live_games',
     );
   });
 });

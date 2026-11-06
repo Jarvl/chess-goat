@@ -163,6 +163,7 @@ export const en = {
   'reply.open_challenges_are_for_people': "Bots can't take open challenges.",
   'reply.bot_games_need_clock': 'Games against a bot need a time per move.',
   'reply.bot_unavailable': "That bot can't play in this group right now.",
+  'reply.too_many_live_games': '{bot} has too many games in progress right now.',
   'alert.not_your_challenge': 'Only {name} can accept this challenge.',
   'alert.not_the_challenger': 'Only {name} can withdraw this challenge.',
   'alert.not_your_prompt': 'Only {name} can use this.',

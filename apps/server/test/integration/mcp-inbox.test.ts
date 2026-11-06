@@ -35,7 +35,7 @@ afterAll(async () => {
 });
 
 type Entry = Record<string, unknown> & { kind: string };
-type Inbox = { entries: Entry[]; waitedSeconds: number };
+type Inbox = { entries: Entry[]; more: boolean; waitedSeconds: number };
 
 const inbox = (args: Record<string, unknown> = {}, options = {}) =>
   callTool<Inbox>(api.app, token, 'get_inbox', args, options);
@@ -202,7 +202,7 @@ describe('get_inbox', () => {
     const elapsed = Date.now() - started;
     expect(elapsed).toBeGreaterThanOrEqual(2900);
     expect(elapsed).toBeLessThan(4500);
-    expect(out.structuredContent).toEqual({ entries: [], waitedSeconds: 3 });
+    expect(out.structuredContent).toEqual({ entries: [], more: false, waitedSeconds: 3 });
   });
 
   it('sends progress every 5 s while waiting, from within the first 5 s', async () => {
@@ -227,7 +227,7 @@ describe('get_inbox', () => {
     }
     expect(progressAt.length).toBeGreaterThanOrEqual(2);
     expect(progressAt[0]).toBeLessThanOrEqual(5500);
-    expect(result).toEqual({ entries: [], waitedSeconds: 12 });
+    expect(result).toEqual({ entries: [], more: false, waitedSeconds: 12 });
   }, 20_000);
 
   it('refuses a third concurrent wait', async () => {
@@ -272,5 +272,68 @@ describe('get_inbox', () => {
     const game = await insertGame(db, group.id, bot.id, human.id);
     await db.update(games).set({ status: 'finished' }).where(eq(games.id, game.id));
     expect((await inbox()).structuredContent!.entries).toEqual([]);
+  });
+
+  it('returns 50 entries and more when 60 games wait', async () => {
+    const { group, bot, human } = await setup();
+    const ids: string[] = [];
+    for (let i = 0; i < 60; i++) {
+      const game = await insertGame(db, group.id, bot.id, human.id, {
+        deadlineInSeconds: 600 + i,
+      });
+      ids.push(game.publicId);
+    }
+    const out = await inbox();
+    expect(out.structuredContent!.entries).toHaveLength(50);
+    expect(out.structuredContent!.more).toBe(true);
+    // The soonest 50.
+    expect(out.structuredContent!.entries.map((e) => e.gameId)).toEqual(ids.slice(0, 50));
+    expect(resultText(out)).toContain('There are more; act on these, then call get_inbox again.');
+    const few = await inbox({ bot: 'Rook' });
+    expect(few.structuredContent!.more).toBe(true);
+  });
+
+  it('says more is false with fewer than 50', async () => {
+    const { group, bot, human } = await setup();
+    await insertGame(db, group.id, bot.id, human.id);
+    const out = await inbox();
+    expect(out.structuredContent!.more).toBe(false);
+    expect(resultText(out)).not.toContain('There are more');
+  });
+
+  it('reads whose turn it is from the position, not the ply', async () => {
+    const { group, bot, human } = await setup();
+    // Black to move at ply 0: a game set up from a position.
+    const game = await insertGame(db, group.id, human.id, bot.id, {
+      fen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
+    });
+    const out = await inbox();
+    expect(out.structuredContent!.entries).toMatchObject([
+      { kind: 'your_move', gameId: game.publicId, ply: 0 },
+    ]);
+  });
+
+  it('answers a third concurrent call at once when it has entries', async () => {
+    const { group, bot, human } = await setup();
+    await insertBot(db, owner, { firstName: 'Knight' });
+    await insertGame(db, group.id, bot.id, human.id);
+    const first = inbox({ bot: 'Knight', wait_seconds: 3 });
+    const second = inbox({ bot: 'Knight', wait_seconds: 3 });
+    await sleep(300);
+    const started = Date.now();
+    const third = await inbox({ bot: 'Rook', wait_seconds: 3 });
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(third.isError).toBeFalsy();
+    expect(third.structuredContent!.entries).toHaveLength(1);
+    await Promise.all([first, second]);
+  });
+
+  it('returns at once with no bots, saying to create one', async () => {
+    const started = Date.now();
+    const out = await inbox({ wait_seconds: 10 });
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(out.isError).toBeFalsy();
+    expect(out.structuredContent).toEqual({ entries: [], more: false, waitedSeconds: 0 });
+    expect(resultText(out)).toBe('You have no bots yet. Call create_bot.');
   });
 });

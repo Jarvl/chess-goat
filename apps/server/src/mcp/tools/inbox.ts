@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/server';
 import { listBots, resolveOwnBot, touchBotActivity } from '../../domain/bots';
-import { loadInbox, type InboxEntry } from '../../domain/botInbox';
+import { INBOX_PAGE, loadInbox, type InboxEntry } from '../../domain/botInbox';
 import { DomainError } from '../../domain/errors';
 import { OwnerGate } from '../gate';
 import { registerTool } from '../tool';
@@ -48,7 +48,10 @@ const entrySchema = z.discriminatedUnion('kind', [
   }),
 ]);
 
-type Inbox = { entries: InboxEntry[]; waitedSeconds: number };
+type Inbox = { entries: InboxEntry[]; more: boolean; waitedSeconds: number };
+
+/** The answers given to an owner with no bots: same shape as an empty inbox, different text. */
+const noBotsAnswers = new WeakSet<Inbox>();
 
 /** Resolves after `ms`, or as soon as `signal` fires. */
 function pause(ms: number, signal: AbortSignal): Promise<void> {
@@ -86,15 +89,20 @@ const entryLine = (entry: InboxEntry): string => {
   }
 };
 
-const inboxText = ({ entries, waitedSeconds }: Inbox): string =>
-  entries.length === 0
-    ? `Nothing to do${waitedSeconds > 0 ? ` after waiting ${waitedSeconds} s` : ''}. Call get_inbox again with wait_seconds up to ${INBOX_MAX_WAIT_SECONDS}.`
-    : entries.map(entryLine).join('\n');
+const inboxText = (inbox: Inbox): string => {
+  const { entries, more, waitedSeconds } = inbox;
+  if (noBotsAnswers.has(inbox)) return 'You have no bots yet. Call create_bot.';
+  if (entries.length === 0) {
+    return `Nothing to do${waitedSeconds > 0 ? ` after waiting ${waitedSeconds} s` : ''}. Call get_inbox again with wait_seconds up to ${INBOX_MAX_WAIT_SECONDS}.`;
+  }
+  const lines = entries.map(entryLine).join('\n');
+  return more ? `${lines}\nThere are more; act on these, then call get_inbox again.` : lines;
+};
 
 function registerGetInbox(server: McpServer): void {
   registerTool(server, {
     name: 'get_inbox',
-    description: `What your bots must act on: challenges to answer, games where it is their move, and draw offers. Soonest deadline first. Without bot it covers all your bots. With wait_seconds (up to ${INBOX_MAX_WAIT_SECONDS}) and nothing to do, it waits and returns as soon as something arrives. Call it in a loop; keep at most ${INBOX_WAITS_PER_OWNER} waits open at once.`,
+    description: `What your bots must act on: challenges to answer, games where it is their move, and draw offers. Soonest deadline first, at most ${INBOX_PAGE} entries (more: true when there are others). Without bot it covers all your bots. With wait_seconds (up to ${INBOX_MAX_WAIT_SECONDS}) and nothing to do, it waits and returns as soon as something arrives. Call it in a loop; keep at most ${INBOX_WAITS_PER_OWNER} waits open at once.`,
     input: z.object({
       bot: botRef.optional(),
       wait_seconds: z
@@ -105,10 +113,15 @@ function registerGetInbox(server: McpServer): void {
         .optional()
         .describe(`Seconds to wait when the inbox is empty, 0–${INBOX_MAX_WAIT_SECONDS}.`),
     }),
-    output: z.object({ entries: z.array(entrySchema), waitedSeconds: z.number().int() }),
+    output: z.object({
+      entries: z.array(entrySchema),
+      more: z.boolean().describe(`True when there were more than ${INBOX_PAGE} entries.`),
+      waitedSeconds: z.number().int(),
+    }),
     annotations: READ_ONLY,
     run: async ({ deps, owner, progress, signal }, input) => {
       const started = Date.now();
+      // Recorded in its own transaction, before anything that could fail.
       const botIds = await deps.db.transaction(async (tx) => {
         const bots =
           input.bot === undefined
@@ -117,15 +130,24 @@ function registerGetInbox(server: McpServer): void {
         for (const { id } of bots) await touchBotActivity(tx, id);
         return bots.map(({ id }) => id);
       });
-      const read = () => loadInbox(deps.db, botIds);
-      const waitMs = (input.wait_seconds ?? 0) * 1000;
       const elapsed = () => Date.now() - started;
-      const result = (entries: InboxEntry[]): Inbox => ({
+      const result = ({ entries, more }: { entries: InboxEntry[]; more: boolean }): Inbox => ({
         entries,
+        more,
         waitedSeconds: Math.round(elapsed() / 1000),
       });
+      // Nothing could ever arrive, so there is nothing to wait for.
+      if (botIds.length === 0) {
+        const none: Inbox = { entries: [], more: false, waitedSeconds: 0 };
+        noBotsAnswers.add(none);
+        return none;
+      }
+      const read = () => loadInbox(deps.db, botIds);
+      const waitMs = (input.wait_seconds ?? 0) * 1000;
 
-      if (waitMs === 0) return result(await read());
+      // A wait slot is taken only for an actual wait: when the first read finds nothing.
+      let inbox = await read();
+      if (inbox.entries.length > 0 || waitMs === 0) return result(inbox);
       const release = waits.acquire(owner.id);
       if (!release) {
         throw new DomainError('limit_exceeded', 'too many inbox waits', {
@@ -134,9 +156,8 @@ function registerGetInbox(server: McpServer): void {
       }
       try {
         let lastRead = elapsed();
-        let entries = await read();
         let nextProgress = PROGRESS_MS;
-        while (entries.length === 0 && !signal.aborted && elapsed() < waitMs) {
+        while (inbox.entries.length === 0 && !signal.aborted && elapsed() < waitMs) {
           const now = elapsed();
           await pause(Math.min(lastRead + REREAD_MS, nextProgress, waitMs) - now, signal);
           if (signal.aborted) break;
@@ -150,10 +171,10 @@ function registerGetInbox(server: McpServer): void {
           }
           if (at >= lastRead + REREAD_MS || at >= waitMs) {
             lastRead = at;
-            entries = await read();
+            inbox = await read();
           }
         }
-        return result(entries);
+        return result(inbox);
       } finally {
         release();
       }
