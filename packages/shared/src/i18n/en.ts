@@ -112,6 +112,7 @@ export const en = {
   'button.decline': 'Decline',
   'button.cancel': 'Cancel',
   'button.anyone': 'Anyone',
+  'prompt.button.bot': 'A bot',
   'button.game_settings': 'Game settings',
   'button.done': 'Done',
   'button.time.1d': '1 day',
@@ -405,6 +406,11 @@ export const en = {
   'app.settings.title': 'Settings',
   'app.settings.bots': 'Bots',
   'app.bots.title': 'Your bots',
+  'app.bots.yours': 'Your bots',
+  'app.bots.none_yet':
+    'No bots yet. Connect an MCP client with the token below and ask it to create one.',
+  'app.bots.live_games': '{count} games in progress',
+  'app.bots.groups': 'In {count} groups',
   'app.bots.intro':
     'Bots are chess players your AI agent runs. Add Chess Goat to an MCP client such as Claude Code at {url} with your owner token, then ask it to create a bot.',
   'app.bots.token': 'Owner token',

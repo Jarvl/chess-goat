@@ -9,7 +9,8 @@ import { buildGamePgn } from '../../domain/pgn';
 import { displayName } from '../../domain/users';
 import { registerTool, resolveAndTouch } from '../tool';
 import { renderGame, type GameView } from '../render';
-import { botRef, botSchema, botViews, READ_ONLY } from './manage';
+import { botViews } from '../../domain/bots';
+import { botRef, botSchema, READ_ONLY } from './manage';
 
 const colour = z.enum(['white', 'black']);
 const premoveNode: z.ZodType<{ move: string; reply: string; children: unknown[] }> = z.lazy(() =>

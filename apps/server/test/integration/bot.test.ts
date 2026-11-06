@@ -142,13 +142,19 @@ const expectDeletionIn = async (kind: 'delete_message', seconds: number) => {
   expect(due).toBeGreaterThan(seconds - 10);
   expect(due).toBeLessThanOrEqual(seconds);
 };
+const groupRow = async () => (await db.select().from(groups))[0]!;
+const publicIdOf = (group: { publicId: string }) => group.publicId;
 const promptRows = () => db.select().from(challengePrompts);
 const userId = async (telegramUserId: number) =>
   (await db.select().from(users).where(eq(users.telegramUserId, telegramUserId)))[0]!.id;
 /** The prompt's keyboard as first sent, which Telegram may still hand back after edits. */
 const staleMarkup = (owner = alice.id) =>
-  promptView('main', owner, { timePerMove: 259200, colour: 'random', rated: true })
-    .replyMarkup as InlineKeyboardMarkup;
+  promptView(
+    'main',
+    owner,
+    { timePerMove: 259200, colour: 'random', rated: true },
+    { config, groupPublicId: 'GrOuPiDxYz' },
+  ).replyMarkup as InlineKeyboardMarkup;
 const tap = (data: string, from = alice, extra: { threadId?: number } = {}) =>
   post(
     callbackUpdate({
@@ -226,13 +232,19 @@ describe('/challenge', () => {
     expect(body).not.toHaveProperty('reply_parameters');
     expect(body.text).toBe(`${PROMPT}\n3 days per move · Random colour · Rated`);
     expect(
-      (body.reply_markup as InlineKeyboardMarkup).inline_keyboard[0]!.map((b) => [
-        b.text,
-        (b as { callback_data: string }).callback_data,
-      ]),
+      (body.reply_markup as InlineKeyboardMarkup).inline_keyboard.map((row) =>
+        row.map((b) => [
+          b.text,
+          (b as { callback_data?: string; url?: string }).callback_data ??
+            (b as { url: string }).url,
+        ]),
+      ),
     ).toEqual([
-      ['Anyone', 'cp/a/11/3/r/1'],
-      ['Game settings', 'cp/s/11/3/r/1'],
+      [
+        ['Anyone', 'cp/a/11/3/r/1'],
+        ['A bot', `https://t.me/TestChessBot/chess?startapp=b_${publicIdOf(await groupRow())}`],
+      ],
+      [['Game settings', 'cp/s/11/3/r/1']],
     ]);
     expect(fake.callsTo('deleteMessage').map((call) => call.body)).toEqual([
       { chat_id: chat.id, message_id: update.message!.message_id },
@@ -257,6 +269,10 @@ describe('/challenge', () => {
     });
     expect((forAlice!.reply_markup as InlineKeyboardMarkup).inline_keyboard[0]![0]).toMatchObject({
       callback_data: 'cp/a/11/3/r/1',
+    });
+    expect((forAlice!.reply_markup as InlineKeyboardMarkup).inline_keyboard[0]![1]).toMatchObject({
+      text: 'A bot',
+      url: `https://t.me/TestChessBot/chess?startapp=b_${publicIdOf(await groupRow())}`,
     });
     // Bob has no username: his name links to him instead.
     expect(forBob).toMatchObject({
@@ -440,10 +456,10 @@ describe('/challenge', () => {
     await tap('cp/m/11/7/b/1');
     edit = fake.callsTo('editEphemeralMessageText').at(-1)!.body;
     expect(
-      (edit.reply_markup as InlineKeyboardMarkup).inline_keyboard[0]!.map(
-        (b) => (b as { callback_data: string }).callback_data,
+      (edit.reply_markup as InlineKeyboardMarkup).inline_keyboard.map((row) =>
+        row.map((b) => (b as { callback_data?: string }).callback_data ?? 'url'),
       ),
-    ).toEqual(['cp/a/11/7/b/1', 'cp/s/11/7/b/1']);
+    ).toEqual([['cp/a/11/7/b/1', 'url'], ['cp/s/11/7/b/1']]);
     expect(fake.callsTo('answerCallbackQuery')).toHaveLength(3);
     expect(fake.callsTo('answerCallbackQuery').at(-1)?.body).not.toHaveProperty('text');
     expect(await db.select().from(challenges)).toHaveLength(0);
@@ -874,10 +890,10 @@ describe('/challenge', () => {
         text: `${PROMPT}\n3 days per move · Random colour · Rated`,
       });
       expect(
-        (body.reply_markup as InlineKeyboardMarkup).inline_keyboard[0]!.map(
-          (b) => (b as { callback_data: string }).callback_data,
+        (body.reply_markup as InlineKeyboardMarkup).inline_keyboard.map((row) =>
+          row.map((b) => (b as { callback_data?: string }).callback_data ?? 'url'),
         ),
-      ).toEqual(['cp/a/11/3/r/1', 'cp/s/11/3/r/1']);
+      ).toEqual([['cp/a/11/3/r/1', 'url'], ['cp/s/11/3/r/1']]);
       expect(fake.callsTo('deleteMessage')).toHaveLength(0);
       expect(await promptRows()).toHaveLength(1);
     }

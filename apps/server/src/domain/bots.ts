@@ -1,10 +1,12 @@
-import { and, asc, eq, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { freshPlayerState, type GameSummary } from '@chess-goat/shared';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { dbNow, type DbOrTx } from '../db/client';
-import { users, type UserRow } from '../db/schema';
+import { games, groupMembers, groups, ratings, users, type UserRow } from '../db/schema';
 import { deletedBotFields, leavePlay, lockPlay } from './account';
 import type { Deps } from './deps';
 import { DomainError } from './errors';
 import { MAX_BOTS_PER_OWNER } from './limits';
+import { gameSummaryRows, toGameSummary } from './summaries';
 import { displayName, lockLiveHumanOwner } from './users';
 
 const NAME_PATTERN = /^[\p{L}\p{N}][\p{L}\p{M}\p{N} ._-]{0,31}$/u;
@@ -200,4 +202,89 @@ export async function touchBotActivity(tx: DbOrTx, botId: number): Promise<void>
         or(isNull(users.lastActiveAt), sql`${users.lastActiveAt} < now() - interval '60 seconds'`),
       ),
     );
+}
+
+export type BotView = {
+  id: number;
+  name: string;
+  label: string;
+  tagline: string | null;
+  lastActiveAt: string | null;
+  groups: { groupId: string; title: string; rating: number; gamesPlayed: number }[];
+  liveGames: number;
+};
+
+/** The bots' views, reading memberships, ratings and live games in one pass each. */
+export async function botViews(tx: DbOrTx, bots: readonly UserRow[]): Promise<BotView[]> {
+  if (bots.length === 0) return [];
+  const ids = bots.map((bot) => bot.id);
+  const memberships = await tx
+    .select({
+      botId: groupMembers.userId,
+      groupId: groups.publicId,
+      title: groups.title,
+      rating: ratings.rating,
+      gamesPlayed: ratings.gamesPlayed,
+    })
+    .from(groupMembers)
+    .innerJoin(groups, eq(groups.id, groupMembers.groupId))
+    .leftJoin(
+      ratings,
+      and(eq(ratings.groupId, groupMembers.groupId), eq(ratings.userId, groupMembers.userId)),
+    )
+    .where(and(inArray(groupMembers.userId, ids), eq(groupMembers.status, 'member')))
+    .orderBy(asc(groups.title), asc(groups.id));
+  // Counted in SQL, a side at a time: a bot never plays both sides of one game.
+  const liveOn = (side: typeof games.whiteId | typeof games.blackId) =>
+    tx
+      .select({ id: side, n: sql<number>`count(*)::int` })
+      .from(games)
+      .where(and(eq(games.status, 'active'), inArray(side, ids)))
+      .groupBy(side);
+  const liveByBot = new Map<number, number>();
+  for (const { id, n } of [...(await liveOn(games.whiteId)), ...(await liveOn(games.blackId))]) {
+    liveByBot.set(id, (liveByBot.get(id) ?? 0) + n);
+  }
+  const start = freshPlayerState().rating;
+  return bots.map((bot) => ({
+    id: bot.id,
+    name: bot.firstName,
+    label: displayName(bot),
+    tagline: bot.tagline,
+    lastActiveAt: bot.lastActiveAt?.toISOString() ?? null,
+    groups: memberships
+      .filter((m) => m.botId === bot.id)
+      .map((m) => ({
+        groupId: m.groupId,
+        title: m.title,
+        rating: Math.round(m.rating ?? start),
+        gamesPlayed: m.gamesPlayed ?? 0,
+      })),
+    liveGames: liveByBot.get(bot.id) ?? 0,
+  }));
+}
+
+const RECENT_PER_BOT = 5;
+
+/** The owner's bots with each one's last finished games, for the dashboard. */
+export async function ownerBots(
+  tx: DbOrTx,
+  ownerId: number,
+): Promise<(BotView & { recent: GameSummary[] })[]> {
+  const views = await botViews(tx, await listBots(tx, ownerId));
+  return Promise.all(
+    views.map(async (view) => {
+      const rows = await gameSummaryRows(
+        tx,
+        and(
+          eq(games.status, 'finished'),
+          isNull(games.voidedAt),
+          or(eq(games.whiteId, view.id), eq(games.blackId, view.id)),
+        ),
+        [desc(games.finishedAt), desc(games.id)],
+        RECENT_PER_BOT,
+      );
+      return { ...view, recent: rows.map((row) => toGameSummary(row, ownerId)) };
+    }),
+  );
 }

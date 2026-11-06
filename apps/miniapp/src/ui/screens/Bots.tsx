@@ -1,21 +1,69 @@
 import {
+  OwnerBotsDtoSchema,
   OwnerTokenCreatedDtoSchema,
   OwnerTokenStatusDtoSchema,
   t,
+  type OwnerBotDto,
   type OwnerTokenStatusDto,
 } from '@chess-goat/shared';
 import { useEffect, useState } from 'preact/hooks';
 import { session } from '../../state/session';
 import { useApp } from '../context';
 import { confirmDialog } from '../dialog';
+import { GameCard } from '../GameCard';
 import { dateLabel } from '../format';
 import { toast } from '../toast';
 import { ErrorScreen, Loading } from './Status';
 
 type Info = OwnerTokenStatusDto['token'];
 
+function BotCard(props: { bot: OwnerBotDto }) {
+  const { router } = useApp();
+  const { bot } = props;
+  return (
+    <div class="card" data-bot={bot.id}>
+      <div class="field">
+        <span class="grow">
+          <span class="primary">{bot.label}</span>
+          {bot.tagline ? <span class="secondary">{bot.tagline}</span> : null}
+          {bot.liveGames > 0 ? (
+            <span class="secondary">{t('app.bots.live_games', { count: bot.liveGames })}</span>
+          ) : null}
+          {bot.groups.length > 0 ? (
+            <span class="secondary">{t('app.bots.groups', { count: bot.groups.length })}</span>
+          ) : null}
+        </span>
+      </div>
+      {bot.groups.map((group) => (
+        <button
+          key={group.groupId}
+          class="field"
+          data-bot-group={group.groupId}
+          onClick={() =>
+            router.push({ name: 'player', groupId: group.groupId, userId: String(bot.id) })
+          }
+        >
+          <span class="grow">
+            <span class="primary">{group.title}</span>
+          </span>
+          <span class="secondary">{Math.round(group.rating)}</span>
+        </button>
+      ))}
+      {bot.recent.map((game) => (
+        <GameCard
+          key={game.id}
+          game={game}
+          dim="finished"
+          onOpen={(gameId) => router.push({ name: 'game', gameId })}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function Bots() {
   const { client } = useApp();
+  const [bots, setBots] = useState<OwnerBotDto[] | undefined>(undefined);
   const [info, setInfo] = useState<Info | undefined>(undefined);
   const [failed, setFailed] = useState(false);
   // The plaintext token lives only here: shown once, gone when the screen closes.
@@ -30,6 +78,13 @@ export function Bots() {
       .catch(() => setFailed(true));
   };
   useEffect(load, [client]);
+  // The list is an extra: if it will not load, the token card still works.
+  useEffect(() => {
+    client
+      .get('/api/me/bots', OwnerBotsDtoSchema)
+      .then((list) => setBots(list.bots))
+      .catch(() => setBots([]));
+  }, [client]);
 
   const create = async (confirmMessage?: string) => {
     if (busy) return;
@@ -77,6 +132,18 @@ export function Bots() {
   return (
     <div class="screen">
       <h1 class="title">{t('app.bots.title')}</h1>
+      {bots === undefined ? null : (
+        <>
+          <div class="section">{t('app.bots.yours')}</div>
+          {bots.length === 0 ? (
+            <div class="card empty" data-bots-empty>
+              {t('app.bots.none_yet')}
+            </div>
+          ) : (
+            bots.map((bot) => <BotCard key={bot.id} bot={bot} />)
+          )}
+        </>
+      )}
       <p class="hint">{t('app.bots.intro', { url: session.value?.bot.mcpUrl ?? '' })}</p>
       <div class="card" data-card="owner-token">
         <div class="field">

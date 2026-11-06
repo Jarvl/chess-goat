@@ -117,7 +117,7 @@ export async function createBot(deps: Deps, config: Config): Promise<Bot> {
       botUsername: ctx.me.username,
     });
     if (choice.kind === 'none') {
-      await openPrompt(deps, directApi, {
+      await openPrompt(deps, config, directApi, {
         group,
         user,
         from,
@@ -219,7 +219,8 @@ export async function createBot(deps: Deps, config: Config): Promise<Bot> {
   bot.on('callback_query:data', async (ctx) => {
     const data = decodeCallbackData(ctx.callbackQuery.data);
     if (!data) return ctx.answerCallbackQuery();
-    if (data.action === 'prompt') return handlePromptTap(deps, directApi, ctx.callbackQuery, data);
+    if (data.action === 'prompt')
+      return handlePromptTap(deps, config, directApi, ctx.callbackQuery, data);
     const user = await ensureUser(deps.db, userInfo(ctx.from));
     const chat = ctx.callbackQuery.message?.chat;
     if (chat && isGroupChat(chat)) {

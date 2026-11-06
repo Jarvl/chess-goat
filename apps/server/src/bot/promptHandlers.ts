@@ -7,6 +7,7 @@ import {
 } from '@chess-goat/shared';
 import type { Api, ChatTypeContext, Composer, Context } from 'grammy';
 import type { CallbackQuery, InlineKeyboardMarkup, Message, User } from 'grammy/types';
+import type { Config } from '../config';
 import { enqueue } from '../jobs/queue';
 import { createChallenge, type CreateChallengeInput } from '../domain/challenges';
 import {
@@ -145,6 +146,7 @@ async function sendFallbackPrompt(
  */
 export async function openPrompt(
   deps: Deps,
+  config: Config,
   api: Api,
   input: {
     group: GroupRow;
@@ -158,7 +160,7 @@ export async function openPrompt(
   const { group, from } = input;
   const settings = startingSettings(settingsOf(group));
   await openPromptRow(deps.db, group.id, input.user.id, settings, input.threadId);
-  const view = promptView('main', from.id, settings);
+  const view = promptView('main', from.id, settings, { config, groupPublicId: group.publicId });
   if (
     input.trigger &&
     (await sendEphemeral(
@@ -258,6 +260,7 @@ async function deletePrompt(
 /** A tap on the prompt: only its owner may change the settings or post the open challenge. */
 export async function handlePromptTap(
   deps: Deps,
+  config: Config,
   api: Api,
   query: CallbackQuery,
   data: PromptData,
@@ -288,7 +291,15 @@ export async function handlePromptTap(
   if (data.op !== 'anyone') {
     // The row follows what the prompt shows, so it changes only once the edit has.
     try {
-      await editPrompt(api, place, ref, promptView(data.op, data.ownerTelegramId, data.settings));
+      await editPrompt(
+        api,
+        place,
+        ref,
+        promptView(data.op, data.ownerTelegramId, data.settings, {
+          config,
+          groupPublicId: group.publicId,
+        }),
+      );
     } catch (error) {
       const failure = classifyTelegramError(error);
       // A rate limit, or no answer from Telegram: the update retries.

@@ -8,6 +8,8 @@ import {
   type PromptSettings,
   type PromptTime,
 } from '@chess-goat/shared';
+import type { Config } from '../config';
+import { miniAppLink } from '../telegram/links';
 import type { EphemeralButton, EphemeralMarkup } from './ephemeral';
 
 const TIMES: [PromptTime, 'button.time.1d' | 'button.time.3d' | 'button.time.7d'][] = [
@@ -29,6 +31,7 @@ export function promptView(
   view: 'main' | 'settings',
   owner: number,
   s: PromptSettings,
+  link: { config: Pick<Config, 'BOT_USERNAME' | 'MINI_APP_SHORT_NAME'>; groupPublicId: string },
 ): { text: string; replyMarkup: EphemeralMarkup & { force_reply: true } } {
   const text = `${t('prompt.challenge')}\n${t('prompt.summary', {
     timePerMove: timePerMoveLabel(s.timePerMove),
@@ -48,8 +51,12 @@ export function promptView(
       ? [
           [
             { text: t('button.anyone'), callback_data: data('anyone', owner, s), style: 'success' },
-            { text: t('button.game_settings'), callback_data: data('settings', owner, s) },
+            {
+              text: t('prompt.button.bot'),
+              url: miniAppLink(link.config, { kind: 'bots', groupId: link.groupPublicId }),
+            },
           ],
+          [{ text: t('button.game_settings'), callback_data: data('settings', owner, s) }],
         ]
       : [
           TIMES.map(([timePerMove, key]) =>

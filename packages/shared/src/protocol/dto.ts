@@ -427,6 +427,31 @@ export const OwnerTokenStatusDtoSchema = z.object({
 
 export type OwnerTokenStatusDto = z.infer<typeof OwnerTokenStatusDtoSchema>;
 
+/** One of the viewer's bots on their dashboard: where it plays, what it is doing, how it fared. */
+export const OwnerBotDtoSchema = z.object({
+  id: z.number().int(),
+  label: z.string(),
+  tagline: z.string().nullable(),
+  lastActiveAt: IsoDateSchema.nullable(),
+  groups: z.array(
+    z.object({
+      groupId: z.string(),
+      title: z.string(),
+      rating: z.number(),
+      gamesPlayed: z.number().int(),
+    }),
+  ),
+  liveGames: z.number().int(),
+  /** Its last five finished games, newest first. */
+  recent: z.array(GameSummarySchema),
+});
+
+export type OwnerBotDto = z.infer<typeof OwnerBotDtoSchema>;
+
+export const OwnerBotsDtoSchema = z.object({ bots: z.array(OwnerBotDtoSchema) });
+
+export type OwnerBotsDto = z.infer<typeof OwnerBotsDtoSchema>;
+
 /** A freshly made owner token; the only time its secret is shown. */
 export const OwnerTokenCreatedDtoSchema = z.object({
   token: z.string().min(1),
