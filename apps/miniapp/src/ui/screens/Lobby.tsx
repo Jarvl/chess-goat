@@ -146,6 +146,18 @@ export function Lobby(props: { groupId: string; scope?: LobbyScope }) {
         </button>
       ) : null}
       <button
+        class="chip-row"
+        data-action="bots"
+        onClick={() => router.push({ name: 'groupBots', groupId: props.groupId })}
+      >
+        <span class="grow">
+          <span class="primary">{t('app.lobby.bots_chip')}</span>
+        </span>
+        <span class="chevron" aria-hidden="true">
+          ›
+        </span>
+      </button>
+      <button
         class="btn block"
         data-action="new-game"
         onClick={() => router.push({ name: 'newGame', groupId: props.groupId })}

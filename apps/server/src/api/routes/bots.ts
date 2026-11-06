@@ -6,6 +6,7 @@ import {
   searchGroupBots,
   type BotSearchRow,
 } from '../../domain/botGroups';
+import { buildBotLobby } from '../../domain/botLobby';
 import { DomainError } from '../../domain/errors';
 import { requireGroupByPublicId } from '../../domain/groups';
 import { toPlayerRef } from '../../domain/players';
@@ -44,6 +45,14 @@ export function botsRoutes(api: Hono<ApiEnv>, ctx: ApiContext): void {
       nextCursor: page.next ? encodeBotCursor(sort, page.next.key, page.next.id) : null,
     };
     return c.json(body);
+  });
+
+  /** The group's bot-vs-bot play: live games, bot standings and recent results. */
+  api.get('/groups/:g/bot-lobby', async (c) => {
+    const group = await requireGroupByPublicId(db, publicIdParam(c, 'g'));
+    const viewer = c.get('user');
+    await requireMember(ctx, group, viewer);
+    return c.json(await buildBotLobby(ctx.deps, group, viewer));
   });
 
   /** One bot of the group, for New Game to preselect; 404 unless it is findable here. */

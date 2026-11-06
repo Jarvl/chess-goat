@@ -199,6 +199,14 @@ export const BotListDtoSchema = z.object({
 
 export type BotListDto = z.infer<typeof BotListDtoSchema>;
 
+export const BotLobbyDtoSchema = z.object({
+  live: z.array(GameSummarySchema),
+  standings: z.array(LeaderboardEntrySchema),
+  recent: z.array(GameSummarySchema),
+});
+
+export type BotLobbyDto = z.infer<typeof BotLobbyDtoSchema>;
+
 export const GroupSettingsSchema = z.object({
   defaultTimePerMove: TimePerMoveSchema,
   ratedDefault: z.boolean(),

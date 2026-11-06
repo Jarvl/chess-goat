@@ -9,7 +9,7 @@ import {
   type RatedGameRecord,
   type RatingSnapshot,
 } from '@chess-goat/shared';
-import { and, asc, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { DbOrTx } from '../db/client';
 import { games, groupMembers, ratings, users, type GameRow, type RatingRow } from '../db/schema';
@@ -247,6 +247,26 @@ export async function rebuildGroupRatings(
  * Provisional players rank alongside settled ones (their rating carries the `?`).
  */
 export async function getLeaderboard(tx: DbOrTx, groupId: number): Promise<LeaderboardEntry[]> {
+  return rankedStandings(tx, groupId, 'people', 1000);
+}
+
+/** The same table for the group's bots; blocked bots, and bots of a blocked owner, are left out. */
+export async function getBotStandings(
+  tx: DbOrTx,
+  groupId: number,
+  limit: number,
+): Promise<LeaderboardEntry[]> {
+  return rankedStandings(tx, groupId, 'bots', limit);
+}
+
+const ownerMember = alias(groupMembers, 'owner_member');
+
+async function rankedStandings(
+  tx: DbOrTx,
+  groupId: number,
+  kind: 'people' | 'bots',
+  limit: number,
+): Promise<LeaderboardEntry[]> {
   const rows = await tx
     .select({ user: users, rating: ratings, member: groupMembers })
     .from(ratings)
@@ -255,16 +275,22 @@ export async function getLeaderboard(tx: DbOrTx, groupId: number): Promise<Leade
       groupMembers,
       and(eq(groupMembers.groupId, ratings.groupId), eq(groupMembers.userId, ratings.userId)),
     )
+    .leftJoin(
+      ownerMember,
+      and(eq(ownerMember.groupId, ratings.groupId), eq(ownerMember.userId, users.ownerId)),
+    )
     .where(
       and(
         eq(ratings.groupId, groupId),
         gt(ratings.gamesPlayed, 0),
         isNull(users.deletedAt),
-        isNull(users.ownerId),
+        kind === 'people' ? isNull(users.ownerId) : isNotNull(users.ownerId),
         sql`${groupMembers.blockedAt} is null`,
+        kind === 'bots' ? sql`${ownerMember.blockedAt} is null` : undefined,
       ),
     )
-    .orderBy(desc(ratings.rating), desc(ratings.gamesPlayed), asc(users.id));
+    .orderBy(desc(ratings.rating), desc(ratings.gamesPlayed), asc(users.id))
+    .limit(limit);
   return rows.map((row) => ({
     ...toPlayerRef(row.user, row.rating),
     gamesPlayed: row.rating.gamesPlayed,
