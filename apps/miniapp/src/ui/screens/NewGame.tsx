@@ -1,4 +1,5 @@
 import {
+  BotCardDtoSchema,
   ChallengeDtoSchema,
   GameDtoSchema,
   PlayersPickerDtoSchema,
@@ -6,6 +7,7 @@ import {
   t,
   TIME_PER_MOVE_OPTIONS,
   timeSpanLabel,
+  type BotCardDto,
   type ChallengeRequest,
   type ColourChoice,
   type EngineGameRequest,
@@ -16,6 +18,7 @@ import {
 import { h } from 'preact';
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { ApiError } from '../../api/client';
+import { serverNow } from '../../state/session';
 import { Avatar, BotMark } from '../Avatar';
 import { useApp } from '../context';
 import { Switch, Tiles, type DataAttributes } from '../controls';
@@ -24,6 +27,9 @@ import { toast } from '../toast';
 import { ErrorScreen, Loading } from './Status';
 
 const TIME_VALUES: TimePerMove[] = [...TIME_PER_MOVE_OPTIONS, null];
+/** A game against a bot needs a clock, so a group default of "No clock" becomes this. */
+const BOT_FALLBACK_TIME: TimePerMove = 259200;
+const BOT_IDLE_MS = 24 * 3_600_000;
 
 /**
  * Exactly one opponent choice at a time. Replaces a pair of independently-settable
@@ -34,7 +40,27 @@ type Selection =
   | { kind: 'none' }
   | { kind: 'human'; id: string }
   | { kind: 'open' }
-  | { kind: 'bot'; level: EngineLevel };
+  | { kind: 'bot'; level: EngineLevel }
+  | { kind: 'ownedBot'; bot: BotCardDto };
+
+/** The toast for a failed send: a refused bot challenge says why, anything else is generic. */
+function refusalLine(error: unknown, bot: BotCardDto | null): string {
+  if (!(error instanceof ApiError)) return t('app.common.error');
+  if (error.isNetwork) return t('app.common.offline');
+  if (bot) {
+    switch (error.reason) {
+      case 'too_many_live_games':
+        return t('app.new.bot_busy', { bot: bot.name });
+      case 'bot_not_in_group':
+      case 'owner_not_member':
+      case 'blocked':
+        return t('app.new.bot_unavailable');
+      case 'bot_games_need_clock':
+        return t('app.new.bot_needs_clock');
+    }
+  }
+  return t('app.common.error');
+}
 
 function OpponentRow(props: {
   on: boolean;
@@ -97,10 +123,53 @@ function NewGameForm(props: { groupId: string; opponentId?: string; picker: Play
     const picked = players.find((player) => player.id === props.opponentId);
     return picked ? { kind: 'human', id: picked.id } : { kind: 'none' };
   });
+  // The bot named by a link or the browser, once looked up: its row stays when someone else is picked.
+  const [lookedUpBot, setLookedUpBot] = useState<BotCardDto | null>(null);
+  const [botProblem, setBotProblem] = useState<'unavailable' | 'load_failed' | null>(null);
+  const pick = (next: Selection) => {
+    setBotProblem(null);
+    setSelection(next);
+  };
   const [timePerMove, setTimePerMove] = useState<TimePerMove>(defaults.defaultTimePerMove);
   const [colour, setColour] = useState<ColourChoice>('random');
   const [rated, setRated] = useState(defaults.ratedDefault);
   const [sending, setSending] = useState(false);
+
+  // A bot opened from the bot browser or a link is not in the players list: look it up.
+  const wantedBot =
+    props.opponentId && !players.some((player) => player.id === props.opponentId)
+      ? props.opponentId
+      : null;
+  useEffect(() => {
+    if (!wantedBot) return;
+    let live = true;
+    client
+      .get(`/api/groups/${props.groupId}/bots/${encodeURIComponent(wantedBot)}`, BotCardDtoSchema)
+      .then((bot) => {
+        if (!live) return;
+        setLookedUpBot(bot);
+        setSelection((now) => (now.kind === 'none' ? { kind: 'ownedBot', bot } : now));
+      })
+      .catch((error: unknown) => {
+        if (!live) return;
+        setBotProblem(
+          error instanceof ApiError && error.status === 404 ? 'unavailable' : 'load_failed',
+        );
+      });
+    return () => {
+      live = false;
+    };
+  }, [client, props.groupId, wantedBot]);
+
+  // A bot needs a clock; the stored choice is kept so that a human gets "No clock" back.
+  const ownedBot = selection.kind === 'ownedBot' ? selection.bot : null;
+  const botTime: TimePerMove = defaults.defaultTimePerMove ?? BOT_FALLBACK_TIME;
+  const effectiveTime: TimePerMove = ownedBot && timePerMove === null ? botTime : timePerMove;
+  const casualOnly = selection.kind === 'bot' || ownedBot?.isMine === true;
+  const lastActive = ownedBot?.botActivity?.lastActiveAt;
+  const idleBot =
+    ownedBot !== null &&
+    (!lastActive || serverNow().getTime() - new Date(lastActive).getTime() > BOT_IDLE_MS);
 
   const ready = selection.kind !== 'none' && !sending;
   const submit = useMemo(
@@ -117,23 +186,33 @@ function NewGameForm(props: { groupId: string; opponentId?: string; picker: Play
           );
           router.replace({ name: 'game', gameId: game.id });
         } else {
-          const opponentId = selection.kind === 'open' ? null : selection.id;
-          const body: ChallengeRequest = { opponentId, timePerMove, colour, rated };
+          const opponentId =
+            selection.kind === 'open'
+              ? null
+              : selection.kind === 'ownedBot'
+                ? selection.bot.id
+                : selection.id;
+          const body: ChallengeRequest = {
+            opponentId,
+            timePerMove: effectiveTime,
+            colour,
+            rated: casualOnly ? false : rated,
+          };
           await client.post(`/api/groups/${props.groupId}/challenges`, body, ChallengeDtoSchema);
           toast(t('app.new.sent'));
-          router.replace({ name: 'lobby', groupId: props.groupId });
+          // Back to the lobby it came from, past any bot browser or New game on the way here.
+          router.unwindTo((route) => route.name === 'lobby' && route.groupId === props.groupId, {
+            name: 'lobby',
+            groupId: props.groupId,
+          });
         }
       } catch (error) {
-        toast(
-          error instanceof ApiError && error.code === 'network'
-            ? t('app.common.offline')
-            : t('app.common.error'),
-        );
+        toast(refusalLine(error, selection.kind === 'ownedBot' ? selection.bot : null));
       } finally {
         setSending(false);
       }
     },
-    [client, router, props.groupId, selection, timePerMove, colour, rated],
+    [client, router, props.groupId, selection, effectiveTime, casualOnly, colour, rated],
   );
   // A half-filled form is not lost to a stray swipe (Bot API 6.2).
   useEffect(() => {
@@ -163,8 +242,18 @@ function NewGameForm(props: { groupId: string; opponentId?: string; picker: Play
             avatar={<BotMark size={38} />}
             title={t('app.new.bot')}
             sub={t('app.new.bot_sub')}
-            onPick={() => setSelection({ kind: 'bot', level: firstLevel })}
+            onPick={() => pick({ kind: 'bot', level: firstLevel })}
             data={{ 'data-testid': 'opponent-bot' }}
+          />
+        ) : null}
+        {lookedUpBot ? (
+          <OpponentRow
+            on={ownedBot !== null}
+            avatar={<Avatar player={lookedUpBot} size={38} />}
+            title={lookedUpBot.name}
+            trailing={ratingLabel(lookedUpBot.rating, lookedUpBot.provisional)}
+            onPick={() => pick({ kind: 'ownedBot', bot: lookedUpBot })}
+            data={{ 'data-bot-opponent': lookedUpBot.id }}
           />
         ) : null}
         {players.map((player) => (
@@ -174,7 +263,7 @@ function NewGameForm(props: { groupId: string; opponentId?: string; picker: Play
             avatar={<Avatar player={player} size={38} />}
             title={player.name}
             trailing={ratingLabel(player.rating, player.provisional)}
-            onPick={() => setSelection({ kind: 'human', id: player.id })}
+            onPick={() => pick({ kind: 'human', id: player.id })}
             data={{ 'data-opponent': player.id }}
           />
         ))}
@@ -192,11 +281,40 @@ function NewGameForm(props: { groupId: string; opponentId?: string; picker: Play
             }
             title={t('app.new.open_challenge')}
             sub={t('app.new.open_sub')}
-            onPick={() => setSelection({ kind: 'open' })}
+            onPick={() => pick({ kind: 'open' })}
             data={{ 'data-opponent': 'open' }}
           />
         ) : null}
+        <button
+          type="button"
+          class="option-row"
+          data-testid="bots-row"
+          onClick={() => {
+            tg.hapticSelection();
+            // The browser stands in for this form, and a pick there brings a fresh one back.
+            router.replace({ name: 'botBrowser', groupId: props.groupId, from: 'newGame' });
+          }}
+        >
+          <span
+            class="avatar open"
+            aria-hidden="true"
+            style={{ '--size': '38px' } as Record<string, string>}
+          >
+            🤖
+          </span>
+          <span class="grow">
+            <span class="name">{t('app.new.bots_row')}…</span>
+          </span>
+          <span class="chevron" aria-hidden="true">
+            ›
+          </span>
+        </button>
       </div>
+      {botProblem ? (
+        <p class="hint">
+          {t(botProblem === 'unavailable' ? 'app.new.bot_unavailable' : 'app.new.bot_load_failed')}
+        </p>
+      ) : null}
       {players.length === 0 ? <p class="hint">{t('app.new.no_players')}</p> : null}
       {selection.kind === 'bot' && botPicker ? (
         <>
@@ -219,15 +337,21 @@ function NewGameForm(props: { groupId: string; opponentId?: string; picker: Play
           <div class="section">{t('app.new.time')}</div>
           <Tiles
             columns={3}
-            value={timePerMove}
+            value={effectiveTime}
             onChange={setTimePerMove}
-            tiles={TIME_VALUES.map((value) => ({
+            tiles={TIME_VALUES.filter((value) => value !== null || !ownedBot).map((value) => ({
               key: String(value),
               value,
               label: value === null ? t('time.per_move.none') : timeSpanLabel(value),
               'data-time': value === null ? 'none' : value,
             }))}
           />
+          {idleBot && ownedBot ? (
+            <p class="hint" data-testid="bot-idle">
+              {t('app.new.bot_idle', { bot: ownedBot.name })}
+            </p>
+          ) : null}
+          {ownedBot?.isMine ? <p class="hint">{t('app.new.own_bot_casual')}</p> : null}
         </>
       )}
       <div class="section">{t('app.new.colour')}</div>
@@ -254,12 +378,12 @@ function NewGameForm(props: { groupId: string; opponentId?: string; picker: Play
           ),
         }))}
       />
-      <div class={selection.kind === 'bot' ? 'card field inert' : 'card field'}>
+      <div class={casualOnly ? 'card field inert' : 'card field'}>
         <span>{t('app.new.rated')}</span>
         <Switch
-          checked={selection.kind === 'bot' ? false : rated}
+          checked={casualOnly ? false : rated}
           onChange={setRated}
-          disabled={selection.kind === 'bot'}
+          disabled={casualOnly}
           data-rated=""
           label={t('app.new.rated')}
         />

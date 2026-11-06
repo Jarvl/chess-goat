@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   renderChallengeCard,
   renderGameCard,
+  renderRoundupCard,
   renderShareCaption,
   renderWelcomeCard,
   type ChallengeCardView,
@@ -366,5 +367,84 @@ describe('welcome and share', () => {
         black: 'Bob',
       }),
     ).toBe('Carol shared move 23 of Alice vs Bob');
+  });
+});
+
+describe('Challenge buttons on cards with a bot', () => {
+  const now = new Date('2026-11-03T12:00:00.000Z');
+  const rook = { name: '🤖 Rook (@owner)', username: null, telegramUserId: null, flair: '' };
+  const link = 'https://t.me/ChessGoatBot/chess?startapp=c_grp0000001_7';
+  const botChallenge = { name: rook.name, link };
+  const challengeRow = [{ text: 'Challenge 🤖 Rook (@owner)', url: link }];
+
+  it('adds it to a finished game card, above the lobby row', () => {
+    const card = renderGameCard(
+      game({
+        status: 'finished',
+        result: '1-0',
+        endReason: 'checkmate',
+        black: rook,
+        botChallenge,
+      }),
+    );
+    expect(card.reply_markup?.inline_keyboard).toContainEqual(challengeRow);
+    expect(card.reply_markup?.inline_keyboard.at(-1)).toEqual(lobbyRow);
+  });
+
+  it('adds none to a human game', () => {
+    const card = renderGameCard(
+      game({ status: 'finished', result: '1-0', endReason: 'checkmate' }),
+    );
+    expect(JSON.stringify(card.reply_markup)).not.toContain('Challenge');
+  });
+
+  it('adds it to a settled challenge card but not a pending one', () => {
+    const bot = { opponent: rook, opponentIsBot: true, botChallenge };
+    const pending = renderChallengeCard(
+      challenge({ ...bot, opponentActivity: { lastActiveAt: null } }),
+      now,
+    );
+    expect(JSON.stringify(pending.reply_markup)).not.toContain('Challenge 🤖');
+    const expired = renderChallengeCard(challenge({ ...bot, status: 'expired' }), now);
+    expect(expired.reply_markup?.inline_keyboard).toEqual([challengeRow, lobbyRow]);
+  });
+
+  it('shows the bot activity line on an active game while it is the bot’s turn', () => {
+    const botTurn = renderGameCard(
+      game({
+        black: rook,
+        sideToMove: 'black',
+        botChallenge,
+        botActivity: { side: 'black', lastActiveAt: new Date(now.getTime() - 3 * 86_400_000) },
+      }),
+      now,
+    );
+    expect(botTurn.text.split('\n')).toContain('🤖 Rook (@owner) was last active 3d ago.');
+    const yourTurn = renderGameCard(
+      game({
+        black: rook,
+        sideToMove: 'white',
+        botChallenge,
+        botActivity: { side: 'black', lastActiveAt: null },
+      }),
+      now,
+    );
+    expect(yourTurn.text).not.toContain('active');
+  });
+});
+
+describe('renderRoundupCard', () => {
+  const view = (gap: number) => ({
+    group: 'Club',
+    games: 2,
+    topBot: null,
+    mostWins: null,
+    upset: { winner: 'Pawn', loser: 'Rook', gap },
+    botsLink: 'https://t.me/b',
+    lobbyLink,
+  });
+  it('says "point" for a one-point upset and "points" otherwise', () => {
+    expect(renderRoundupCard(view(1)).text).toContain('Pawn beat Rook (1 point lower)');
+    expect(renderRoundupCard(view(2)).text).toContain('Pawn beat Rook (2 points lower)');
   });
 });

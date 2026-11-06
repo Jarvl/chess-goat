@@ -2,7 +2,14 @@ import { freshPlayerState } from '@chess-goat/shared';
 import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { DbOrTx } from '../db/client';
-import { challenges, groupMembers, ratings, users, type UserRow } from '../db/schema';
+import {
+  challenges,
+  groupMembers,
+  ratings,
+  users,
+  type RatingRow,
+  type UserRow,
+} from '../db/schema';
 import { requireOwnBot } from './bots';
 import { settleInChat } from './challenges';
 import { DomainError } from './errors';
@@ -75,9 +82,12 @@ export async function listGroupBots(tx: DbOrTx, groupId: number): Promise<UserRo
 }
 
 export type BotSort = 'rating' | 'active' | 'newest';
-export type BotSearchRow = { bot: UserRow; rating: number };
+/** `stats` is the bot's ratings row here; null while it has never been rated. */
+export type BotSearchRow = { bot: UserRow; rating: number; stats: RatingRow | null };
 export type BotSearchOptions = {
   query?: string;
+  /** Only this bot (still subject to the findable rules). */
+  botId?: number;
   sort: BotSort;
   limit: number;
   /** The previous page's last `key` and `id`, from `nextCursor`. */
@@ -85,13 +95,13 @@ export type BotSearchOptions = {
 };
 export type BotSearchPage = { rows: BotSearchRow[]; next: { key: number; id: number } | null };
 
-const ownerMember = alias(groupMembers, 'owner_member');
+export const ownerMember = alias(groupMembers, 'owner_member');
 
 /**
  * The bots `find_bots` shows, from `groupMembers` joined to `users` and `ownerMember`: live owned
  * bots that are members of the group, unblocked, whose owners are unblocked members too.
  */
-function findableIn(groupId: number) {
+export function findableIn(groupId: number) {
   return [
     eq(groupMembers.groupId, groupId),
     eq(groupMembers.status, 'member'),
@@ -103,7 +113,7 @@ function findableIn(groupId: number) {
   ];
 }
 
-const ownerJoin = and(
+export const ownerJoin = and(
   eq(ownerMember.groupId, groupMembers.groupId),
   eq(ownerMember.userId, users.ownerId),
 );
@@ -142,11 +152,12 @@ export async function searchGroupBots(
     const escaped = query.replace(/[\\%_]/g, '\\$&');
     conditions.push(sql`${users.firstName} ilike ${`%${escaped}%`} escape '\\'`);
   }
+  if (opts.botId !== undefined) conditions.push(eq(users.id, opts.botId));
   if (opts.cursor) {
     conditions.push(sql`(${key}, ${users.id}) < (${opts.cursor.key}::float8, ${opts.cursor.id})`);
   }
   const found = await tx
-    .select({ user: users, rating, key: sql<number>`(${key})::float8` })
+    .select({ user: users, rating, stats: ratings, key: sql<number>`(${key})::float8` })
     .from(groupMembers)
     .innerJoin(users, eq(users.id, groupMembers.userId))
     .leftJoin(ownerMember, ownerJoin)
@@ -157,9 +168,37 @@ export async function searchGroupBots(
   const page = found.slice(0, opts.limit);
   const last = page.at(-1);
   return {
-    rows: page.map((row) => ({ bot: row.user, rating: Number(row.rating) })),
+    rows: page.map((row) => ({
+      bot: row.user,
+      rating: Number(row.rating),
+      stats: row.stats,
+    })),
     next: found.length > opts.limit && last ? { key: Number(last.key), id: last.user.id } : null,
   };
+}
+
+/** Opaque keyset cursor: the sort key and id of the last bot on the page, plus the sort it is for. */
+export const encodeBotCursor = (sort: BotSort, key: number, id: number): string =>
+  Buffer.from(JSON.stringify([sort, key, id])).toString('base64url');
+
+/** Reads a cursor made by `encodeBotCursor` for the same `sort`; anything else is `invalid_cursor`. */
+export function decodeBotCursor(sort: BotSort, cursor: string): { key: number; id: number } {
+  try {
+    const parsed: unknown = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+    if (
+      Array.isArray(parsed) &&
+      parsed.length === 3 &&
+      parsed[0] === sort &&
+      typeof parsed[1] === 'number' &&
+      Number.isFinite(parsed[1]) &&
+      Number.isInteger(parsed[2])
+    ) {
+      return { key: parsed[1], id: parsed[2] as number };
+    }
+  } catch {
+    // Falls through to the error below.
+  }
+  throw new DomainError('validation', 'that cursor is not valid', { reason: 'invalid_cursor' });
 }
 
 /** Blocking a bot affects that bot; blocking a person affects all their live bots. */

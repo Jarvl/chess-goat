@@ -6,6 +6,8 @@ export class ApiError extends Error {
     readonly status: number,
     readonly code: ErrorCode | 'network',
     message: string,
+    /** The server's refusal reason (`too_many_live_games`…), when it gave one. */
+    readonly reason?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -99,7 +101,12 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       if (!response.ok) {
         const parsed = ApiErrorBodySchema.safeParse(json);
         if (parsed.success) {
-          throw new ApiError(response.status, parsed.data.error.code, parsed.data.error.message);
+          throw new ApiError(
+            response.status,
+            parsed.data.error.code,
+            parsed.data.error.message,
+            parsed.data.error.reason,
+          );
         }
         throw new ApiError(response.status, 'internal', `HTTP ${response.status}`);
       }

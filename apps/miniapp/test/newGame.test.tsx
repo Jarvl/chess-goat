@@ -1,4 +1,4 @@
-import { ENGINE_LEVELS, type GameDto } from '@chess-goat/shared';
+import { ENGINE_LEVELS, type BotCardDto, type GameDto } from '@chess-goat/shared';
 import { describe, expect, it } from 'vitest';
 import { App } from '../src/ui/App';
 import { NewGame } from '../src/ui/screens/NewGame';
@@ -292,5 +292,289 @@ describe('NewGame', () => {
     );
     await r.click('[data-opponent="2"]');
     expect(r.root.querySelector('[data-opponent="2"]')?.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  describe('with bots', () => {
+    const botCard = (overrides: Partial<BotCardDto> = {}): BotCardDto => ({
+      ...playerRef('9', '🤖 Rook (@zed)'),
+      botActivity: { lastActiveAt: new Date().toISOString() },
+      tagline: null,
+      owner: '@zed',
+      isMine: false,
+      gamesPlayed: 0,
+      record: { wins: 0, draws: 0, losses: 0 },
+      ...overrides,
+    });
+    const route =
+      (bot: BotCardDto | null, picker: unknown = players) =>
+      ({ method, path }: { method: string; path: string }) => {
+        if (method === 'POST') return { status: 200, body: challenge };
+        if (path.endsWith('/bots/9')) {
+          return bot
+            ? { status: 200, body: bot }
+            : { status: 404, body: { error: { code: 'not_found', message: 'bot not found' } } };
+        }
+        return { status: 200, body: picker };
+      };
+    const tiles = (root: HTMLElement) =>
+      [...root.querySelectorAll('[data-time]')].map((el) => el.getAttribute('data-time'));
+    const idle = 'may not answer';
+
+    it('preselects the bot named by opponentId', async () => {
+      const r = renderApp(() => <NewGame groupId="GrOuPiDxYz" opponentId="9" />, route(botCard()));
+      await r.flush();
+      expect(r.calls.some((c) => c.path === '/api/groups/GrOuPiDxYz/bots/9')).toBe(true);
+      expect(r.root.querySelector('[data-bot-opponent="9"]')?.getAttribute('aria-pressed')).toBe(
+        'true',
+      );
+      expect(r.text()).toContain('Rook');
+    });
+
+    it('says so when the bot is not available, and selects nothing', async () => {
+      const r = renderApp(() => <NewGame groupId="GrOuPiDxYz" opponentId="9" />, route(null));
+      await r.flush();
+      expect(r.text()).toContain("That bot isn't available in this group any more.");
+      expect(pressedOpponentRows(r.root)).toHaveLength(0);
+      expect(r.root.querySelector('[data-bot-opponent]')).toBeNull();
+    });
+
+    it('does not look a bot up when opponentId is a human', async () => {
+      const r = renderApp(() => <NewGame groupId="GrOuPiDxYz" opponentId="2" />, route(botCard()));
+      await r.flush();
+      expect(r.calls.some((c) => c.path.includes('/bots/'))).toBe(false);
+    });
+
+    it('hides No clock for a bot, replacing a null time, and restores it for a human', async () => {
+      const r = renderApp(
+        () => <NewGame groupId="GrOuPiDxYz" opponentId="9" />,
+        route(botCard(), { ...players, settings: { ...settings, defaultTimePerMove: null } }),
+      );
+      await r.flush();
+      expect(tiles(r.root)).not.toContain('none');
+      expect(r.root.querySelector('[data-time="259200"]')?.getAttribute('aria-pressed')).toBe(
+        'true',
+      );
+      await r.click('[data-opponent="2"]');
+      expect(tiles(r.root)).toContain('none');
+      expect(r.root.querySelector('[data-time="none"]')?.getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('defaults a bot to the group clock when there is one', async () => {
+      const r = renderApp(() => <NewGame groupId="GrOuPiDxYz" opponentId="9" />, route(botCard()));
+      await r.flush();
+      expect(r.root.querySelector('[data-time="86400"]')?.getAttribute('aria-pressed')).toBe(
+        'true',
+      );
+    });
+
+    it('warns about idle bots only', async () => {
+      const fresh = renderApp(
+        () => <NewGame groupId="GrOuPiDxYz" opponentId="9" />,
+        route(botCard()),
+      );
+      await fresh.flush();
+      expect(fresh.text()).not.toContain(idle);
+      for (const lastActiveAt of [null, new Date(Date.now() - 25 * 3_600_000).toISOString()]) {
+        const r = renderApp(
+          () => <NewGame groupId="GrOuPiDxYz" opponentId="9" />,
+          route(botCard({ botActivity: { lastActiveAt } })),
+        );
+        await r.flush();
+        expect(r.text()).toContain(
+          "🤖 Rook (@zed) hasn't been active for a while, so it may not answer. Challenges expire after 24 hours.",
+        );
+      }
+    });
+
+    it('notes that your own bot is casual and disables the rated switch', async () => {
+      const r = renderApp(
+        () => <NewGame groupId="GrOuPiDxYz" opponentId="9" />,
+        route(botCard({ isMine: true })),
+      );
+      await r.flush();
+      expect(r.text()).toContain('Games against your own bot are always casual.');
+      expect(r.root.querySelector('[data-rated]')?.hasAttribute('disabled')).toBe(true);
+      window.__tg!.clickMain();
+      await r.flush();
+      expect(r.calls.find((c) => c.method === 'POST')?.body).toMatchObject({ rated: false });
+    });
+
+    it('lets rated be chosen against another owner bot, and no casual note', async () => {
+      const r = renderApp(() => <NewGame groupId="GrOuPiDxYz" opponentId="9" />, route(botCard()));
+      await r.flush();
+      expect(r.text()).not.toContain('always casual');
+      expect(r.root.querySelector('[data-rated]')?.hasAttribute('disabled')).toBe(false);
+    });
+
+    it('submits the bot id with a non-null time', async () => {
+      const r = renderApp(
+        () => <NewGame groupId="GrOuPiDxYz" opponentId="9" />,
+        route(botCard(), { ...players, settings: { ...settings, defaultTimePerMove: null } }),
+      );
+      await r.flush();
+      window.__tg!.clickMain();
+      await r.flush();
+      expect(r.calls.find((c) => c.method === 'POST')).toMatchObject({
+        path: '/api/groups/GrOuPiDxYz/challenges',
+        body: { opponentId: '9', timePerMove: 259200, colour: 'random', rated: true },
+      });
+    });
+
+    it('swaps itself for the bot browser from the "Bots in this group" row', async () => {
+      const r = renderApp((app) => {
+        app.router.land('groups', { name: 'newGame', groupId: 'GrOuPiDxYz' }, [
+          { name: 'lobby', groupId: 'GrOuPiDxYz' },
+        ]);
+        return <NewGame groupId="GrOuPiDxYz" />;
+      }, route(null));
+      await r.flush();
+      expect(r.text()).toContain('Bots in this group');
+      await r.click('[data-testid="bots-row"]');
+      expect(r.app.router.stack.value).toEqual([
+        { name: 'lobby', groupId: 'GrOuPiDxYz' },
+        { name: 'botBrowser', groupId: 'GrOuPiDxYz', from: 'newGame' },
+      ]);
+    });
+
+    it('keeps a looked-up bot selectable after picking someone else', async () => {
+      const r = renderApp(() => <NewGame groupId="GrOuPiDxYz" opponentId="9" />, route(botCard()));
+      await r.flush();
+      await r.click('[data-opponent="2"]');
+      const row = () => r.root.querySelector('[data-bot-opponent="9"]');
+      expect(row()?.getAttribute('aria-pressed')).toBe('false');
+      await r.click('[data-bot-opponent="9"]');
+      expect(row()?.getAttribute('aria-pressed')).toBe('true');
+      expect(r.root.querySelector('[data-opponent="2"]')?.getAttribute('aria-pressed')).toBe(
+        'false',
+      );
+    });
+
+    it('drops the "not available" hint once another opponent is picked', async () => {
+      const r = renderApp(() => <NewGame groupId="GrOuPiDxYz" opponentId="9" />, route(null));
+      await r.flush();
+      expect(r.text()).toContain("That bot isn't available in this group any more.");
+      await r.click('[data-opponent="2"]');
+      expect(r.text()).not.toContain("That bot isn't available");
+    });
+
+    it('says the bot could not be loaded on a failure other than 404', async () => {
+      const r = renderApp(
+        () => <NewGame groupId="GrOuPiDxYz" opponentId="9" />,
+        ({ path }) =>
+          path.endsWith('/bots/9')
+            ? { status: 500, body: { error: { code: 'internal', message: 'boom' } } }
+            : { status: 200, body: players },
+      );
+      await r.flush();
+      expect(r.text()).toContain("Couldn't load that bot.");
+      expect(r.root.querySelector('[data-opponent="2"]')).not.toBeNull();
+    });
+
+    describe('explains a refused bot challenge', () => {
+      const refusing =
+        (status: number, code: string, reason?: string) =>
+        ({ method, path }: { method: string; path: string }) => {
+          if (method === 'POST') {
+            return {
+              status,
+              body: { error: { code, message: 'no', ...(reason ? { reason } : {}) } },
+            };
+          }
+          return route(botCard())({ method, path });
+        };
+      const send = async (status: number, code: string, reason?: string) => {
+        const r = renderApp(
+          () => <NewGame groupId="GrOuPiDxYz" opponentId="9" />,
+          refusing(status, code, reason),
+        );
+        await r.flush();
+        window.__tg!.clickMain();
+        await r.flush();
+        return r.root.querySelector('.toast')?.textContent;
+      };
+
+      it('when the bot is busy', async () => {
+        expect(await send(409, 'limit_exceeded', 'too_many_live_games')).toBe(
+          '🤖 Rook (@zed) is playing too many games right now. Try again later.',
+        );
+      });
+
+      it.each(['bot_not_in_group', 'owner_not_member', 'blocked'])(
+        'when it may not play here (%s)',
+        async (reason) => {
+          expect(await send(403, 'forbidden', reason)).toBe(
+            "That bot isn't available in this group any more.",
+          );
+        },
+      );
+
+      it('when it needs a clock', async () => {
+        expect(await send(400, 'validation', 'bot_games_need_clock')).toBe(
+          'Games against bots need a clock.',
+        );
+      });
+
+      it('generically otherwise', async () => {
+        expect(await send(400, 'validation')).toBe('Something went wrong');
+      });
+    });
+
+    describe('goes back to the lobby after sending', () => {
+      const bots = { group: { title: 'Chess Club' }, bots: [botCard()], nextCursor: null };
+      const flow = ({ method, path }: { method: string; path: string }) => {
+        if (method === 'POST') return { status: 200, body: challenge };
+        if (path.endsWith('/bots/9')) return { status: 200, body: botCard() };
+        if (path.includes('/bots?')) return { status: 200, body: bots };
+        return { status: 200, body: players };
+      };
+      const lobby = { name: 'lobby', groupId: 'GrOuPiDxYz' } as const;
+      const names = (r: ReturnType<typeof renderApp>) =>
+        r.app.router.stack.value.map((route) => route.name);
+      const pickAndSend = async (r: ReturnType<typeof renderApp>) => {
+        await r.flush();
+        await r.click('[data-bot="9"]');
+        expect(r.app.router.current.value).toMatchObject({ name: 'newGame', opponentId: '9' });
+        await r.flush();
+        window.__tg!.clickMain();
+        await r.flush();
+      };
+
+      it('from New game through its Bots row', async () => {
+        const r = renderApp((app) => {
+          app.router.land('groups', { name: 'newGame', groupId: 'GrOuPiDxYz' }, [
+            { name: 'groups' },
+            lobby,
+          ]);
+          return <App />;
+        }, flow);
+        await r.flush();
+        await r.click('[data-testid="bots-row"]');
+        expect(names(r)).toEqual(['groups', 'lobby', 'botBrowser']);
+        await pickAndSend(r);
+        expect(r.app.router.stack.value).toEqual([{ name: 'groups' }, lobby]);
+      });
+
+      it('from a bot browser link', async () => {
+        const r = renderApp((app) => {
+          app.router.land('groups', { name: 'botBrowser', groupId: 'GrOuPiDxYz' }, [lobby]);
+          return <App />;
+        }, flow);
+        await pickAndSend(r);
+        expect(r.app.router.stack.value).toEqual([lobby]);
+      });
+
+      it("from the group's bots screen", async () => {
+        const r = renderApp((app) => {
+          app.router.land('groups', { name: 'botBrowser', groupId: 'GrOuPiDxYz' }, [
+            { name: 'groups' },
+            lobby,
+            { name: 'groupBots', groupId: 'GrOuPiDxYz' },
+          ]);
+          return <App />;
+        }, flow);
+        await pickAndSend(r);
+        expect(r.app.router.stack.value).toEqual([{ name: 'groups' }, lobby]);
+      });
+    });
   });
 });

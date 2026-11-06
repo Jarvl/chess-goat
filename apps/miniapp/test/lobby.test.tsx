@@ -177,6 +177,14 @@ describe('Lobby', () => {
     expect(r.app.router.current.value).toEqual({ name: 'leaderboard', groupId: 'GrOuPiDxYz' });
   });
 
+  it('shows a Bots chip, even on an empty board, that opens the Bots screen', async () => {
+    const r = open({ ...lobby, players: [] });
+    await r.flush();
+    expect(r.root.querySelector('[data-action="bots"]')?.textContent).toContain('Bots');
+    await r.click('[data-action="bots"]');
+    expect(r.app.router.current.value).toEqual({ name: 'groupBots', groupId: 'GrOuPiDxYz' });
+  });
+
   it('offers a plain chip when the viewer is not ranked, and none on an empty board', async () => {
     const unranked = open({ ...lobby, players: board(['2']) });
     await unranked.flush();

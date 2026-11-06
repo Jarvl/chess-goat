@@ -4,7 +4,9 @@ import { Dialogs } from './dialog';
 import { FlairScreen } from './screens/Flair';
 import { Game } from './screens/Game';
 import { Games } from './screens/Games';
+import { BotBrowser } from './screens/BotBrowser';
 import { Bots } from './screens/Bots';
+import { GroupBots } from './screens/GroupBots';
 import { GroupSettings } from './screens/GroupSettings';
 import { Groups } from './screens/Groups';
 import { Leaderboard } from './screens/Leaderboard';
@@ -60,6 +62,10 @@ function Screen() {
       return <Bots />;
     case 'flair':
       return <FlairScreen />;
+    case 'groupBots':
+      return <GroupBots key={route.groupId} groupId={route.groupId} />;
+    case 'botBrowser':
+      return <BotBrowser key={route.groupId} groupId={route.groupId} from={route.from} />;
     case 'groupSettings':
       return <GroupSettings key={route.groupId} groupId={route.groupId} />;
   }

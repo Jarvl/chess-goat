@@ -280,6 +280,30 @@ describe('POST /api/launch', () => {
       kind: 'newGame',
       lobby: { group: { id: group.publicId } },
     });
+    const bots = LaunchResponseSchema.parse(
+      await (await launch({ user: alice, startParam: `b_${group.publicId}` })).json(),
+    );
+    expect(bots.route).toMatchObject({ kind: 'bots', lobby: { group: { id: group.publicId } } });
+    const challenge = LaunchResponseSchema.parse(
+      await (
+        await launch({ user: alice, startParam: `c_${group.publicId}_${(77).toString(36)}` })
+      ).json(),
+    );
+    expect(challenge.route).toMatchObject({
+      kind: 'newGame',
+      opponentId: '77',
+      lobby: { group: { id: group.publicId } },
+    });
+    const stranger = { id: 33, first_name: 'Sam' };
+    for (const startParam of [`b_${group.publicId}`, `c_${group.publicId}_${(77).toString(36)}`]) {
+      const locked = LaunchResponseSchema.parse(
+        await (await launch({ user: stranger, startParam })).json(),
+      );
+      expect(locked.route).toEqual({
+        kind: 'locked',
+        group: { id: group.publicId, title: group.title },
+      });
+    }
     const notAdmin = LaunchResponseSchema.parse(
       await (await launch({ user: alice, startParam: `s_${group.publicId}` })).json(),
     );

@@ -7,6 +7,7 @@ import {
 } from '@chess-goat/shared';
 import type { Api, ChatTypeContext, Composer, Context } from 'grammy';
 import type { CallbackQuery, InlineKeyboardMarkup, Message, User } from 'grammy/types';
+import type { Config } from '../config';
 import { enqueue } from '../jobs/queue';
 import { createChallenge, type CreateChallengeInput } from '../domain/challenges';
 import {
@@ -21,7 +22,12 @@ import { touchMember } from '../domain/members';
 import { displayName, ensureUser, getUserByTelegramId } from '../domain/users';
 import type { GroupRow, UserRow } from '../db/schema';
 import { classifyTelegramError } from '../telegram/client';
-import { promptStateFrom, promptView, startingSettings } from './challengePrompt';
+import {
+  promptStateFrom,
+  promptView,
+  startingSettings,
+  withoutUrlButtons,
+} from './challengePrompt';
 import { deleteEphemeral, editEphemeral, sendEphemeral, type EphemeralTrigger } from './ephemeral';
 import { resolveOpponent } from './opponent';
 import { replyFor } from './replies';
@@ -145,6 +151,7 @@ async function sendFallbackPrompt(
  */
 export async function openPrompt(
   deps: Deps,
+  config: Config,
   api: Api,
   input: {
     group: GroupRow;
@@ -158,23 +165,29 @@ export async function openPrompt(
   const { group, from } = input;
   const settings = startingSettings(settingsOf(group));
   await openPromptRow(deps.db, group.id, input.user.id, settings, input.threadId);
-  const view = promptView('main', from.id, settings);
-  if (
-    input.trigger &&
-    (await sendEphemeral(
+  const view = promptView('main', from.id, settings, { config, groupPublicId: group.publicId });
+  const sendPrivately = (trigger: EphemeralTrigger, shown: View) =>
+    sendEphemeral(
       api,
       {
         chatId: input.chatId,
         threadId: input.threadId,
         receiverId: from.id,
-        trigger: input.trigger,
-        text: view.text,
-        replyMarkup: view.replyMarkup,
+        trigger,
+        text: shown.text,
+        replyMarkup: shown.replyMarkup,
       },
       deps.log,
-    ))
-  )
-    return;
+    );
+  if (input.trigger) {
+    if (await sendPrivately(input.trigger, view)) return;
+    // A Telegram that refuses a URL button in an ephemeral message still gets a private prompt.
+    const plain = withoutUrlButtons(view);
+    if (plain && (await sendPrivately(input.trigger, plain))) {
+      deps.log.info({ chatId: input.chatId }, 'challenge prompt sent without bot button');
+      return;
+    }
+  }
   // Why everyone can see it: an ordinary (not private) command with no admin rights to answer
   // privately, or Telegram refused the private answer (logged by sendEphemeral with its reason).
   deps.log.info(
@@ -219,6 +232,7 @@ const promptRefOf = (message: { message_id: number }): PromptRef => {
 };
 
 async function editPrompt(
+  deps: Deps,
   api: Api,
   place: { chatId: number; owner: number },
   ref: PromptRef,
@@ -230,13 +244,24 @@ async function editPrompt(
     });
     return;
   }
-  await editEphemeral(api, {
-    chatId: place.chatId,
-    receiverId: place.owner,
-    ephemeralMessageId: ref.ephemeralMessageId,
-    text: view.text,
-    replyMarkup: view.replyMarkup,
-  });
+  const edit = (shown: View) =>
+    editEphemeral(api, {
+      chatId: place.chatId,
+      receiverId: place.owner,
+      ephemeralMessageId: ref.ephemeralMessageId,
+      text: shown.text,
+      replyMarkup: shown.replyMarkup,
+    });
+  try {
+    await edit(view);
+  } catch (error) {
+    const failure = classifyTelegramError(error);
+    const plain = withoutUrlButtons(view);
+    // Only a refusal of this markup is worth one more try without the URL button.
+    if (!plain || failure?.kind !== 'other') throw error;
+    await edit(plain);
+    deps.log.info({ chatId: place.chatId }, 'challenge prompt edited without bot button');
+  }
 }
 
 async function deletePrompt(
@@ -258,6 +283,7 @@ async function deletePrompt(
 /** A tap on the prompt: only its owner may change the settings or post the open challenge. */
 export async function handlePromptTap(
   deps: Deps,
+  config: Config,
   api: Api,
   query: CallbackQuery,
   data: PromptData,
@@ -288,7 +314,16 @@ export async function handlePromptTap(
   if (data.op !== 'anyone') {
     // The row follows what the prompt shows, so it changes only once the edit has.
     try {
-      await editPrompt(api, place, ref, promptView(data.op, data.ownerTelegramId, data.settings));
+      await editPrompt(
+        deps,
+        api,
+        place,
+        ref,
+        promptView(data.op, data.ownerTelegramId, data.settings, {
+          config,
+          groupPublicId: group.publicId,
+        }),
+      );
     } catch (error) {
       const failure = classifyTelegramError(error);
       // A rate limit, or no answer from Telegram: the update retries.

@@ -150,6 +150,15 @@ export function GroupSettings(props: { groupId: string }) {
             data-setting="allowOpenChallenges"
           />
         </div>
+        <div class="field">
+          <span>{t('app.gsettings.bot_roundup')}</span>
+          <Switch
+            checked={current.botRoundup}
+            onChange={(value) => set('botRoundup', value)}
+            data-setting="botRoundup"
+          />
+        </div>
+        <p class="row hint">{t('app.gsettings.bot_roundup_help')}</p>
         {settings.data.isForum ? (
           <>
             <div class="field">

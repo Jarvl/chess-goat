@@ -1,0 +1,84 @@
+import { BotListQuerySchema, type BotCardDto, type BotListDto } from '@chess-goat/shared';
+import type { Hono } from 'hono';
+import {
+  decodeBotCursor,
+  encodeBotCursor,
+  searchGroupBots,
+  type BotSearchRow,
+} from '../../domain/botGroups';
+import { announceBot } from '../../domain/botAnnounce';
+import { buildBotLobby } from '../../domain/botLobby';
+import { DomainError } from '../../domain/errors';
+import { requireGroupByPublicId } from '../../domain/groups';
+import { toPlayerRef } from '../../domain/players';
+import { requireMember } from '../access';
+import type { ApiContext, ApiEnv } from '../context';
+import { publicIdParam } from '../middleware';
+import { validate } from '../validate';
+
+const PAGE_SIZE = 20;
+
+const toBotCard = ({ bot, stats }: BotSearchRow, viewerId: number): BotCardDto => ({
+  ...toPlayerRef(bot, stats),
+  tagline: bot.tagline,
+  owner: bot.ownerName ?? 'Unknown',
+  isMine: bot.ownerId === viewerId,
+  gamesPlayed: stats?.gamesPlayed ?? 0,
+  record: { wins: stats?.wins ?? 0, draws: stats?.draws ?? 0, losses: stats?.losses ?? 0 },
+});
+
+export function botsRoutes(api: Hono<ApiEnv>, ctx: ApiContext): void {
+  const { db } = ctx.deps;
+
+  /** The group's bot browser: the bots `find_bots` shows, searched, sorted and paged. */
+  api.get('/groups/:g/bots', validate('query', BotListQuerySchema), async (c) => {
+    const group = await requireGroupByPublicId(db, publicIdParam(c, 'g'));
+    await requireMember(ctx, group, c.get('user'));
+    const { q, sort = 'rating', cursor } = c.req.valid('query');
+    const page = await searchGroupBots(db, group.id, {
+      query: q,
+      sort,
+      limit: PAGE_SIZE,
+      cursor: cursor ? decodeBotCursor(sort, cursor) : undefined,
+    });
+    const body: BotListDto = {
+      group: { title: group.title },
+      bots: page.rows.map((row) => toBotCard(row, c.get('user').id)),
+      nextCursor: page.next ? encodeBotCursor(sort, page.next.key, page.next.id) : null,
+    };
+    return c.json(body);
+  });
+
+  /** The group's bot-vs-bot play: live games, bot standings and recent results. */
+  api.get('/groups/:g/bot-lobby', async (c) => {
+    const group = await requireGroupByPublicId(db, publicIdParam(c, 'g'));
+    const viewer = c.get('user');
+    await requireMember(ctx, group, viewer);
+    return c.json(await buildBotLobby(ctx.deps, group, viewer));
+  });
+
+  /** One bot of the group, for New Game to preselect; 404 unless it is findable here. */
+  api.get('/groups/:g/bots/:id', async (c) => {
+    const group = await requireGroupByPublicId(db, publicIdParam(c, 'g'));
+    const viewer = c.get('user');
+    await requireMember(ctx, group, viewer);
+    const raw = c.req.param('id');
+    const id = /^\d+$/.test(raw) ? Number(raw) : NaN;
+    const [row] = Number.isSafeInteger(id)
+      ? (await searchGroupBots(db, group.id, { botId: id, sort: 'rating', limit: 1 })).rows
+      : [];
+    if (!row) throw new DomainError('not_found', 'bot not found');
+    return c.json(toBotCard(row, viewer.id));
+  });
+
+  /** The owner posts the bot's "Taking challenges" card to the group; 404 unless it is theirs. */
+  api.post('/groups/:g/bots/:id/announce', async (c) => {
+    const group = await requireGroupByPublicId(db, publicIdParam(c, 'g'));
+    const viewer = c.get('user');
+    await requireMember(ctx, group, viewer);
+    const id = Number(c.req.param('id'));
+    if (!Number.isSafeInteger(id)) throw new DomainError('not_found', 'bot not found');
+    await announceBot(ctx.deps, { ownerId: viewer.id, botId: id, groupId: group.id });
+    return c.json({ ok: true });
+  });
+}

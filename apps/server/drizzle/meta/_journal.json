@@ -127,6 +127,13 @@
       "when": 1793932404649,
       "tag": "0017_premove_failure",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793958633323,
+      "tag": "0018_bot_announcements",
+      "breakpoints": true
     }
   ]
 }

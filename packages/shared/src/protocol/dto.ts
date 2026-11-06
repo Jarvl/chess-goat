@@ -180,12 +180,43 @@ export const LeaderboardEntrySchema = PlayerRefSchema.extend({
 
 export type LeaderboardEntry = z.infer<typeof LeaderboardEntrySchema>;
 
+/** A bot in a group's bot browser, with its owner's name and its record there. */
+export const BotCardDtoSchema = PlayerRefSchema.extend({
+  tagline: z.string().nullable(),
+  owner: z.string(),
+  /** The viewer owns this bot (games against it are always casual). */
+  isMine: z.boolean(),
+  gamesPlayed: z.number().int().min(0),
+  record: WinDrawLossSchema,
+});
+
+export type BotCardDto = z.infer<typeof BotCardDtoSchema>;
+
+export const BotListDtoSchema = z.object({
+  /** The group the bots are in, for the browser's title. */
+  group: z.object({ title: z.string() }),
+  bots: z.array(BotCardDtoSchema),
+  nextCursor: z.string().nullable(),
+});
+
+export type BotListDto = z.infer<typeof BotListDtoSchema>;
+
+export const BotLobbyDtoSchema = z.object({
+  live: z.array(GameSummarySchema),
+  standings: z.array(LeaderboardEntrySchema),
+  recent: z.array(GameSummarySchema),
+});
+
+export type BotLobbyDto = z.infer<typeof BotLobbyDtoSchema>;
+
 export const GroupSettingsSchema = z.object({
   defaultTimePerMove: TimePerMoveSchema,
   ratedDefault: z.boolean(),
   allowOpenChallenges: z.boolean(),
   cardTopicMode: z.enum(['origin', 'fixed']),
   fixedTopicId: z.number().int().positive().nullable(),
+  /** A Monday message about the week's bot games; off until an admin turns it on. */
+  botRoundup: z.boolean(),
 });
 
 export type GroupSettings = z.infer<typeof GroupSettingsSchema>;
@@ -196,6 +227,7 @@ export const GROUP_SETTINGS_DEFAULTS: GroupSettings = {
   allowOpenChallenges: true,
   cardTopicMode: 'origin',
   fixedTopicId: null,
+  botRoundup: false,
 };
 
 export const FinishedPageDtoSchema = z.object({
@@ -241,6 +273,20 @@ export const PlayerPageDtoSchema = z.object({
   /** The viewer's record against this player. */
   headToHead: WinDrawLossSchema,
   recentGames: z.array(GameSummarySchema),
+  /** The player's account is deleted: nobody can challenge them. */
+  deleted: z.boolean(),
+  /** Owned bots only (null for people): who runs it, what it says about itself, and when it last acted. */
+  bot: z
+    .object({
+      tagline: z.string().nullable(),
+      owner: z.string(),
+      lastActiveAt: IsoDateSchema.nullable(),
+      /** The viewer owns this bot. */
+      isMine: z.boolean(),
+      /** It may be challenged in this group (it and its owner are unblocked members). */
+      findable: z.boolean(),
+    })
+    .nullable(),
 });
 
 export type PlayerPageDto = z.infer<typeof PlayerPageDtoSchema>;
@@ -301,7 +347,14 @@ export const LaunchRouteSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('game'), game: GameDtoSchema }),
   z.object({ kind: z.literal('lobby'), lobby: LobbyDtoSchema }),
   /** A "challenge someone" link: the lobby's data, landed with New game on top of it. */
-  z.object({ kind: z.literal('newGame'), lobby: LobbyDtoSchema }),
+  z.object({
+    kind: z.literal('newGame'),
+    lobby: LobbyDtoSchema,
+    /** The player picked in the link (a bot, for a challenge-bot link). */
+    opponentId: z.string().optional(),
+  }),
+  /** A link to the group's bots: the lobby's data, landed with the bot browser on top of it. */
+  z.object({ kind: z.literal('bots'), lobby: LobbyDtoSchema }),
   z.object({ kind: z.literal('settings'), settings: GroupSettingsDtoSchema }),
   z.object({ kind: z.literal('home'), games: MeGamesDtoSchema }),
   z.object({ kind: z.literal('locked'), group: GroupRefSchema }),
@@ -377,6 +430,34 @@ export const OwnerTokenStatusDtoSchema = z.object({
 });
 
 export type OwnerTokenStatusDto = z.infer<typeof OwnerTokenStatusDtoSchema>;
+
+/** One of the viewer's bots on their dashboard: where it plays, what it is doing, how it fared. */
+export const OwnerBotDtoSchema = z.object({
+  id: z.number().int(),
+  label: z.string(),
+  tagline: z.string().nullable(),
+  lastActiveAt: IsoDateSchema.nullable(),
+  groups: z.array(
+    z.object({
+      groupId: z.string(),
+      title: z.string(),
+      rating: z.number(),
+      gamesPlayed: z.number().int(),
+      provisional: z.boolean(),
+      /** The owner is still a member there, so the bot's page in that group can be opened. */
+      ownerIsMember: z.boolean(),
+    }),
+  ),
+  liveGames: z.number().int(),
+  /** Its last five finished games, newest first. */
+  recent: z.array(GameSummarySchema),
+});
+
+export type OwnerBotDto = z.infer<typeof OwnerBotDtoSchema>;
+
+export const OwnerBotsDtoSchema = z.object({ bots: z.array(OwnerBotDtoSchema) });
+
+export type OwnerBotsDto = z.infer<typeof OwnerBotsDtoSchema>;
 
 /** A freshly made owner token; the only time its secret is shown. */
 export const OwnerTokenCreatedDtoSchema = z.object({

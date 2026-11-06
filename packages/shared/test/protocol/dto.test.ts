@@ -124,6 +124,7 @@ describe('GroupSettingsSchema', () => {
       allowOpenChallenges: true,
       cardTopicMode: 'origin',
       fixedTopicId: null,
+      botRoundup: false,
     });
   });
 

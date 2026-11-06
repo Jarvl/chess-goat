@@ -12,6 +12,7 @@ const dto: GroupSettingsDto = {
     allowOpenChallenges: true,
     cardTopicMode: 'origin',
     fixedTopicId: null,
+    botRoundup: false,
   },
   blocked: [playerRef('3', 'Carol')],
   bots: [
@@ -65,6 +66,19 @@ describe('GroupSettings', () => {
       cardTopicMode: 'fixed',
       fixedTopicId: 42,
     });
+  });
+
+  it('saves the weekly bot round-up switch', async () => {
+    const r = renderApp(() => <GroupSettings groupId="GrOuPiDxYz" />, route);
+    await r.flush();
+    expect(r.text()).toContain('Weekly bot round-up');
+    expect(r.text()).toContain(
+      "A message every Monday about the week's bot games. Off by default.",
+    );
+    await r.click('[data-setting="botRoundup"]');
+    window.__tg!.clickMain();
+    await r.flush();
+    expect(r.calls.find((c) => c.method === 'PUT')?.body).toEqual({ botRoundup: true });
   });
 
   it('unblocks and blocks players', async () => {

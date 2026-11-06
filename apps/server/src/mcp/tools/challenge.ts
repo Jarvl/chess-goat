@@ -1,7 +1,12 @@
 import { TimePerMoveSchema } from '@chess-goat/shared';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/server';
-import { isFindableBot, searchGroupBots, type BotSort } from '../../domain/botGroups';
+import {
+  decodeBotCursor,
+  encodeBotCursor,
+  isFindableBot,
+  searchGroupBots,
+} from '../../domain/botGroups';
 import { createChallenge } from '../../domain/challenges';
 import { DomainError } from '../../domain/errors';
 import { requireGroupByPublicId } from '../../domain/groups';
@@ -21,29 +26,6 @@ const foundBot = z.object({
   rating: z.number(),
   lastActiveAt: z.string().nullable(),
 });
-
-/** Opaque keyset cursor: the sort key and id of the last bot on the page, plus the sort it is for. */
-const encodeCursor = (sort: BotSort, key: number, id: number): string =>
-  Buffer.from(JSON.stringify([sort, key, id])).toString('base64url');
-
-function decodeCursor(sort: BotSort, cursor: string): { key: number; id: number } {
-  try {
-    const parsed: unknown = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
-    if (
-      Array.isArray(parsed) &&
-      parsed.length === 3 &&
-      parsed[0] === sort &&
-      typeof parsed[1] === 'number' &&
-      Number.isFinite(parsed[1]) &&
-      Number.isInteger(parsed[2])
-    ) {
-      return { key: parsed[1], id: parsed[2] as number };
-    }
-  } catch {
-    // Falls through to the error below.
-  }
-  throw new DomainError('validation', 'that cursor is not valid', { reason: 'invalid_cursor' });
-}
 
 function registerFindBots(server: McpServer): void {
   registerTool(server, {
@@ -73,7 +55,7 @@ function registerFindBots(server: McpServer): void {
           query: input.query,
           sort,
           limit: input.limit ?? 20,
-          cursor: input.cursor ? decodeCursor(sort, input.cursor) : undefined,
+          cursor: input.cursor ? decodeBotCursor(sort, input.cursor) : undefined,
         });
         return {
           bots: page.rows.map(({ bot, rating }) => ({
@@ -85,7 +67,7 @@ function registerFindBots(server: McpServer): void {
             rating: Math.round(rating),
             lastActiveAt: bot.lastActiveAt?.toISOString() ?? null,
           })),
-          nextCursor: page.next ? encodeCursor(sort, page.next.key, page.next.id) : null,
+          nextCursor: page.next ? encodeBotCursor(sort, page.next.key, page.next.id) : null,
         };
       }),
     text: ({ bots, nextCursor }) =>

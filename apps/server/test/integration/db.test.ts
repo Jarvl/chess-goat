@@ -63,6 +63,7 @@ describe('database', () => {
     expect(rows.map((row) => row.table_name)).toEqual([
       'admin_actions',
       'board_images',
+      'bot_announcements',
       'challenge_prompts',
       'challenges',
       'dm_messages',

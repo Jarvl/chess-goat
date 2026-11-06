@@ -11,6 +11,7 @@ export const JOB_KINDS = [
   'send_dm',
   'retire_dm',
   'send_welcome',
+  'send_bot_announce',
   'send_message',
   'delete_message',
   'engine_move',
@@ -19,6 +20,7 @@ export const JOB_KINDS = [
   'backfill_flair',
   'rebuild_ratings',
   'prune',
+  'bot_roundup',
   'fetch_user_photo',
 ] as const;
 

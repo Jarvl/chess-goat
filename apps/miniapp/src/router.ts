@@ -20,7 +20,10 @@ export type Route =
   | { name: 'settings' }
   | { name: 'flair' }
   | { name: 'bots' }
-  | { name: 'groupSettings'; groupId: string };
+  | { name: 'groupSettings'; groupId: string }
+  | { name: 'groupBots'; groupId: string }
+  /** `from: 'newGame'` marks a browser that stands in for New game, so a pick replaces it back. */
+  | { name: 'botBrowser'; groupId: string; from?: 'newGame' };
 
 /** The bottom bar's sections; each keeps its own back stack. */
 export type TabName = 'games' | 'groups' | 'settings';
@@ -112,6 +115,22 @@ export class Router {
 
   replace(route: Route): void {
     void this.leave(() => this.write(this.tab.value, [...this.stack.value.slice(0, -1), route]));
+  }
+
+  /**
+   * Goes back to the nearest screen in the active tab that `match` accepts, dropping everything above
+   * it; with none in the stack, `fallback` replaces the top instead.
+   */
+  unwindTo(match: (route: Route) => boolean, fallback: Route): void {
+    void this.leave(() => {
+      const stack = this.stack.value;
+      let at = stack.length - 1;
+      while (at >= 0 && !match(stack[at]!)) at -= 1;
+      this.write(
+        this.tab.value,
+        at >= 0 ? stack.slice(0, at + 1) : [...stack.slice(0, -1), fallback],
+      );
+    });
   }
 
   /**

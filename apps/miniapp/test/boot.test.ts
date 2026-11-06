@@ -152,6 +152,38 @@ describe('boot', () => {
     expect(app.prefetched.lobby).toEqual(lobby);
   });
 
+  it('lands a bots link on the bot browser above the lobby, and a challenge link on New game with the bot', async () => {
+    const lobby = {
+      group: { id: 'GrOuPiDxYz', title: 'Club' },
+      isAdmin: false,
+      settings: { defaultTimePerMove: 86400, ratedDefault: true, allowOpenChallenges: true },
+      active: [],
+      finished: { items: [], nextCursor: null },
+      challenges: [],
+      players: [],
+    };
+    const bots = setup('8.0', 'b_GrOuPiDxYz', () => ({
+      status: 200,
+      body: launchBody({ kind: 'bots', lobby }),
+    }));
+    await boot(bots);
+    expect(bots.router.tab.value).toBe('groups');
+    expect(bots.router.stack.value).toEqual([
+      { name: 'lobby', groupId: 'GrOuPiDxYz' },
+      { name: 'botBrowser', groupId: 'GrOuPiDxYz' },
+    ]);
+    expect(bots.prefetched.lobby).toEqual(lobby);
+    const challenge = setup('8.0', 'c_GrOuPiDxYz_21', () => ({
+      status: 200,
+      body: launchBody({ kind: 'newGame', lobby, opponentId: '73' }),
+    }));
+    await boot(challenge);
+    expect(challenge.router.stack.value).toEqual([
+      { name: 'lobby', groupId: 'GrOuPiDxYz' },
+      { name: 'newGame', groupId: 'GrOuPiDxYz', opponentId: '73' },
+    ]);
+  });
+
   it('shows the reopen screen when the launch is rejected and the error screen when it fails', async () => {
     const expired = setup('8.0', undefined, () => ({
       status: 401,

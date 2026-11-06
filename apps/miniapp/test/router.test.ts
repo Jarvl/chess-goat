@@ -27,6 +27,25 @@ describe('Router', () => {
     expect(record.closed).toBe(false);
   });
 
+  it('unwinds to the nearest matching screen, or replaces the top when none matches', () => {
+    const { router, record } = setup();
+    const lobby = { name: 'lobby', groupId: 'GrOuPiDxYz' } as const;
+    const isLobby = (route: { name: string }) => route.name === 'lobby';
+    router.land('groups', { name: 'newGame', groupId: 'GrOuPiDxYz' }, [
+      { name: 'groups' },
+      lobby,
+      { name: 'groupBots', groupId: 'GrOuPiDxYz' },
+      { name: 'botBrowser', groupId: 'GrOuPiDxYz' },
+    ]);
+    router.unwindTo(isLobby, lobby);
+    expect(router.stack.value).toEqual([{ name: 'groups' }, lobby]);
+    expect(record.backButton.visible).toBe(true);
+
+    router.land('games', { name: 'newGame', groupId: 'GrOuPiDxYz' }, [{ name: 'games' }]);
+    router.unwindTo(isLobby, lobby);
+    expect(router.stack.value).toEqual([{ name: 'games' }, lobby]);
+  });
+
   it('starts on the games tab with a loading screen until a launch lands', () => {
     const { router, record } = setup();
     expect(router.tab.value).toBe('games');

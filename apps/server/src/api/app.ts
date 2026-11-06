@@ -21,7 +21,11 @@ export function createApiApp(ctx: ApiContext, extra: RegisterRoutes[] = []): Hon
     if (isDomainError(error)) {
       const status = HTTP_STATUS_BY_ERROR_CODE[error.code] as StatusCode;
       c.status(status as 400);
-      return c.json(apiErrorBody(error.code, error.message));
+      // Only `reason` crosses: other details may carry names that are not the caller's to see.
+      const { reason } = error.details;
+      return c.json(
+        apiErrorBody(error.code, error.message, typeof reason === 'string' ? reason : undefined),
+      );
     }
     if (error instanceof HTTPException) {
       // Framework rejections (the body limit above all) keep their status in the spec's error shape.

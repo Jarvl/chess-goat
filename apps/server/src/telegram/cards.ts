@@ -51,7 +51,12 @@ export type ChallengeCardView = {
   rated: boolean;
   challengerColour: ColourChoice;
   lobbyLink: string;
+  /** The bot side's name and the `challengeBot` link; absent without a bot. */
+  botChallenge?: BotChallengeView | null;
 };
+
+/** What a group card needs to offer "Challenge 🤖 Name": the bot's name and where the button goes. */
+export type BotChallengeView = { name: string; link: string };
 
 export type GameCardView = {
   publicId: string;
@@ -73,12 +78,16 @@ export type GameCardView = {
   lichessUrl: string | null;
   openLink: string;
   lobbyLink: string;
+  /** The game's one bot side; absent for human games. */
+  botChallenge?: BotChallengeView | null;
+  /** Which side the bot plays and its last activity, for the line shown on its turn. */
+  botActivity?: { side: Colour; lastActiveAt: Date | null } | null;
 };
 
 const MENTION_MARK = '\u0000';
 
 /** A person as the cards name them: the name, then their worn flair (flair beside names). */
-function label(person: PersonView): string {
+export function label(person: PersonView): string {
   return person.flair ? `${person.name} ${person.flair}` : person.name;
 }
 
@@ -128,6 +137,15 @@ function urlButton(text: string, url: string | null): InlineKeyboardButton | nul
   return { text, url };
 }
 
+function challengeBotRow(view: { botChallenge?: BotChallengeView | null }): InlineKeyboardButton[] {
+  if (!view.botChallenge) return [];
+  const button = urlButton(
+    t('button.challenge_bot', { bot: view.botChallenge.name }),
+    view.botChallenge.link,
+  );
+  return button ? [button] : [];
+}
+
 function terms(view: ChallengeCardView): string {
   const base = { timePerMove: timePerMoveLabel(view.timePerMove), rated: ratedLabel(view.rated) };
   if (view.challengerColour === 'random') return t('card.challenge.terms', base);
@@ -138,10 +156,8 @@ function terms(view: ChallengeCardView): string {
   });
 }
 
-function botActivityLine(view: ChallengeCardView, now: Date): string | null {
-  if (!view.opponent || !view.opponentActivity) return null;
-  const bot = label(view.opponent);
-  const { lastActiveAt } = view.opponentActivity;
+function botActivityLine(bot: string, activity: { lastActiveAt: Date | null }, now: Date): string {
+  const { lastActiveAt } = activity;
   if (!lastActiveAt) return t('card.challenge.bot_never_active', { bot });
   const age = now.getTime() - lastActiveAt.getTime();
   if (age <= BOT_ACTIVE_NOW_MS) return t('card.challenge.bot_active_now', { bot });
@@ -170,7 +186,13 @@ export function renderChallengeCard(
       }),
     };
     return {
-      text: [line1.text, botActivityLine(view, now), terms(view)]
+      text: [
+        line1.text,
+        view.opponent && view.opponentActivity
+          ? botActivityLine(label(view.opponent), view.opponentActivity, now)
+          : null,
+        terms(view),
+      ]
         .filter((line) => line !== null)
         .join('\n'),
       entities: line1.entities,
@@ -190,10 +212,14 @@ export function renderChallengeCard(
     : view.status === 'expired'
       ? 'card.challenge.open_expired'
       : 'card.challenge.open_withdrawn';
-  return { text: t(key, params), entities: [], reply_markup: keyboard([lobbyRow(view)]) };
+  return {
+    text: t(key, params),
+    entities: [],
+    reply_markup: keyboard([challengeBotRow(view), lobbyRow(view)]),
+  };
 }
 
-export function renderGameCard(view: GameCardView): RenderedMessage {
+export function renderGameCard(view: GameCardView, now: Date = new Date()): RenderedMessage {
   const white = label(view.white);
   const black = label(view.black);
   const rematch = {
@@ -216,7 +242,7 @@ export function renderGameCard(view: GameCardView): RenderedMessage {
     return {
       text: lines.join('\n'),
       entities: [],
-      reply_markup: keyboard([buttons, lobbyRow(view)]),
+      reply_markup: keyboard([buttons, challengeBotRow(view), lobbyRow(view)]),
     };
   }
 
@@ -236,11 +262,25 @@ export function renderGameCard(view: GameCardView): RenderedMessage {
       moveNumber: Math.floor(view.plyCount / 2) + 1,
       sideToMove: view.sideToMove === 'white' ? white : black,
     });
+    const { botActivity } = view;
     return {
-      text: `${title}\n${status}`,
+      text: [
+        title,
+        status,
+        botActivity && botActivity.side === view.sideToMove
+          ? botActivityLine(
+              label(view.sideToMove === 'white' ? view.white : view.black),
+              botActivity,
+              now,
+            )
+          : null,
+      ]
+        .filter((line) => line !== null)
+        .join('\n'),
       entities: [],
       reply_markup: keyboard([
         [{ text: t('button.open_game'), url: view.openLink }],
+        challengeBotRow(view),
         lobbyRow(view),
       ]),
     };
@@ -258,7 +298,7 @@ export function renderGameCard(view: GameCardView): RenderedMessage {
     return {
       text: lines.join('\n'),
       entities: [],
-      reply_markup: keyboard([[rematch], lobbyRow(view)]),
+      reply_markup: keyboard([[rematch], challengeBotRow(view), lobbyRow(view)]),
     };
   }
 
@@ -283,7 +323,7 @@ export function renderGameCard(view: GameCardView): RenderedMessage {
   return {
     text: `${title}\n${status}`,
     entities: [],
-    reply_markup: keyboard([buttons, lobbyRow(view)]),
+    reply_markup: keyboard([buttons, challengeBotRow(view), lobbyRow(view)]),
   };
 }
 
@@ -295,6 +335,52 @@ export function renderWelcomeCard(links: { challenge: string; lobby: string }): 
       [{ text: t('button.challenge'), url: links.challenge }],
       [{ text: t('button.group_lobby'), url: links.lobby }],
     ]),
+  };
+}
+
+/** The owner-posted card that tells the group a bot will play: its challenge link, then the lobby. */
+export function renderBotAnnounceCard(view: {
+  bot: string;
+  tagline: string | null;
+  challengeLink: string;
+  lobbyLink: string;
+}): RenderedMessage {
+  const lines = [t('card.bot_announce', { bot: view.bot })];
+  if (view.tagline) lines.push(`"${view.tagline}"`);
+  const challenge = urlButton(t('button.challenge_bot', { bot: view.bot }), view.challengeLink);
+  return {
+    text: lines.join('\n'),
+    entities: [],
+    reply_markup: keyboard([challenge ? [challenge] : [], lobbyRow(view)]),
+  };
+}
+
+/** The Monday bot round-up: a line per fact that exists, then the Bots page and the lobby. */
+export function renderRoundupCard(view: {
+  group: string;
+  games: number;
+  topBot: { label: string; rating: number } | null;
+  mostWins: { label: string; wins: number } | null;
+  upset: { winner: string; loser: string; gap: number } | null;
+  botsLink: string;
+  lobbyLink: string;
+}): RenderedMessage {
+  const lines = [
+    t('card.roundup.title', { group: view.group }),
+    t(view.games === 1 ? 'card.roundup.games_one' : 'card.roundup.games', { games: view.games }),
+  ];
+  if (view.topBot) lines.push(t('card.roundup.top_bot', view.topBot));
+  if (view.mostWins) lines.push(t('card.roundup.most_wins', view.mostWins));
+  if (view.upset) {
+    lines.push(
+      t(view.upset.gap === 1 ? 'card.roundup.upset_one' : 'card.roundup.upset', view.upset),
+    );
+  }
+  const bots = urlButton(t('button.bots'), view.botsLink);
+  return {
+    text: lines.join('\n'),
+    entities: [],
+    reply_markup: keyboard([bots ? [bots] : [], lobbyRow(view)]),
   };
 }
 

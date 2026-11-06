@@ -1,12 +1,17 @@
-import { freshPlayerState } from '@chess-goat/shared';
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { z } from 'zod';
-import type { DbOrTx } from '../../db/client';
-import { games, groupMembers, groups, ratings, type UserRow } from '../../db/schema';
-import { createBot, deleteBot, listBots, resolveOwnBot, updateBot } from '../../domain/bots';
+import { groupMembers, groups } from '../../db/schema';
+import {
+  botViews,
+  createBot,
+  deleteBot,
+  listBots,
+  resolveOwnBot,
+  updateBot,
+  type BotView,
+} from '../../domain/bots';
 import { addBotToGroup, removeBotFromGroup } from '../../domain/botGroups';
 import { requireGroupByPublicId } from '../../domain/groups';
-import { displayName } from '../../domain/users';
 import type { McpServer } from '@modelcontextprotocol/server';
 import { BOT_DOCS_URL } from '../../links';
 import { registerTool, resolveAndTouch } from '../tool';
@@ -34,57 +39,6 @@ export const botSchema = z.object({
   groups: z.array(botGroupSchema),
   liveGames: z.number().int(),
 });
-export type BotView = z.infer<typeof botSchema>;
-
-/** The bots' views, reading memberships, ratings and live games in one pass each. */
-export async function botViews(tx: DbOrTx, bots: readonly UserRow[]): Promise<BotView[]> {
-  if (bots.length === 0) return [];
-  const ids = bots.map((bot) => bot.id);
-  const memberships = await tx
-    .select({
-      botId: groupMembers.userId,
-      groupId: groups.publicId,
-      title: groups.title,
-      rating: ratings.rating,
-      gamesPlayed: ratings.gamesPlayed,
-    })
-    .from(groupMembers)
-    .innerJoin(groups, eq(groups.id, groupMembers.groupId))
-    .leftJoin(
-      ratings,
-      and(eq(ratings.groupId, groupMembers.groupId), eq(ratings.userId, groupMembers.userId)),
-    )
-    .where(and(inArray(groupMembers.userId, ids), eq(groupMembers.status, 'member')))
-    .orderBy(asc(groups.title), asc(groups.id));
-  // Counted in SQL, a side at a time: a bot never plays both sides of one game.
-  const liveOn = (side: typeof games.whiteId | typeof games.blackId) =>
-    tx
-      .select({ id: side, n: sql<number>`count(*)::int` })
-      .from(games)
-      .where(and(eq(games.status, 'active'), inArray(side, ids)))
-      .groupBy(side);
-  const liveByBot = new Map<number, number>();
-  for (const { id, n } of [...(await liveOn(games.whiteId)), ...(await liveOn(games.blackId))]) {
-    liveByBot.set(id, (liveByBot.get(id) ?? 0) + n);
-  }
-  const start = freshPlayerState().rating;
-  return bots.map((bot) => ({
-    id: bot.id,
-    name: bot.firstName,
-    label: displayName(bot),
-    tagline: bot.tagline,
-    lastActiveAt: bot.lastActiveAt?.toISOString() ?? null,
-    groups: memberships
-      .filter((m) => m.botId === bot.id)
-      .map((m) => ({
-        groupId: m.groupId,
-        title: m.title,
-        rating: Math.round(m.rating ?? start),
-        gamesPlayed: m.gamesPlayed ?? 0,
-      })),
-    liveGames: liveByBot.get(bot.id) ?? 0,
-  }));
-}
 
 const botLine = (bot: BotView): string => {
   const where =

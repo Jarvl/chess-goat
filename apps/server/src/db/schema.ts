@@ -372,6 +372,21 @@ export const flairBackfills = pgTable('flair_backfills', {
   completedAt: tz().notNull().defaultNow(),
 });
 
+/** When a bot's owner last posted its "Taking challenges" card to a group; one post a day. */
+export const botAnnouncements = pgTable(
+  'bot_announcements',
+  {
+    botId: bigint({ mode: 'number' })
+      .notNull()
+      .references(() => users.id),
+    groupId: bigint({ mode: 'number' })
+      .notNull()
+      .references(() => groups.id),
+    postedAt: tz().notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.botId, t.groupId] })],
+);
+
 export const moves = pgTable(
   'moves',
   {

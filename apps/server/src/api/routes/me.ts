@@ -2,12 +2,14 @@ import {
   PrefsUpdateRequestSchema,
   TelemetryRequestSchema,
   type OkDto,
+  type OwnerBotsDto,
   type OwnerTokenCreatedDto,
   type OwnerTokenStatusDto,
   type Prefs,
 } from '@chess-goat/shared';
 import { Hono } from 'hono';
 import { RateLimiter } from '../../bot/rateLimit';
+import { ownerBots } from '../../domain/bots';
 import { deleteMyData } from '../../domain/account';
 import { DomainError } from '../../domain/errors';
 import { meGames, meGroups } from '../../domain/lobby';
@@ -35,6 +37,14 @@ export function meRoutes(ctx: ApiContext): Hono<ApiEnv> {
     if (body.writeAccess) await recordWriteAccess(ctx.deps.db, user.id, body.writeAccess.allowed);
     const fresh = await requireUser(ctx.deps.db, user.id);
     return c.json({ prefs, dmAllowed: fresh.dmAllowed });
+  });
+
+  app.get('/me/bots', async (c) => {
+    const bots = await ownerBots(ctx.deps.db, c.get('user').id);
+    const dto: OwnerBotsDto = {
+      bots: bots.map(({ name: _name, ...bot }) => bot),
+    };
+    return c.json(dto);
   });
 
   app.get('/me/owner-token', async (c) => {

@@ -20,8 +20,10 @@ import {
   type UserRow,
 } from '../db/schema';
 import type { Deps } from './deps';
+import { isFindableBot } from './botGroups';
 import { settingsOf } from './groups';
 import { toPlayerRef } from './players';
+import { isOwnedBot } from './users';
 import { getLeaderboard } from './ratings';
 import { challengeDtoRows, challengeToDto, gameSummaryRows, toGameSummary } from './summaries';
 import { challenges } from '../db/schema';
@@ -293,7 +295,23 @@ export async function playerPage(
     [desc(games.startedAt)],
     10,
   );
-  return { player, headToHead, recentGames: recent.map((row) => toGameSummary(row, viewerId)) };
+  const bot =
+    isOwnedBot(user) && !user.deletedAt
+      ? {
+          tagline: user.tagline,
+          owner: user.ownerName ?? 'Unknown',
+          lastActiveAt: user.lastActiveAt ? user.lastActiveAt.toISOString() : null,
+          isMine: user.ownerId === viewerId,
+          findable: await isFindableBot(deps.db, groupId, user.id),
+        }
+      : null;
+  return {
+    player,
+    headToHead,
+    recentGames: recent.map((row) => toGameSummary(row, viewerId)),
+    deleted: user.deletedAt !== null,
+    bot,
+  };
 }
 
 export const sqlNow = sql`now()`;

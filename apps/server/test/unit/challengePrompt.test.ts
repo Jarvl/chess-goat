@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { encodeCallbackData, type GroupSettings, type PromptSettings } from '@chess-goat/shared';
+import { testConfig } from '../helpers/config';
 import { promptStateFrom, promptView, startingSettings } from '../../src/bot/challengePrompt';
 
+const link = { config: testConfig(), groupPublicId: 'GrOuPiDxYz' };
 const s: PromptSettings = { timePerMove: 259200, colour: 'random', rated: true };
 
 describe('startingSettings', () => {
@@ -15,8 +17,8 @@ describe('startingSettings', () => {
 });
 
 describe('promptView', () => {
-  it('main: summary text and Anyone + Game settings', () => {
-    const v = promptView('main', 7, s);
+  it('main: summary text, Anyone and A bot, then Game settings', () => {
+    const v = promptView('main', 7, s, link);
     expect(v.text).toBe(
       'Who do you want to play? Type @ and pick them from the list, or tap Anyone.\n3 days per move · Random colour · Rated',
     );
@@ -24,13 +26,14 @@ describe('promptView', () => {
     expect(v.replyMarkup.inline_keyboard).toEqual([
       [
         { text: 'Anyone', callback_data: 'cp/a/7/3/r/1', style: 'success' },
-        { text: 'Game settings', callback_data: 'cp/s/7/3/r/1' },
+        { text: 'A bot', url: 'https://t.me/TestChessBot/chess?startapp=b_GrOuPiDxYz' },
       ],
+      [{ text: 'Game settings', callback_data: 'cp/s/7/3/r/1' }],
     ]);
   });
 
   it('settings: option rows with the current choice primary, and Done', () => {
-    const rows = promptView('settings', 7, s).replyMarkup.inline_keyboard;
+    const rows = promptView('settings', 7, s, link).replyMarkup.inline_keyboard;
     expect(rows.map((r) => r.map((b) => b.text))).toEqual([
       ['1 day', '3 days', '7 days'],
       ['Random', 'White', 'Black'],
@@ -57,10 +60,17 @@ describe('promptStateFrom', () => {
   it('reads the state back from either view', () => {
     const custom: PromptSettings = { timePerMove: 604800, colour: 'black', rated: false };
     for (const view of ['main', 'settings'] as const)
-      expect(promptStateFrom(promptView(view, 9, custom).replyMarkup)).toEqual({
+      expect(promptStateFrom(promptView(view, 9, custom, link).replyMarkup)).toEqual({
         owner: 9,
         settings: custom,
       });
+  });
+
+  it('skips a URL button before the one that carries the state', () => {
+    const anyone = promptView('main', 9, s, link).replyMarkup.inline_keyboard[0]![0]!;
+    expect(
+      promptStateFrom({ inline_keyboard: [[{ text: 'A bot', url: 'https://x.y' }, anyone]] }),
+    ).toEqual({ owner: 9, settings: s });
   });
 
   it('is null for unrelated markup', () => {

@@ -23,6 +23,8 @@ import { loadFonts } from './images/fonts';
 import {
   coreJobHandlers,
   engineJobHandlers,
+  botRoundupJobHandlers,
+  ensureBotRoundupScheduled,
   ensurePruneScheduled,
   lichessJobHandlers,
   sharePhotoJobHandlers,
@@ -150,6 +152,7 @@ export async function startServer(
   let worker: JobWorker | null = null;
   if (has('jobs')) {
     await ensurePruneScheduled(db);
+    await ensureBotRoundupScheduled(db);
     // Snapshot spec §2.3: a missing font stops the boot here, not the first share.
     const fonts = await loadFonts();
     worker = new JobWorker({
@@ -158,6 +161,7 @@ export async function startServer(
       handlers: {
         ...coreJobHandlers(deps),
         ...telegramJobHandlers({ deps, api, config }),
+        ...botRoundupJobHandlers({ deps, api, config }),
         ...sharePhotoJobHandlers({ deps, api, config }, fonts),
         ...userPhotoJobHandlers({ deps, api, config }),
         ...lichessJobHandlers({ deps, config, metrics }),
