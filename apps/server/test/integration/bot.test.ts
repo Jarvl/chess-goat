@@ -2,7 +2,7 @@ import { eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import type { Bot } from 'grammy';
 import type { InlineKeyboardMarkup, MessageEntity } from 'grammy/types';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createBot } from '../../src/bot/bot';
 import { promptView } from '../../src/bot/challengePrompt';
 import { webhookRoutes } from '../../src/bot/webhook';
@@ -132,6 +132,14 @@ const challengeBob = () =>
 const PROMPT = 'Who do you want to play? Type @ and pick them from the list, or tap Anyone.';
 const sends = () => fake.callsTo('sendMessage').map((call) => call.body);
 const texts = () => sends().map((body) => body.text);
+const hasUrlButton = (body: Record<string, unknown>) =>
+  ((body.reply_markup as InlineKeyboardMarkup | undefined)?.inline_keyboard ?? []).some((row) =>
+    row.some((button) => 'url' in button),
+  );
+const buttonTexts = (body: Record<string, unknown>) =>
+  (body.reply_markup as InlineKeyboardMarkup).inline_keyboard.map((row) =>
+    row.map((button) => button.text),
+  );
 const makeAdmin = () =>
   post(myChatMemberUpdate({ chat, from: alice, oldStatus: 'left', newStatus: 'administrator' }));
 /** The newest delete_message job, due about `seconds` from now, for the message the bot just sent. */
@@ -285,12 +293,60 @@ describe('/challenge', () => {
 
   it('posts the prompt in the group when Telegram refuses the private one', async () => {
     await makeAdmin();
+    // Refused with the bot button, and again without it.
+    fake.failNext('sendMessage', { error_code: 400, description: 'Bad Request: not supported' });
     fake.failNext('sendMessage', { error_code: 400, description: 'Bad Request: not supported' });
     await post(commandUpdate({ chat, from: alice, text: '/challenge' }));
-    expect(sends()).toHaveLength(2);
-    expect(sends()[1]).not.toHaveProperty('ephemeral_message_parameters');
-    expect(sends()[1]?.text).toBe(`@alice\n${PROMPT}\n3 days per move · Random colour · Rated`);
+    expect(sends()).toHaveLength(3);
+    expect(sends()[2]).not.toHaveProperty('ephemeral_message_parameters');
+    expect(sends()[2]?.text).toBe(`@alice\n${PROMPT}\n3 days per move · Random colour · Rated`);
     await expectDeletionIn('delete_message', 600);
+  });
+
+  it('sends the private prompt without the bot button when Telegram refuses one with it', async () => {
+    await makeAdmin();
+    fake.failWhen('sendMessage', hasUrlButton, {
+      error_code: 400,
+      description: 'Bad Request: BUTTON_TYPE_INVALID',
+    });
+    const info = vi.spyOn(deps.log, 'info');
+    await post(commandUpdate({ chat, from: alice, text: '/challenge' }));
+    expect(sends()).toHaveLength(2);
+    expect(sends()[1]).toMatchObject({
+      ephemeral_message_parameters: { receiver_user_id: alice.id },
+      reply_markup: { force_reply: true },
+    });
+    expect(buttonTexts(sends()[1]!)).toEqual([['Anyone'], ['Game settings']]);
+    expect(info).toHaveBeenCalledWith(
+      expect.objectContaining({ chatId: chat.id }),
+      'challenge prompt sent without bot button',
+    );
+    info.mockRestore();
+    expect(await jobRows()).not.toContainEqual(expect.objectContaining({ kind: 'delete_message' }));
+  });
+
+  it('edits the private prompt back to its main view without the bot button when refused', async () => {
+    await makeAdmin();
+    await post(commandUpdate({ chat, from: alice, text: '/challenge' }));
+    await tap('cp/s/11/3/r/1');
+    fake.failWhen('editEphemeralMessageText', hasUrlButton, {
+      error_code: 400,
+      description: 'Bad Request: BUTTON_TYPE_INVALID',
+    });
+    const info = vi.spyOn(deps.log, 'info');
+    await tap('cp/m/11/7/b/1');
+    const edits = fake.callsTo('editEphemeralMessageText').map((call) => call.body);
+    expect(edits).toHaveLength(3);
+    expect(buttonTexts(edits[2]!)).toEqual([['Anyone'], ['Game settings']]);
+    expect(info).toHaveBeenCalledWith(
+      expect.objectContaining({ chatId: chat.id }),
+      'challenge prompt edited without bot button',
+    );
+    info.mockRestore();
+    expect(await promptRows()).toEqual([
+      expect.objectContaining({ timePerMove: 604800, colour: 'black', rated: true }),
+    ]);
+    expect(fake.callsTo('answerCallbackQuery').at(-1)?.body).not.toHaveProperty('text');
   });
 
   it('works the fallback prompt with normal edits and deletes', async () => {
@@ -944,11 +1000,13 @@ describe('/challenge', () => {
   });
 
   it('falls back to the public prompt when Telegram refuses the private answer to an ephemeral /challenge', async () => {
+    // Refused with the bot button, and again without it.
+    fake.failNext('sendMessage', { error_code: 400, description: 'Bad Request: not supported' });
     fake.failNext('sendMessage', { error_code: 400, description: 'Bad Request: not supported' });
     await post(commandUpdate({ chat, from: alice, text: '/challenge', ephemeral: true }));
-    expect(sends()).toHaveLength(2);
-    expect(sends()[1]).not.toHaveProperty('ephemeral_message_parameters');
-    expect(sends()[1]?.text).toBe(`@alice\n${PROMPT}\n3 days per move · Random colour · Rated`);
+    expect(sends()).toHaveLength(3);
+    expect(sends()[2]).not.toHaveProperty('ephemeral_message_parameters');
+    expect(sends()[2]?.text).toBe(`@alice\n${PROMPT}\n3 days per move · Random colour · Rated`);
     expect(fake.callsTo('deleteMessage')).toHaveLength(0);
     await expectDeletionIn('delete_message', 600);
   });

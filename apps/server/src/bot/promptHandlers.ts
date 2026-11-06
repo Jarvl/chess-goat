@@ -22,7 +22,12 @@ import { touchMember } from '../domain/members';
 import { displayName, ensureUser, getUserByTelegramId } from '../domain/users';
 import type { GroupRow, UserRow } from '../db/schema';
 import { classifyTelegramError } from '../telegram/client';
-import { promptStateFrom, promptView, startingSettings } from './challengePrompt';
+import {
+  promptStateFrom,
+  promptView,
+  startingSettings,
+  withoutUrlButtons,
+} from './challengePrompt';
 import { deleteEphemeral, editEphemeral, sendEphemeral, type EphemeralTrigger } from './ephemeral';
 import { resolveOpponent } from './opponent';
 import { replyFor } from './replies';
@@ -161,22 +166,28 @@ export async function openPrompt(
   const settings = startingSettings(settingsOf(group));
   await openPromptRow(deps.db, group.id, input.user.id, settings, input.threadId);
   const view = promptView('main', from.id, settings, { config, groupPublicId: group.publicId });
-  if (
-    input.trigger &&
-    (await sendEphemeral(
+  const sendPrivately = (trigger: EphemeralTrigger, shown: View) =>
+    sendEphemeral(
       api,
       {
         chatId: input.chatId,
         threadId: input.threadId,
         receiverId: from.id,
-        trigger: input.trigger,
-        text: view.text,
-        replyMarkup: view.replyMarkup,
+        trigger,
+        text: shown.text,
+        replyMarkup: shown.replyMarkup,
       },
       deps.log,
-    ))
-  )
-    return;
+    );
+  if (input.trigger) {
+    if (await sendPrivately(input.trigger, view)) return;
+    // A Telegram that refuses a URL button in an ephemeral message still gets a private prompt.
+    const plain = withoutUrlButtons(view);
+    if (plain && (await sendPrivately(input.trigger, plain))) {
+      deps.log.info({ chatId: input.chatId }, 'challenge prompt sent without bot button');
+      return;
+    }
+  }
   // Why everyone can see it: an ordinary (not private) command with no admin rights to answer
   // privately, or Telegram refused the private answer (logged by sendEphemeral with its reason).
   deps.log.info(
@@ -221,6 +232,7 @@ const promptRefOf = (message: { message_id: number }): PromptRef => {
 };
 
 async function editPrompt(
+  deps: Deps,
   api: Api,
   place: { chatId: number; owner: number },
   ref: PromptRef,
@@ -232,13 +244,24 @@ async function editPrompt(
     });
     return;
   }
-  await editEphemeral(api, {
-    chatId: place.chatId,
-    receiverId: place.owner,
-    ephemeralMessageId: ref.ephemeralMessageId,
-    text: view.text,
-    replyMarkup: view.replyMarkup,
-  });
+  const edit = (shown: View) =>
+    editEphemeral(api, {
+      chatId: place.chatId,
+      receiverId: place.owner,
+      ephemeralMessageId: ref.ephemeralMessageId,
+      text: shown.text,
+      replyMarkup: shown.replyMarkup,
+    });
+  try {
+    await edit(view);
+  } catch (error) {
+    const failure = classifyTelegramError(error);
+    const plain = withoutUrlButtons(view);
+    // Only a refusal of this markup is worth one more try without the URL button.
+    if (!plain || failure?.kind !== 'other') throw error;
+    await edit(plain);
+    deps.log.info({ chatId: place.chatId }, 'challenge prompt edited without bot button');
+  }
 }
 
 async function deletePrompt(
@@ -292,6 +315,7 @@ export async function handlePromptTap(
     // The row follows what the prompt shows, so it changes only once the edit has.
     try {
       await editPrompt(
+        deps,
         api,
         place,
         ref,

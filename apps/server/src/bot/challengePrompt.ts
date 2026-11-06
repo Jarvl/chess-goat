@@ -76,6 +76,19 @@ export function promptView(
 }
 
 /**
+ * The view without its URL button ("A bot"), for a Telegram that refuses one in an ephemeral
+ * message; null when it has none, so there is nothing different to try.
+ */
+export function withoutUrlButtons<V extends { replyMarkup: EphemeralMarkup }>(view: V): V | null {
+  const rows = view.replyMarkup.inline_keyboard;
+  if (!rows.some((row) => row.some((button) => 'url' in button))) return null;
+  const kept = rows
+    .map((row) => row.filter((button) => !('url' in button)))
+    .filter((row) => row.length > 0);
+  return { ...view, replyMarkup: { ...view.replyMarkup, inline_keyboard: kept } };
+}
+
+/**
  * Reads the prompt's owner and settings from its keyboard; null for any other message. Option
  * buttons in the settings view carry a changed state, so it reads Anyone or Done, which carry the
  * current one.

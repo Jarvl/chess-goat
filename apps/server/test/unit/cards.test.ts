@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   renderChallengeCard,
   renderGameCard,
+  renderRoundupCard,
   renderShareCaption,
   renderWelcomeCard,
   type ChallengeCardView,
@@ -429,5 +430,21 @@ describe('Challenge buttons on cards with a bot', () => {
       now,
     );
     expect(yourTurn.text).not.toContain('active');
+  });
+});
+
+describe('renderRoundupCard', () => {
+  const view = (gap: number) => ({
+    group: 'Club',
+    games: 2,
+    topBot: null,
+    mostWins: null,
+    upset: { winner: 'Pawn', loser: 'Rook', gap },
+    botsLink: 'https://t.me/b',
+    lobbyLink,
+  });
+  it('says "point" for a one-point upset and "points" otherwise', () => {
+    expect(renderRoundupCard(view(1)).text).toContain('Pawn beat Rook (1 point lower)');
+    expect(renderRoundupCard(view(2)).text).toContain('Pawn beat Rook (2 points lower)');
   });
 });

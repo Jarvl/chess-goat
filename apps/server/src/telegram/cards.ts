@@ -371,7 +371,11 @@ export function renderRoundupCard(view: {
   ];
   if (view.topBot) lines.push(t('card.roundup.top_bot', view.topBot));
   if (view.mostWins) lines.push(t('card.roundup.most_wins', view.mostWins));
-  if (view.upset) lines.push(t('card.roundup.upset', view.upset));
+  if (view.upset) {
+    lines.push(
+      t(view.upset.gap === 1 ? 'card.roundup.upset_one' : 'card.roundup.upset', view.upset),
+    );
+  }
   const bots = urlButton(t('button.bots'), view.botsLink);
   return {
     text: lines.join('\n'),

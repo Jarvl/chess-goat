@@ -23,6 +23,8 @@ export const ApiErrorBodySchema = z.object({
   error: z.object({
     code: ErrorCodeSchema,
     message: z.string(),
+    /** Which refusal of a `code` it was (`too_many_live_games`, `announce_limit`…), when it matters. */
+    reason: z.string().optional(),
   }),
 });
 
@@ -43,6 +45,6 @@ export const HTTP_STATUS_BY_ERROR_CODE: Readonly<Record<ErrorCode, number>> = {
   internal: 500,
 };
 
-export function apiErrorBody(code: ErrorCode, message: string): ApiErrorBody {
-  return { error: { code, message } };
+export function apiErrorBody(code: ErrorCode, message: string, reason?: string): ApiErrorBody {
+  return { error: reason === undefined ? { code, message } : { code, message, reason } };
 }

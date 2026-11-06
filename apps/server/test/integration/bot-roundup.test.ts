@@ -4,7 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { jobs, ratings, type GameRow, type UserRow } from '../../src/db/schema';
 import { buildRoundup } from '../../src/domain/botRoundup';
 import { updateGroupSettings } from '../../src/domain/groups';
-import { touchMember } from '../../src/domain/members';
+import { blockUser, touchMember } from '../../src/domain/members';
 import {
   botRoundupJobHandlers,
   ensureBotRoundupScheduled,
@@ -124,6 +124,32 @@ describe('buildRoundup', () => {
     expect(roundup?.mostWins).toEqual({ label: '🤖 Rook (@owner)', wins: 1 });
     expect(roundup?.games).toBe(2);
   });
+  it('names only bots that may still play here and people who are not blocked', async () => {
+    const { group, owner, human, rook, pawn } = await world();
+    const blockedBot = await insertBot(db, owner, { firstName: 'Knight', username: 'owner' });
+    await touchMember(db, group.id, blockedBot.id);
+    await rate(group.id, blockedBot, 1500);
+    const blockedHuman = await insertUser(db, { username: 'boris' });
+    await touchMember(db, group.id, blockedHuman.id);
+    await rate(group.id, blockedHuman, 1200);
+    // Knight wins the most games, then is blocked.
+    for (let i = 0; i < 3; i += 1) await finished(group.id, blockedBot, pawn, 2);
+    // A blocked human beats Rook: the biggest upset, but not to be named.
+    await finished(group.id, blockedHuman, rook, 1, { blackRatingBefore: 1800 });
+    // Rook beats a blocked human, and Pawn upsets the human by 300.
+    await finished(group.id, rook, blockedHuman, 1, { whiteRatingBefore: 1800 });
+    await finished(group.id, human, pawn, 1, { result: '0-1', blackRatingBefore: 1400 });
+    await blockUser(db, group.id, blockedBot.id, owner.id);
+    await blockUser(db, group.id, blockedHuman.id, owner.id);
+
+    const roundup = await buildRoundup(db, group.id, daysAgo(7));
+    expect(roundup?.mostWins).toEqual({ label: '🤖 Rook (@owner)', wins: 1 });
+    expect(roundup?.upset).toEqual({
+      winner: '🤖 Pawn (@owner)',
+      loser: '@hana',
+      gap: 300,
+    });
+  });
 });
 
 describe('secondsUntilNextRoundup', () => {
@@ -210,6 +236,22 @@ describe('bot_roundup job', () => {
     expect(next[0]?.runAt.getUTCDay()).toBe(1);
     expect(next[0]?.runAt.getUTCHours()).toBe(17);
     expect(next[0]!.runAt.getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it("keeps posting to the other groups when one group's send fails", async () => {
+    const { group, rook, pawn } = await world();
+    const other = await insertGroup(db, { title: 'Other Club', botStatus: 'member' });
+    for (const g of [group, other]) {
+      await updateGroupSettings(db, g.id, { botRoundup: true });
+      await touchMember(db, g.id, rook.id);
+      await finished(g.id, pawn, rook, 2);
+    }
+    fake.failNext('sendMessage', { error_code: 400, description: 'Bad Request: something odd' });
+    await due();
+    await worker.runOnce();
+    const chats = fake.callsTo('sendMessage').map((call) => call.body.chat_id);
+    expect(chats.sort()).toEqual([group.telegramChatId, other.telegramChatId].sort());
+    expect(await pending()).toHaveLength(1);
   });
 
   it('posts nothing with no activity, and still schedules the next run', async () => {

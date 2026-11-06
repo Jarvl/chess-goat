@@ -6,7 +6,7 @@ import { announceBot } from '../../src/domain/botAnnounce';
 import { updateGroupSettings } from '../../src/domain/groups';
 import { telegramJobHandlers } from '../../src/jobs/handlers/telegram';
 import type { JobWorker } from '../../src/jobs/worker';
-import { touchMember } from '../../src/domain/members';
+import { blockUser, markLeft, touchMember } from '../../src/domain/members';
 import { startTestApi, type TestApi } from '../helpers/api';
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
 import type { FakeTelegram } from '../helpers/fakeTelegram';
@@ -110,6 +110,40 @@ describe('POST /api/groups/:g/bots/:id/announce', () => {
     await db.update(botAnnouncements).set({ postedAt: sql`now() - interval '25 hours'` });
     expect((await announce(token, group, bot)).status).toBe(200);
     expect(await db.select().from(jobs).where(eq(jobs.kind, 'send_bot_announce'))).toHaveLength(2);
+  });
+
+  it("refuses the owner's second bot in the same group within 24 h, but not in another group", async () => {
+    const { group, owner, bot, token } = await setup();
+    const pawn = await insertBot(db, owner, { firstName: 'Pawn' });
+    await touchMember(db, group.id, pawn.id);
+    expect((await announce(token, group, bot)).status).toBe(200);
+    const second = await announce(token, group, pawn);
+    expect(second.status).toBe(429);
+    expect(await second.json()).toMatchObject({
+      error: { code: 'rate_limited', reason: 'announce_limit' },
+    });
+    const other = await insertGroup(db, { botStatus: 'administrator' });
+    await touchMember(db, other.id, owner.id, { verified: true });
+    await touchMember(db, other.id, pawn.id);
+    expect((await announce(token, other, pawn)).status).toBe(200);
+    expect(await db.select().from(jobs).where(eq(jobs.kind, 'send_bot_announce'))).toHaveLength(2);
+  });
+
+  it('drops the card when the bot may no longer play there by the time it is sent', async () => {
+    const { group, owner, bot, token } = await setup();
+    expect((await announce(token, group, bot)).status).toBe(200);
+    await blockUser(db, group.id, bot.id, owner.id);
+    await worker.runOnce();
+    expect(fake.callsTo('sendMessage')).toHaveLength(0);
+
+    const pawn = await insertBot(db, owner, { firstName: 'Pawn' });
+    const other = await insertGroup(db, { botStatus: 'administrator' });
+    await touchMember(db, other.id, owner.id, { verified: true });
+    await touchMember(db, other.id, pawn.id);
+    expect((await announce(token, other, pawn)).status).toBe(200);
+    await markLeft(db, other.id, owner.id);
+    await worker.runOnce();
+    expect(fake.callsTo('sendMessage')).toHaveLength(0);
   });
 
   it('is 404 for someone who is not the owner', async () => {

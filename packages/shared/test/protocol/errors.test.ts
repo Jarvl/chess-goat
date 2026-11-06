@@ -12,6 +12,12 @@ describe('ApiErrorBodySchema', () => {
     });
   });
 
+  it('carries a refusal reason when one is given', () => {
+    expect(
+      ApiErrorBodySchema.parse(apiErrorBody('rate_limited', 'busy', 'too_many_live_games')),
+    ).toEqual({ error: { code: 'rate_limited', message: 'busy', reason: 'too_many_live_games' } });
+  });
+
   it('rejects unknown codes', () => {
     expect(ApiErrorBodySchema.safeParse({ error: { code: 'teapot', message: '' } }).success).toBe(
       false,

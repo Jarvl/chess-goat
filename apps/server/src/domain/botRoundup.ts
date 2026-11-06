@@ -1,7 +1,8 @@
 import { GLICKO2 } from '@chess-goat/shared';
-import { and, eq, gte, gt, inArray, isNull } from 'drizzle-orm';
+import { and, eq, gte, gt, inArray, isNotNull, isNull } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client';
-import { games, ratings, users } from '../db/schema';
+import { games, groupMembers, ratings, users } from '../db/schema';
+import { findableIn, ownerJoin, ownerMember } from './botGroups';
 import { getBotStandings } from './ratings';
 import { displayName } from './users';
 
@@ -40,14 +41,37 @@ export async function buildRoundup(
   if (played.length === 0) return null;
 
   const userIds = [...new Set(played.flatMap((game) => [game.whiteId, game.blackId]))];
-  const [people, current] = await Promise.all([
+  const [people, current, findable, blocked] = await Promise.all([
     tx.select().from(users).where(inArray(users.id, userIds)),
     tx
       .select({ userId: ratings.userId, rating: ratings.rating })
       .from(ratings)
       .where(and(eq(ratings.groupId, groupId), inArray(ratings.userId, userIds))),
+    tx
+      .select({ id: users.id })
+      .from(groupMembers)
+      .innerJoin(users, eq(users.id, groupMembers.userId))
+      .innerJoin(ownerMember, ownerJoin)
+      .where(and(...findableIn(groupId), inArray(users.id, userIds))),
+    tx
+      .select({ id: groupMembers.userId })
+      .from(groupMembers)
+      .where(
+        and(
+          eq(groupMembers.groupId, groupId),
+          isNotNull(groupMembers.blockedAt),
+          inArray(groupMembers.userId, userIds),
+        ),
+      ),
   ]);
   const userOf = new Map(people.map((user) => [user.id, user]));
+  const findableBots = new Set(findable.map((row) => row.id));
+  const blockedIds = new Set(blocked.map((row) => row.id));
+  // Only a bot that may still be challenged here, or a person who is not blocked, is named.
+  const nameable = (id: number) => {
+    const user = userOf.get(id)!;
+    return user.ownerId !== null ? findableBots.has(id) : !blockedIds.has(id);
+  };
   const currentRating = new Map(current.map((row) => [row.userId, row.rating]));
   const nameOf = (id: number) => displayName(userOf.get(id)!);
   // The human side of a bot game has no snapshot, so it falls back to its rating row, as the cards do.
@@ -61,9 +85,8 @@ export async function buildRoundup(
     const whiteWon = game.result === '1-0';
     const winnerId = whiteWon ? game.whiteId : game.blackId;
     const loserId = whiteWon ? game.blackId : game.whiteId;
-    const winner = userOf.get(winnerId)!;
-    if (winner.ownerId !== null && !winner.deletedAt)
-      wins.set(winnerId, (wins.get(winnerId) ?? 0) + 1);
+    if (findableBots.has(winnerId)) wins.set(winnerId, (wins.get(winnerId) ?? 0) + 1);
+    if (!nameable(winnerId) || !nameable(loserId)) continue;
     const winnerBefore = before(
       whiteWon ? game.whiteRatingBefore : game.blackRatingBefore,
       winnerId,

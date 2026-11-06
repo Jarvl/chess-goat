@@ -23,6 +23,11 @@ export class FakeTelegram {
   onSend: (() => Promise<unknown>) | null = null;
   url = '';
   private failures = new Map<string, FakeFailure[]>();
+  private conditional: {
+    method: string;
+    when: (body: Record<string, unknown>) => boolean;
+    failure: FakeFailure;
+  }[] = [];
   private held = new Set<string>();
   private nextMessageId = 100;
   private server: Server;
@@ -81,6 +86,7 @@ export class FakeTelegram {
     this.calls = [];
     this.nextMessageId = 100;
     this.failures.clear();
+    this.conditional = [];
     this.held.clear();
     this.admins = [];
     this.members.clear();
@@ -95,6 +101,15 @@ export class FakeTelegram {
     const queue = this.failures.get(method) ?? [];
     queue.push(failure);
     this.failures.set(method, queue);
+  }
+
+  /** Every call to `method` whose body matches `when` fails, until `reset`. */
+  failWhen(
+    method: string,
+    when: (body: Record<string, unknown>) => boolean,
+    failure: FakeFailure,
+  ): void {
+    this.conditional.push({ method, when, failure });
   }
 
   /** The next call to `method` records the call but hangs forever instead of answering. */
@@ -128,6 +143,10 @@ export class FakeTelegram {
   ): { status: number; json: unknown } {
     const queued = this.failures.get(method)?.shift();
     if (queued) return { status: queued.error_code, json: { ok: false, ...queued } };
+    const matched = this.conditional.find((rule) => rule.method === method && rule.when(body));
+    if (matched) {
+      return { status: matched.failure.error_code, json: { ok: false, ...matched.failure } };
+    }
     const ok = (result: unknown) => ({ status: 200, json: { ok: true, result } });
     switch (method) {
       case 'getMe':

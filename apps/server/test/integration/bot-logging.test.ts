@@ -69,14 +69,29 @@ describe('bot diagnostics', () => {
   });
 
   it('logs why a challenge prompt went public: Telegram refused the private answer', async () => {
+    // Refused with the bot button, and again without it.
+    fake.failNext('sendMessage', { error_code: 400, description: 'Bad Request: not supported' });
     fake.failNext('sendMessage', { error_code: 400, description: 'Bad Request: not supported' });
     await post(challengeSent(0, true));
-    expect(logged('ephemeral send refused')).toEqual([
-      expect.objectContaining({ level: 40, code: 400, description: 'Bad Request: not supported' }),
-    ]);
+    const refusal = expect.objectContaining({
+      level: 40,
+      code: 400,
+      description: 'Bad Request: not supported',
+    });
+    expect(logged('ephemeral send refused')).toEqual([refusal, refusal]);
     expect(logged('challenge prompt posted publicly')).toEqual([
       expect.objectContaining({ reason: 'private_send_refused', chatId: chat.id }),
     ]);
+    expect(logged('challenge prompt sent without bot button')).toEqual([]);
+  });
+
+  it('logs a private prompt sent without its bot button', async () => {
+    fake.failNext('sendMessage', { error_code: 400, description: 'Bad Request: not supported' });
+    await post(challengeSent(0, true));
+    expect(logged('challenge prompt sent without bot button')).toEqual([
+      expect.objectContaining({ level: 30, chatId: chat.id }),
+    ]);
+    expect(logged('challenge prompt posted publicly')).toEqual([]);
   });
 
   it('logs nothing when the prompt is private', async () => {
