@@ -1,3 +1,5 @@
+import { eq } from 'drizzle-orm';
+import { users } from '../../src/db/schema';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { encodeStartParam } from '@chess-goat/shared';
 import { playerPage } from '../../src/domain/lobby';
@@ -68,6 +70,12 @@ describe('bot profile page', () => {
     expect((await playerPage(deps, group.id, owner.id, bot.id)).bot?.isMine).toBe(true);
   });
 
+  it('has no bot block for a deleted bot', async () => {
+    const { group, human, bot } = await setup();
+    await db.update(users).set({ deletedAt: new Date() }).where(eq(users.id, bot.id));
+    expect((await playerPage(deps, group.id, human.id, bot.id)).bot).toBeNull();
+  });
+
   it('has no bot block for a person', async () => {
     const { group, human, owner } = await setup();
     expect((await playerPage(deps, group.id, human.id, owner.id)).bot).toBeNull();
@@ -90,6 +98,19 @@ describe('Challenge buttons on cards', () => {
     expect(rows(card)).toContainEqual([
       { text: 'Challenge 🤖 Rook (@owner)', url: link(group, bot) },
     ]);
+  });
+
+  it('a card rendered after the bot is deleted has none', async () => {
+    const { group, human, bot } = await setup();
+    const game = await insertGame(db, group.id, human.id, bot.id, {
+      status: 'finished',
+      result: '1-0',
+      endReason: 'checkmate',
+      botPlayers: 1,
+    });
+    await db.update(users).set({ deletedAt: new Date() }).where(eq(users.id, bot.id));
+    const card = renderGameCard(await gameCardView(db, game, group, config));
+    expect(JSON.stringify(card.reply_markup)).not.toContain('Challenge');
   });
 
   it('a human-vs-human game card has none', async () => {

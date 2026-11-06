@@ -11,8 +11,7 @@ import type { ChallengeRow, GameRow, GroupRow, UserRow } from '../db/schema';
 import { listMoves } from '../domain/games';
 import { getPlayerRating } from '../domain/ratings';
 import { displayName, flairEmoji, isOwnedBot, requireUser } from '../domain/users';
-import type { ChallengeCardView, GameCardView, PersonView } from './cards';
-import { label } from './cards';
+import { label, type ChallengeCardView, type GameCardView, type PersonView } from './cards';
 import { miniAppLink } from './links';
 
 export function personView(user: UserRow): PersonView {
@@ -68,7 +67,10 @@ export async function challengeCardView(
     rated: challenge.rated,
     challengerColour: challenge.challengerColour,
     lobbyLink: lobbyLink(config, group),
-    botChallenge: opponent && isOwnedBot(opponent) ? botChallenge(config, group, opponent) : null,
+    botChallenge:
+      opponent && isOwnedBot(opponent) && !opponent.deletedAt
+        ? botChallenge(config, group, opponent)
+        : null,
   };
 }
 
@@ -113,7 +115,9 @@ export async function gameCardView(
   ]);
   // Bot-vs-bot games have no card, so a card has at most one bot side.
   const botSide = isOwnedBot(white) ? 'white' : isOwnedBot(black) ? 'black' : null;
-  const bot = botSide === 'white' ? white : botSide === 'black' ? black : null;
+  const found = botSide === 'white' ? white : botSide === 'black' ? black : null;
+  // A deleted bot can't be challenged: no button, no activity line.
+  const bot = found && !found.deletedAt ? found : null;
   const moves = game.status === 'finished' && game.plyCount > 0 ? await listMoves(tx, game.id) : [];
   return {
     publicId: game.publicId,

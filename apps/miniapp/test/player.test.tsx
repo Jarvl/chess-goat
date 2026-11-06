@@ -101,6 +101,19 @@ describe('Player', () => {
       });
     });
 
+    it('renders a deleted bot (no bot block) with no Challenge or owner line', async () => {
+      const r = renderApp(
+        () => <Player groupId="GrOuPiDxYz" userId="2" />,
+        () => ({
+          status: 200,
+          body: { ...page, player: { ...page.player, name: '🤖 Deleted bot' } },
+        }),
+      );
+      session.value = { ...session.value!, user: { id: '9', name: 'x', username: null } };
+      await r.flush();
+      expect(r.text()).not.toContain('Run by');
+    });
+
     it('offers no Challenge button to the bot’s owner', async () => {
       const r = renderApp(
         () => <Player groupId="GrOuPiDxYz" userId="2" />,

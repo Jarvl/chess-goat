@@ -294,14 +294,15 @@ export async function playerPage(
     [desc(games.startedAt)],
     10,
   );
-  const bot = isOwnedBot(user)
-    ? {
-        tagline: user.tagline,
-        owner: user.ownerName ?? '',
-        lastActiveAt: user.lastActiveAt ? user.lastActiveAt.toISOString() : null,
-        isMine: user.ownerId === viewerId,
-      }
-    : null;
+  const bot =
+    isOwnedBot(user) && !user.deletedAt
+      ? {
+          tagline: user.tagline,
+          owner: user.ownerName ?? '',
+          lastActiveAt: user.lastActiveAt ? user.lastActiveAt.toISOString() : null,
+          isMine: user.ownerId === viewerId,
+        }
+      : null;
   return {
     player,
     headToHead,

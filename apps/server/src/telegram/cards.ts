@@ -262,15 +262,15 @@ export function renderGameCard(view: GameCardView, now: Date = new Date()): Rend
       moveNumber: Math.floor(view.plyCount / 2) + 1,
       sideToMove: view.sideToMove === 'white' ? white : black,
     });
-    const botTurn = view.botActivity && view.botActivity.side === view.sideToMove;
+    const { botActivity } = view;
     return {
       text: [
         title,
         status,
-        botTurn && view.botActivity
+        botActivity && botActivity.side === view.sideToMove
           ? botActivityLine(
               label(view.sideToMove === 'white' ? view.white : view.black),
-              view.botActivity,
+              botActivity,
               now,
             )
           : null,
