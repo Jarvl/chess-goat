@@ -1,4 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/server';
+import { registerChallengeTools } from './tools/challenge';
 import { registerInboxTools } from './tools/inbox';
 import { registerManageTools } from './tools/manage';
 import { registerPlayTools } from './tools/play';
@@ -14,6 +15,7 @@ const TOOLS: readonly ((server: McpServer) => void)[] = [
   registerReadTools,
   registerInboxTools,
   registerPlayTools,
+  registerChallengeTools,
 ];
 
 /** A fresh server per request (the SDK's stateless handler calls this for each one). */
