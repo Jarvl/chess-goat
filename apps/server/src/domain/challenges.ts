@@ -11,7 +11,9 @@ import { assertBotMayPlay } from './botGroups';
 import { countBotPlayers } from './bots';
 import { requireGroup, settingsOf } from './groups';
 import {
+  MAX_LIVE_GAMES_PER_BOT,
   MAX_PENDING_CHALLENGES,
+  countLiveGames,
   countPendingChallenges,
   deadlineExpression,
   reminderExpression,
@@ -19,7 +21,7 @@ import {
 import { isBlocked } from './members';
 import { challengeStub, type ChallengeOutcome } from './dmText';
 import { retireChallengeDms } from './dms';
-import { isOwnedBot, nameWithFlair, requireUser, wantsDms } from './users';
+import { displayName, isOwnedBot, nameWithFlair, requireUser, wantsDms } from './users';
 
 export type CreateChallengeInput = {
   groupId: number;
@@ -40,9 +42,9 @@ export function randomColour(): 'white' | 'black' {
 }
 
 /**
- * There is no cap on how many games someone may have going, or on how many with one opponent — a
- * player decides what they can keep up with. Being blocked in the group is the only thing that stops
- * a game starting.
+ * A person has no cap on how many games they have going, or on how many with one opponent: they
+ * decide what they can keep up with. A bot has one (`MAX_LIVE_GAMES_PER_BOT`), checked by
+ * `assertBotsNotBusy`. Otherwise, being blocked in the group is the only thing that stops a game.
  */
 async function assertNotBlocked(tx: DbOrTx, groupId: number, user: UserRow): Promise<void> {
   if (await isBlocked(tx, groupId, user.id)) {
@@ -61,6 +63,20 @@ async function assertBotsMayPlay(
 ): Promise<void> {
   for (const player of players) {
     if (player && isOwnedBot(player)) await assertBotMayPlay(tx, groupId, player);
+  }
+}
+
+/** Every bot among the players must have room for another game (`MAX_LIVE_GAMES_PER_BOT`). */
+async function assertBotsNotBusy(tx: DbOrTx, players: (UserRow | null)[]): Promise<void> {
+  for (const player of players) {
+    if (!player || !isOwnedBot(player)) continue;
+    if ((await countLiveGames(tx, player.id)) >= MAX_LIVE_GAMES_PER_BOT) {
+      throw new DomainError('limit_exceeded', 'too many live games', {
+        reason: 'too_many_live_games',
+        limit: MAX_LIVE_GAMES_PER_BOT,
+        name: displayName(player),
+      });
+    }
   }
 }
 
@@ -191,6 +207,7 @@ export async function createChallenge(
       });
     }
     await assertBotsMayPlay(tx, group.id, [challenger, opponent]);
+    await assertBotsNotBusy(tx, [challenger, opponent]);
     const botPlayers = countBotPlayers(challenger, opponent);
     assertBotClock(botPlayers, input.timePerMove);
     const [challenge] = await tx
@@ -309,6 +326,7 @@ export async function acceptChallenge(
     await assertNotBlocked(tx, group.id, challenger);
     // The owner may have left, or been blocked, since the challenge was made.
     await assertBotsMayPlay(tx, group.id, [challenger, accepter]);
+    await assertBotsNotBusy(tx, [challenger, accepter]);
     const botPlayers = countBotPlayers(challenger, accepter);
     const timePerMove = challenge.timePerMove as TimePerMove;
     assertBotClock(botPlayers, timePerMove);

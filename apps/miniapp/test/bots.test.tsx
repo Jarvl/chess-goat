@@ -33,6 +33,13 @@ afterEach(() => {
 });
 
 describe('Bots', () => {
+  it('names the MCP URL in its intro', async () => {
+    const r = renderApp(() => <Bots />, server(null));
+    await r.flush();
+    expect(r.root.textContent).toContain(t('app.bots.intro', { url: 'https://chess.test/mcp' }));
+    expect(r.root.textContent).toContain('at https://chess.test/mcp with your owner token');
+  });
+
   it('offers to create a token when there is none', async () => {
     const r = renderApp(() => <Bots />, server(null));
     await r.flush();

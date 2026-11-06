@@ -329,6 +329,8 @@ export const LaunchResponseSchema = z.object({
   bot: z.object({
     username: z.string(),
     miniAppShortName: z.string(),
+    /** Where an MCP client reaches this server: `${PUBLIC_URL}/mcp`. */
+    mcpUrl: z.string(),
   }),
 });
 

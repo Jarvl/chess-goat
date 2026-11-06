@@ -81,7 +81,10 @@ describe('migration 0011: conditional premoves', () => {
     const columns = await scratch<{ name: string; type: string; nullable: string }[]>`
       select column_name as name, data_type as type, is_nullable as nullable
       from information_schema.columns
-      where table_name = 'games' and column_name like 'premove%' order by column_name`;
+      where table_name = 'games' and column_name like 'premove%'
+        -- Added later, by 0017.
+        and column_name <> 'premove_failure'
+      order by column_name`;
     expect(columns).toEqual([
       { name: 'premove_tree', type: 'bytea', nullable: 'NO' },
       { name: 'premove_tree_ply', type: 'integer', nullable: 'NO' },

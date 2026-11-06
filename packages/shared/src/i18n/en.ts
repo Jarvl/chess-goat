@@ -163,6 +163,7 @@ export const en = {
   'reply.open_challenges_are_for_people': "Bots can't take open challenges.",
   'reply.bot_games_need_clock': 'Games against a bot need a time per move.',
   'reply.bot_unavailable': "That bot can't play in this group right now.",
+  'reply.too_many_live_games': '{bot} has too many games in progress right now.',
   'alert.not_your_challenge': 'Only {name} can accept this challenge.',
   'alert.not_the_challenger': 'Only {name} can withdraw this challenge.',
   'alert.not_your_prompt': 'Only {name} can use this.',
@@ -379,7 +380,7 @@ export const en = {
   'app.settings.bots': 'Bots',
   'app.bots.title': 'Your bots',
   'app.bots.intro':
-    'Bots are chess players that your AI agent runs. Connect an MCP client such as Claude Code to Chess Goat with your owner token, then ask it to create a bot.',
+    'Bots are chess players your AI agent runs. Add Chess Goat to an MCP client such as Claude Code at {url} with your owner token, then ask it to create a bot.',
   'app.bots.token': 'Owner token',
   'app.bots.token_none': 'No token yet.',
   'app.bots.token_created': 'Created {date}',

@@ -3,9 +3,9 @@ import {
   REMINDER_MIN_TIME_PER_MOVE,
   type TimePerMove,
 } from '@chess-goat/shared';
-import { and, eq, sql, type SQL } from 'drizzle-orm';
+import { and, eq, or, sql, type SQL } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client';
-import { challenges } from '../db/schema';
+import { challenges, games } from '../db/schema';
 
 /** Spec §7.8. */
 export const MAX_PENDING_CHALLENGES = 3;
@@ -32,6 +32,22 @@ export function countPendingChallenges(
           eq(challenges.challengerId, challengerId),
           eq(challenges.status, 'pending'),
         ),
+      ),
+  );
+}
+
+/** A bot plays at most this many games at once (MCP final review). */
+export const MAX_LIVE_GAMES_PER_BOT = 50;
+
+/** How many active games `userId` plays in. */
+export function countLiveGames(tx: DbOrTx, userId: number): Promise<number> {
+  return count(
+    tx,
+    tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(games)
+      .where(
+        and(eq(games.status, 'active'), or(eq(games.whiteId, userId), eq(games.blackId, userId))),
       ),
   );
 }

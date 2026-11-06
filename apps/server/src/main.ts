@@ -31,6 +31,7 @@ import {
 } from './jobs/handlers';
 import { JobWorker } from './jobs/worker';
 import { createLogger } from './logger';
+import { mcpEndpoint } from './mcp/routes';
 import { Metrics } from './metrics';
 import { createTelegramApi, instrumentTelegramApi } from './telegram/client';
 import { Membership } from './telegram/membership';
@@ -126,6 +127,9 @@ export async function startServer(
   };
 
   const app = createApiApp(apiCtx, has('api') ? gameRoutes : []);
+  // Beside /api, never under it: owner tokens open /mcp only, and sessions never open it.
+  const mcp = has('api') ? mcpEndpoint(apiCtx) : null;
+  if (mcp) app.route('/', mcp.routes);
   if (bot && !config.TELEGRAM_POLLING) app.route('/', webhookRoutes(bot, deps, config, metrics));
   if (config.MINI_APP_DIR) app.route('/app', staticAppRoutes(config.MINI_APP_DIR));
   const server = await listen(app, config.PORT);
@@ -226,6 +230,8 @@ export async function startServer(
       }
       await scanners?.stop();
       await worker?.stop();
+      // Before server.close, which waits for open connections: a listen stream never ends itself.
+      await mcp?.close();
       await new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),
       );

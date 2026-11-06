@@ -1,6 +1,8 @@
+import { freshPlayerState } from '@chess-goat/shared';
 import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import type { DbOrTx } from '../db/client';
-import { challenges, groupMembers, users, type UserRow } from '../db/schema';
+import { challenges, groupMembers, ratings, users, type UserRow } from '../db/schema';
 import { requireOwnBot } from './bots';
 import { settleInChat } from './challenges';
 import { DomainError } from './errors';
@@ -70,6 +72,94 @@ export async function listGroupBots(tx: DbOrTx, groupId: number): Promise<UserRo
     )
     .orderBy(users.firstName, users.id);
   return rows.map((row) => row.user);
+}
+
+export type BotSort = 'rating' | 'active' | 'newest';
+export type BotSearchRow = { bot: UserRow; rating: number };
+export type BotSearchOptions = {
+  query?: string;
+  sort: BotSort;
+  limit: number;
+  /** The previous page's last `key` and `id`, from `nextCursor`. */
+  cursor?: { key: number; id: number };
+};
+export type BotSearchPage = { rows: BotSearchRow[]; next: { key: number; id: number } | null };
+
+const ownerMember = alias(groupMembers, 'owner_member');
+
+/**
+ * The bots `find_bots` shows, from `groupMembers` joined to `users` and `ownerMember`: live owned
+ * bots that are members of the group, unblocked, whose owners are unblocked members too.
+ */
+function findableIn(groupId: number) {
+  return [
+    eq(groupMembers.groupId, groupId),
+    eq(groupMembers.status, 'member'),
+    isNull(groupMembers.blockedAt),
+    eq(ownerMember.status, 'member'),
+    isNull(ownerMember.blockedAt),
+    isNull(users.deletedAt),
+    sql`${users.ownerId} is not null`,
+  ];
+}
+
+const ownerJoin = and(
+  eq(ownerMember.groupId, groupMembers.groupId),
+  eq(ownerMember.userId, users.ownerId),
+);
+
+/** Whether `botId` is one of the bots `find_bots` shows in the group. */
+export async function isFindableBot(tx: DbOrTx, groupId: number, botId: number): Promise<boolean> {
+  const [row] = await tx
+    .select({ id: users.id })
+    .from(groupMembers)
+    .innerJoin(users, eq(users.id, groupMembers.userId))
+    .innerJoin(ownerMember, ownerJoin)
+    .where(and(...findableIn(groupId), eq(users.id, botId)))
+    .limit(1);
+  return row !== undefined;
+}
+
+/**
+ * Live, unblocked member bots of a group (their owners unblocked too), best first by `sort`, with
+ * keyset pagination on (sort key, id). Rating is the bot's rating here (the default if unrated).
+ */
+export async function searchGroupBots(
+  tx: DbOrTx,
+  groupId: number,
+  opts: BotSearchOptions,
+): Promise<BotSearchPage> {
+  const rating = sql<number>`coalesce(${ratings.rating}, ${freshPlayerState().rating})`;
+  const key =
+    opts.sort === 'rating'
+      ? rating
+      : opts.sort === 'active'
+        ? sql<number>`coalesce(floor(extract(epoch from ${users.lastActiveAt}) * 1000), -1)`
+        : sql<number>`${users.id}`;
+  const conditions = findableIn(groupId);
+  const query = opts.query?.trim();
+  if (query) {
+    const escaped = query.replace(/[\\%_]/g, '\\$&');
+    conditions.push(sql`${users.firstName} ilike ${`%${escaped}%`} escape '\\'`);
+  }
+  if (opts.cursor) {
+    conditions.push(sql`(${key}, ${users.id}) < (${opts.cursor.key}::float8, ${opts.cursor.id})`);
+  }
+  const found = await tx
+    .select({ user: users, rating, key: sql<number>`(${key})::float8` })
+    .from(groupMembers)
+    .innerJoin(users, eq(users.id, groupMembers.userId))
+    .leftJoin(ownerMember, ownerJoin)
+    .leftJoin(ratings, and(eq(ratings.groupId, groupMembers.groupId), eq(ratings.userId, users.id)))
+    .where(and(...conditions))
+    .orderBy(sql`(${key}) desc`, sql`${users.id} desc`)
+    .limit(opts.limit + 1);
+  const page = found.slice(0, opts.limit);
+  const last = page.at(-1);
+  return {
+    rows: page.map((row) => ({ bot: row.user, rating: Number(row.rating) })),
+    next: found.length > opts.limit && last ? { key: Number(last.key), id: last.user.id } : null,
+  };
 }
 
 /** Blocking a bot affects that bot; blocking a person affects all their live bots. */

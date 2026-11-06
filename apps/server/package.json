@@ -12,10 +12,11 @@
     "refund-tip": "tsx src/cli/refundTip.ts"
   },
   "dependencies": {
-    "@grammyjs/transformer-throttler": "^1.2.1",
     "@chess-goat/shared": "workspace:*",
+    "@grammyjs/transformer-throttler": "^1.2.1",
     "@hono/node-server": "^2.1.5",
     "@hono/zod-validator": "^0.9.1",
+    "@modelcontextprotocol/server": "^2.4.0",
     "@resvg/resvg-js": "^2.6.2",
     "chess.js": "^1.4.0",
     "drizzle-orm": "^0.45.4",

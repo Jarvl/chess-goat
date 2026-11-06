@@ -117,6 +117,12 @@ export function Settings() {
             ›
           </span>
         </button>
+        <button class="field pick" data-action="bots" onClick={() => router.push({ name: 'bots' })}>
+          <span class="grow">{t('app.settings.bots')}</span>
+          <span class="chevron" aria-hidden="true">
+            ›
+          </span>
+        </button>
         {TOGGLES.map(({ key, label }) => (
           <div class="field" key={key}>
             <span>{t(label)}</span>

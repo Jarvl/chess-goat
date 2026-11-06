@@ -25,7 +25,11 @@ const launchBody = (route: unknown, askWriteAccess = false, yourMove = 0) => ({
   yourMove,
   route,
   serverTime: new Date().toISOString(),
-  bot: { username: 'TestChessBot', miniAppShortName: 'chess' },
+  bot: {
+    username: 'TestChessBot',
+    miniAppShortName: 'chess',
+    mcpUrl: 'https://chess.test/mcp',
+  },
 });
 
 function setup(

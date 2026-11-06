@@ -37,7 +37,7 @@ export async function getGroupByPublicId(tx: DbOrTx, publicId: string): Promise<
 
 export async function requireGroupByPublicId(tx: DbOrTx, publicId: string): Promise<GroupRow> {
   const row = await getGroupByPublicId(tx, publicId);
-  if (!row) throw new DomainError('not_found', 'group not found');
+  if (!row) throw new DomainError('not_found', 'group not found', { reason: 'group_not_found' });
   return row;
 }
 
@@ -64,7 +64,8 @@ export async function updateGroupSettings(
   patch: Partial<GroupSettings>,
 ): Promise<GroupSettings> {
   const [current] = await tx.select().from(groups).where(eq(groups.id, groupId)).limit(1);
-  if (!current) throw new DomainError('not_found', 'group not found');
+  if (!current)
+    throw new DomainError('not_found', 'group not found', { reason: 'group_not_found' });
   const parsed = GroupSettingsSchema.safeParse({ ...settingsOf(current), ...patch });
   if (!parsed.success) {
     throw new DomainError('validation', 'invalid group settings', {

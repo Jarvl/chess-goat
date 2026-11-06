@@ -4,17 +4,22 @@ import { join } from 'node:path';
 import { FLAIR, flairBackfillVersion } from '@chess-goat/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { jobs } from '../../src/db/schema';
+import { createOwnerToken } from '../../src/domain/ownerTokens';
 import { backfillDedupKey } from '../../src/flair/backfill';
 import { startServer, type RunningServer } from '../../src/main';
 import { testConfig } from '../helpers/config';
 import { openTestDb, truncateAll } from '../helpers/db';
 import { FakeTelegram } from '../helpers/fakeTelegram';
+import { insertUser } from '../helpers/fixtures';
+import { openListen } from '../helpers/mcp';
 
 const { db, close } = openTestDb();
 let fake: FakeTelegram;
 let server: RunningServer;
 let base: string;
 let dir: string;
+/** An MCP listen stream left open, which `stop()` must end rather than wait on. */
+let openStream: ReadableStreamDefaultReader<Uint8Array> | null = null;
 
 beforeAll(async () => {
   await truncateAll(db);
@@ -38,6 +43,10 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await server.stop();
+  if (openStream) {
+    let ended = false;
+    while (!ended) ended = (await openStream.read().catch(() => ({ done: true }))).done;
+  }
   await fake.stop();
   await close();
   await rm(dir, { recursive: true, force: true });
@@ -47,6 +56,35 @@ describe('startServer', () => {
   it('answers the health probes', async () => {
     expect(await (await fetch(`${base}/healthz`)).text()).toBe('ok');
     expect(await (await fetch(`${base}/readyz`)).text()).toBe('ok');
+  });
+
+  it('serves llms.txt as plain text naming /mcp and the docs', async () => {
+    const res = await fetch(`${base}/llms.txt`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/plain');
+    const text = await res.text();
+    expect(text).toContain('/mcp');
+    expect(text).toContain('docs/bots.md');
+  });
+
+  it('mounts /mcp beside /api, behind an owner token', async () => {
+    const res = await fetch(`${base}/mcp`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
+    expect(res.status).toBe(401);
+    expect(res.headers.get('www-authenticate')).toMatch(/^Bearer\b/);
+  });
+
+  it('keeps an MCP listen stream open until stop() ends it', async () => {
+    const owner = await insertUser(db);
+    const token = await db.transaction((tx) => createOwnerToken(tx, owner.id));
+    const res = await openListen(`${base}/mcp`, token);
+    expect(res.status).toBe(200);
+    openStream = res.body!.getReader();
+    const ack = await openStream.read();
+    expect(new TextDecoder().decode(ack.value)).toContain('subscriptions/acknowledged');
   });
 
   it('enqueues a backfill of every catalog flair at boot', async () => {

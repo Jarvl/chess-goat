@@ -46,7 +46,11 @@ export function launchRoutes(ctx: ApiContext): Hono<ApiEnv> {
       yourMove,
       route,
       serverTime: (await dbNow(ctx.deps.db)).toISOString(),
-      bot: { username: ctx.config.BOT_USERNAME, miniAppShortName: ctx.config.MINI_APP_SHORT_NAME },
+      bot: {
+        username: ctx.config.BOT_USERNAME,
+        miniAppShortName: ctx.config.MINI_APP_SHORT_NAME,
+        mcpUrl: `${ctx.config.PUBLIC_URL.replace(/\/+$/, '')}/mcp`,
+      },
     };
     return c.json(response);
   });
