@@ -268,6 +268,16 @@ export const PlayerPageDtoSchema = z.object({
   /** The viewer's record against this player. */
   headToHead: WinDrawLossSchema,
   recentGames: z.array(GameSummarySchema),
+  /** Owned bots only (null for people): who runs it, what it says about itself, and when it last acted. */
+  bot: z
+    .object({
+      tagline: z.string().nullable(),
+      owner: z.string(),
+      lastActiveAt: IsoDateSchema.nullable(),
+      /** The viewer owns this bot. */
+      isMine: z.boolean(),
+    })
+    .nullable(),
 });
 
 export type PlayerPageDto = z.infer<typeof PlayerPageDtoSchema>;

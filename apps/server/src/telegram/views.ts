@@ -12,6 +12,7 @@ import { listMoves } from '../domain/games';
 import { getPlayerRating } from '../domain/ratings';
 import { displayName, flairEmoji, isOwnedBot, requireUser } from '../domain/users';
 import type { ChallengeCardView, GameCardView, PersonView } from './cards';
+import { label } from './cards';
 import { miniAppLink } from './links';
 
 export function personView(user: UserRow): PersonView {
@@ -25,6 +26,13 @@ export function personView(user: UserRow): PersonView {
 
 /** Cards name their group by its row, which every caller has already loaded to find the chat. */
 type CardGroup = Pick<GroupRow, 'publicId'>;
+
+function botChallenge(config: Config, group: CardGroup, bot: UserRow) {
+  return {
+    name: label(personView(bot)),
+    link: miniAppLink(config, { kind: 'challengeBot', groupId: group.publicId, botId: bot.id }),
+  };
+}
 
 function lobbyLink(config: Config, group: CardGroup): string {
   return miniAppLink(config, { kind: 'lobby', groupId: group.publicId });
@@ -60,6 +68,7 @@ export async function challengeCardView(
     rated: challenge.rated,
     challengerColour: challenge.challengerColour,
     lobbyLink: lobbyLink(config, group),
+    botChallenge: opponent && isOwnedBot(opponent) ? botChallenge(config, group, opponent) : null,
   };
 }
 
@@ -102,6 +111,9 @@ export async function gameCardView(
     requireUser(tx, game.whiteId),
     requireUser(tx, game.blackId),
   ]);
+  // Bot-vs-bot games have no card, so a card has at most one bot side.
+  const botSide = isOwnedBot(white) ? 'white' : isOwnedBot(black) ? 'black' : null;
+  const bot = botSide === 'white' ? white : botSide === 'black' ? black : null;
   const moves = game.status === 'finished' && game.plyCount > 0 ? await listMoves(tx, game.id) : [];
   return {
     publicId: game.publicId,
@@ -138,5 +150,7 @@ export async function gameCardView(
     lichessUrl: game.lichessUrl,
     openLink: miniAppLink(config, { kind: 'game', gameId: game.publicId }),
     lobbyLink: lobbyLink(config, group),
+    botChallenge: bot ? botChallenge(config, group, bot) : null,
+    botActivity: bot && botSide ? { side: botSide, lastActiveAt: bot.lastActiveAt } : null,
   };
 }

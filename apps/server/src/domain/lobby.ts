@@ -22,6 +22,7 @@ import {
 import type { Deps } from './deps';
 import { settingsOf } from './groups';
 import { toPlayerRef } from './players';
+import { isOwnedBot } from './users';
 import { getLeaderboard } from './ratings';
 import { challengeDtoRows, challengeToDto, gameSummaryRows, toGameSummary } from './summaries';
 import { challenges } from '../db/schema';
@@ -293,7 +294,20 @@ export async function playerPage(
     [desc(games.startedAt)],
     10,
   );
-  return { player, headToHead, recentGames: recent.map((row) => toGameSummary(row, viewerId)) };
+  const bot = isOwnedBot(user)
+    ? {
+        tagline: user.tagline,
+        owner: user.ownerName ?? '',
+        lastActiveAt: user.lastActiveAt ? user.lastActiveAt.toISOString() : null,
+        isMine: user.ownerId === viewerId,
+      }
+    : null;
+  return {
+    player,
+    headToHead,
+    recentGames: recent.map((row) => toGameSummary(row, viewerId)),
+    bot,
+  };
 }
 
 export const sqlNow = sql`now()`;

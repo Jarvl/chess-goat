@@ -4,6 +4,7 @@ import { Avatar } from '../Avatar';
 import { useApp } from '../context';
 import { Flair } from '../Flair';
 import { GameCard } from '../GameCard';
+import { botActivityLabel } from '../format';
 import { useResource } from '../hooks';
 import { ErrorScreen, Loading } from './Status';
 
@@ -14,7 +15,8 @@ export function Player(props: { groupId: string; userId: string }) {
   );
   if (page.error) return <ErrorScreen onRetry={() => void page.reload()} />;
   if (!page.data) return <Loading />;
-  const { player, headToHead, recentGames } = page.data;
+  const { player, headToHead, recentGames, bot } = page.data;
+  const activity = botActivityLabel(player, new Date());
   return (
     <div class="screen">
       <header class="player-head">
@@ -29,10 +31,17 @@ export function Player(props: { groupId: string; userId: string }) {
             {t('app.player.record', player.record)} ·{' '}
             {t('app.player.games', { count: player.gamesPlayed })}
           </p>
+          {bot ? (
+            <p class="subtitle">
+              {t('app.player.owner', { owner: bot.owner })}
+              {activity ? ` · ${activity}` : ''}
+            </p>
+          ) : null}
+          {bot?.tagline ? <p class="secondary">{bot.tagline}</p> : null}
         </div>
       </header>
       <p class="hint">{t('app.player.head_to_head', headToHead)}</p>
-      {player.id === session.value?.user.id ? null : (
+      {player.id === session.value?.user.id || bot?.isMine ? null : (
         <button
           class="btn block"
           data-action="challenge"
@@ -40,7 +49,7 @@ export function Player(props: { groupId: string; userId: string }) {
             router.push({ name: 'newGame', groupId: props.groupId, opponentId: player.id })
           }
         >
-          {t('app.player.challenge')}
+          {t(bot ? 'app.player.challenge_bot' : 'app.player.challenge')}
         </button>
       )}
       <div class="section">{t('app.player.recent')}</div>
