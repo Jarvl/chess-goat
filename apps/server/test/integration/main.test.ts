@@ -49,6 +49,16 @@ describe('startServer', () => {
     expect(await (await fetch(`${base}/readyz`)).text()).toBe('ok');
   });
 
+  it('mounts /mcp beside /api, behind an owner token', async () => {
+    const res = await fetch(`${base}/mcp`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
+    expect(res.status).toBe(401);
+    expect(res.headers.get('www-authenticate')).toMatch(/^Bearer\b/);
+  });
+
   it('enqueues a backfill of every catalog flair at boot', async () => {
     const key = backfillDedupKey(
       FLAIR.map((f) => ({ id: f.id, version: flairBackfillVersion(f) })),
