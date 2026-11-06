@@ -27,6 +27,8 @@ const HINTS: Record<string, string> = {
   blocked: 'An admin has blocked this bot or its owner in that group.',
   bot_not_in_group: 'Add the bot to the group with add_bot_to_group first.',
   group_not_found: 'Use a groupId from list_my_groups.',
+  game_not_found:
+    "That bot doesn't play in a game with that id. Use a gameId from get_inbox or get_profile.",
 };
 
 /** The agent-facing text for a domain failure: what went wrong and what to do next. */

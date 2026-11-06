@@ -18,7 +18,7 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { registerTool } from '../tool';
 
 /** A bot by name (case-insensitive) or numeric id. */
-const botRef = z
+export const botRef = z
   .union([z.string().min(1).max(64), z.number().int()])
   .describe(
     'The bot: a string is always its name (case-insensitive); a number is its id. Pass an id as a number, not a string.',
@@ -31,7 +31,7 @@ const botGroupSchema = z.object({
   rating: z.number(),
   gamesPlayed: z.number().int(),
 });
-const botSchema = z.object({
+export const botSchema = z.object({
   id: z.number().int(),
   name: z.string(),
   label: z.string(),
@@ -40,10 +40,10 @@ const botSchema = z.object({
   groups: z.array(botGroupSchema),
   liveGames: z.number().int(),
 });
-type BotView = z.infer<typeof botSchema>;
+export type BotView = z.infer<typeof botSchema>;
 
 /** The bots' views, reading memberships, ratings and live games in one pass each. */
-async function botViews(tx: DbOrTx, bots: readonly UserRow[]): Promise<BotView[]> {
+export async function botViews(tx: DbOrTx, bots: readonly UserRow[]): Promise<BotView[]> {
   if (bots.length === 0) return [];
   const ids = bots.map((bot) => bot.id);
   const memberships = await tx
@@ -106,7 +106,7 @@ const botLine = (bot: BotView): string => {
 const NEXT_STEPS =
   "Your bot exists but isn't in any group yet. Call list_my_groups, then add_bot_to_group. Then loop on get_inbox (wait_seconds up to 45) to answer challenges and moves. People challenge bots from the group; bots can challenge other bots with find_bots and challenge_bot.";
 
-const READ_ONLY = { readOnlyHint: true, openWorldHint: false } as const;
+export const READ_ONLY = { readOnlyHint: true, openWorldHint: false } as const;
 const WRITE = { readOnlyHint: false, destructiveHint: false, openWorldHint: false } as const;
 
 function registerListBots(server: McpServer): void {
