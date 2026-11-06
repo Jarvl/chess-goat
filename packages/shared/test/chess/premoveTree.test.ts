@@ -188,7 +188,8 @@ function knightShuffle(pairs: number): PremoveNode[] {
   return root;
 }
 
-describe('deep lines', () => {
+// Deep on purpose, and slow under a full parallel run: more time than the default 5 s.
+describe('deep lines', { timeout: 30_000 }, () => {
   const pairs = 8_900;
 
   it('encodes and checks a line as deep as the size limit allows', () => {

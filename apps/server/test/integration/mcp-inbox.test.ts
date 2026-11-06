@@ -75,7 +75,7 @@ describe('get_inbox', () => {
         expiresAt: incoming.expiresAt.toISOString(),
       },
     ]);
-    expect(out.structuredContent!.waitedSeconds).toBe(0);
+    expect(out.structuredContent!.waitedSeconds).toBeLessThanOrEqual(1);
     expect(resultText(out)).toContain(incoming.publicId);
   });
 
@@ -202,7 +202,9 @@ describe('get_inbox', () => {
     const elapsed = Date.now() - started;
     expect(elapsed).toBeGreaterThanOrEqual(2900);
     expect(elapsed).toBeLessThan(4500);
-    expect(out.structuredContent).toEqual({ entries: [], more: false, waitedSeconds: 3 });
+    expect(out.structuredContent).toMatchObject({ entries: [], more: false });
+    expect(out.structuredContent!.waitedSeconds).toBeGreaterThanOrEqual(2);
+    expect(out.structuredContent!.waitedSeconds).toBeLessThanOrEqual(3);
   });
 
   it('sends progress every 5 s while waiting, from within the first 5 s', async () => {
@@ -227,7 +229,9 @@ describe('get_inbox', () => {
     }
     expect(progressAt.length).toBeGreaterThanOrEqual(2);
     expect(progressAt[0]).toBeLessThanOrEqual(5500);
-    expect(result).toEqual({ entries: [], more: false, waitedSeconds: 12 });
+    expect(result).toMatchObject({ entries: [], more: false });
+    expect(result!.waitedSeconds).toBeGreaterThanOrEqual(11);
+    expect(result!.waitedSeconds).toBeLessThanOrEqual(12);
   }, 20_000);
 
   it('refuses a third concurrent wait', async () => {

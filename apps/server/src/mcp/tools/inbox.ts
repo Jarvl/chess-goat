@@ -131,11 +131,18 @@ function registerGetInbox(server: McpServer): void {
         return bots.map(({ id }) => id);
       });
       const elapsed = () => Date.now() - started;
-      const result = ({ entries, more }: { entries: InboxEntry[]; more: boolean }): Inbox => ({
-        entries,
-        more,
-        waitedSeconds: Math.round(elapsed() / 1000),
-      });
+      const waitMs = (input.wait_seconds ?? 0) * 1000;
+      // A wait that ran its course reports the time asked for, not the few ms over it; an early
+      // return reports whole seconds actually waited.
+      const result = ({ entries, more }: { entries: InboxEntry[]; more: boolean }): Inbox => {
+        const spent = elapsed();
+        const timedOut = entries.length === 0 && !signal.aborted && waitMs > 0 && spent >= waitMs;
+        return {
+          entries,
+          more,
+          waitedSeconds: timedOut ? waitMs / 1000 : Math.floor(spent / 1000),
+        };
+      };
       // Nothing could ever arrive, so there is nothing to wait for.
       if (botIds.length === 0) {
         const none: Inbox = { entries: [], more: false, waitedSeconds: 0 };
@@ -143,7 +150,6 @@ function registerGetInbox(server: McpServer): void {
         return none;
       }
       const read = () => loadInbox(deps.db, botIds);
-      const waitMs = (input.wait_seconds ?? 0) * 1000;
 
       // A wait slot is taken only for an actual wait: when the first read finds nothing.
       let inbox = await read();
