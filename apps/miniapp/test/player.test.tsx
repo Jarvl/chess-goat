@@ -12,6 +12,7 @@ const page = {
   },
   headToHead: { wins: 2, draws: 0, losses: 1 },
   recentGames: [gameSummary({ id: 'GameRrrrrr' })],
+  deleted: false,
   bot: null,
 };
 
@@ -101,19 +102,6 @@ describe('Player', () => {
       });
     });
 
-    it('renders a deleted bot (no bot block) with no Challenge or owner line', async () => {
-      const r = renderApp(
-        () => <Player groupId="GrOuPiDxYz" userId="2" />,
-        () => ({
-          status: 200,
-          body: { ...page, player: { ...page.player, name: '🤖 Deleted bot' } },
-        }),
-      );
-      session.value = { ...session.value!, user: { id: '9', name: 'x', username: null } };
-      await r.flush();
-      expect(r.text()).not.toContain('Run by');
-    });
-
     it('offers no Challenge button to the bot’s owner', async () => {
       const r = renderApp(
         () => <Player groupId="GrOuPiDxYz" userId="2" />,
@@ -122,5 +110,20 @@ describe('Player', () => {
       await r.flush();
       expect(r.root.querySelector('[data-action="challenge"]')).toBeNull();
     });
+  });
+
+  it('offers Challenge for a live player but not a deleted one', async () => {
+    const live = renderApp(
+      () => <Player groupId="GrOuPiDxYz" userId="2" />,
+      () => ({ status: 200, body: page }),
+    );
+    await live.flush();
+    expect(live.root.querySelector('[data-action="challenge"]')).not.toBeNull();
+    const gone = renderApp(
+      () => <Player groupId="GrOuPiDxYz" userId="2" />,
+      () => ({ status: 200, body: { ...page, deleted: true } }),
+    );
+    await gone.flush();
+    expect(gone.root.querySelector('[data-action="challenge"]')).toBeNull();
   });
 });

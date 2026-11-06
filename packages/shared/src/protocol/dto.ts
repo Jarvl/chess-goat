@@ -268,6 +268,8 @@ export const PlayerPageDtoSchema = z.object({
   /** The viewer's record against this player. */
   headToHead: WinDrawLossSchema,
   recentGames: z.array(GameSummarySchema),
+  /** The player's account is deleted: nobody can challenge them. */
+  deleted: z.boolean(),
   /** Owned bots only (null for people): who runs it, what it says about itself, and when it last acted. */
   bot: z
     .object({

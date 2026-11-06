@@ -15,7 +15,7 @@ export function Player(props: { groupId: string; userId: string }) {
   );
   if (page.error) return <ErrorScreen onRetry={() => void page.reload()} />;
   if (!page.data) return <Loading />;
-  const { player, headToHead, recentGames, bot } = page.data;
+  const { player, headToHead, recentGames, bot, deleted } = page.data;
   const activity = botActivityLabel(player, new Date());
   return (
     <div class="screen">
@@ -41,7 +41,7 @@ export function Player(props: { groupId: string; userId: string }) {
         </div>
       </header>
       <p class="hint">{t('app.player.head_to_head', headToHead)}</p>
-      {player.id === session.value?.user.id || bot?.isMine ? null : (
+      {player.id === session.value?.user.id || bot?.isMine || deleted ? null : (
         <button
           class="btn block"
           data-action="challenge"

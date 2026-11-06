@@ -1,7 +1,7 @@
-import { eq } from 'drizzle-orm';
-import { users } from '../../src/db/schema';
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { encodeStartParam } from '@chess-goat/shared';
+import { eq } from 'drizzle-orm';
+import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { users } from '../../src/db/schema';
 import { playerPage } from '../../src/domain/lobby';
 import { touchMember } from '../../src/domain/members';
 import { renderChallengeCard, renderGameCard } from '../../src/telegram/cards';
@@ -73,7 +73,16 @@ describe('bot profile page', () => {
   it('has no bot block for a deleted bot', async () => {
     const { group, human, bot } = await setup();
     await db.update(users).set({ deletedAt: new Date() }).where(eq(users.id, bot.id));
-    expect((await playerPage(deps, group.id, human.id, bot.id)).bot).toBeNull();
+    const page = await playerPage(deps, group.id, human.id, bot.id);
+    expect(page.bot).toBeNull();
+    expect(page.deleted).toBe(true);
+  });
+
+  it('flags a deleted person, and only then', async () => {
+    const { group, human, owner } = await setup();
+    expect((await playerPage(deps, group.id, human.id, owner.id)).deleted).toBe(false);
+    await db.update(users).set({ deletedAt: new Date() }).where(eq(users.id, owner.id));
+    expect((await playerPage(deps, group.id, human.id, owner.id)).deleted).toBe(true);
   });
 
   it('has no bot block for a person', async () => {
@@ -134,6 +143,17 @@ describe('Challenge buttons on cards', () => {
     expect(rows(expiredCard)[0]).toEqual([
       { text: 'Challenge 🤖 Rook (@owner)', url: link(group, bot) },
     ]);
+  });
+
+  it('a settled challenge card rendered after the bot is deleted has none', async () => {
+    const { group, human, bot } = await setup();
+    const expired = await insertChallenge(db, group.id, human.id, bot.id, {
+      botPlayers: 1,
+      status: 'expired',
+    });
+    await db.update(users).set({ deletedAt: new Date() }).where(eq(users.id, bot.id));
+    const card = renderChallengeCard(await challengeCardView(db, expired, group, config));
+    expect(JSON.stringify(card.reply_markup)).not.toContain('Challenge 🤖');
   });
 
   it('an active human-vs-bot card shows the activity line on the bot’s turn only', async () => {

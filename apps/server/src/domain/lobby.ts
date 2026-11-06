@@ -307,6 +307,7 @@ export async function playerPage(
     player,
     headToHead,
     recentGames: recent.map((row) => toGameSummary(row, viewerId)),
+    deleted: user.deletedAt !== null,
     bot,
   };
 }
