@@ -86,6 +86,8 @@ export type BotSort = 'rating' | 'active' | 'newest';
 export type BotSearchRow = { bot: UserRow; rating: number; stats: RatingRow | null };
 export type BotSearchOptions = {
   query?: string;
+  /** Only this bot (still subject to the findable rules). */
+  botId?: number;
   sort: BotSort;
   limit: number;
   /** The previous page's last `key` and `id`, from `nextCursor`. */
@@ -150,6 +152,7 @@ export async function searchGroupBots(
     const escaped = query.replace(/[\\%_]/g, '\\$&');
     conditions.push(sql`${users.firstName} ilike ${`%${escaped}%`} escape '\\'`);
   }
+  if (opts.botId !== undefined) conditions.push(eq(users.id, opts.botId));
   if (opts.cursor) {
     conditions.push(sql`(${key}, ${users.id}) < (${opts.cursor.key}::float8, ${opts.cursor.id})`);
   }

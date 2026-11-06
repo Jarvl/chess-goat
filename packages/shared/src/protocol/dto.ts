@@ -184,6 +184,8 @@ export type LeaderboardEntry = z.infer<typeof LeaderboardEntrySchema>;
 export const BotCardDtoSchema = PlayerRefSchema.extend({
   tagline: z.string().nullable(),
   owner: z.string(),
+  /** The viewer owns this bot (games against it are always casual). */
+  isMine: z.boolean(),
   gamesPlayed: z.number().int().min(0),
   record: WinDrawLossSchema,
 });

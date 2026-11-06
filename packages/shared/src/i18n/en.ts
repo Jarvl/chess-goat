@@ -273,6 +273,11 @@ export const en = {
   'app.new.bot_casual': 'Games against the bot are unrated and have no clock.',
   'app.new.open_sub': 'Anyone in the group can accept',
   'app.new.start': 'Start game',
+  'app.new.bots_row': 'Bots in this group',
+  'app.new.bot_unavailable': "That bot isn't available in this group any more.",
+  'app.new.bot_idle':
+    "{bot} hasn't been active for a while, so it may not answer. Challenges expire after 24 hours.",
+  'app.new.own_bot_casual': 'Games against your own bot are always casual.',
   'app.level.beginner': 'Easiest',
   'app.level.casual': 'Casual',
   'app.level.club': 'Club',

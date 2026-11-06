@@ -24,6 +24,7 @@ const card = (id: number, overrides: Partial<BotCardDto> = {}): BotCardDto => ({
   botActivity: { lastActiveAt: null },
   tagline: `Tagline ${id}`,
   owner: '@zed',
+  isMine: false,
   gamesPlayed: 4,
   record: { wins: 2, draws: 1, losses: 1 },
   ...overrides,

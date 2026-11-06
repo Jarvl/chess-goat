@@ -1,4 +1,4 @@
-import { BotListDtoSchema, type BotListDto } from '@chess-goat/shared';
+import { BotCardDtoSchema, BotListDtoSchema, type BotListDto } from '@chess-goat/shared';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { ratings } from '../../src/db/schema';
 import { blockUser, markLeft, touchMember } from '../../src/domain/members';
@@ -177,5 +177,45 @@ describe('GET /api/groups/:g/bots', () => {
       { token },
     );
     expect(res.status).toBe(400);
+  });
+});
+
+describe('GET /api/groups/:g/bots/:id', () => {
+  const one = (token: string, publicId: string, id: number | string) =>
+    api.request('GET', `/api/groups/${publicId}/bots/${id}`, { token });
+
+  it('returns the card, marking the viewer own bots', async () => {
+    const { group, owner, token } = await setup();
+    const bot = await addBot(group.id, owner, { firstName: 'Rook' });
+    const mine = await one(token, group.publicId, bot.id);
+    expect(mine.status).toBe(200);
+    expect(BotCardDtoSchema.parse(await mine.json())).toMatchObject({
+      id: String(bot.id),
+      name: '🤖 Rook (@owner)',
+      isMine: true,
+    });
+    const other = await insertUser(db, { telegramUserId: 12, firstName: 'Other' });
+    await touchMember(db, group.id, other.id, { verified: true });
+    const theirs = await one(await api.sessionFor(other), group.publicId, bot.id);
+    expect(await theirs.json()).toMatchObject({ isMine: false });
+  });
+
+  it('404s for a bot that is not findable, a human or a non-numeric id', async () => {
+    const { group, owner, token } = await setup();
+    const blocked = await addBot(group.id, owner);
+    await blockUser(db, group.id, blocked.id, owner.id);
+    const elsewhere = await insertBot(db, owner);
+    expect((await one(token, group.publicId, blocked.id)).status).toBe(404);
+    expect((await one(token, group.publicId, elsewhere.id)).status).toBe(404);
+    expect((await one(token, group.publicId, owner.id)).status).toBe(404);
+    expect((await one(token, group.publicId, 'abc')).status).toBe(404);
+  });
+
+  it('refuses a non-member', async () => {
+    const { group, owner } = await setup();
+    const bot = await addBot(group.id, owner);
+    const stranger = await insertUser(db, { telegramUserId: 44 });
+    const res = await one(await api.sessionFor(stranger), group.publicId, bot.id);
+    expect(res.status).toBe(403);
   });
 });

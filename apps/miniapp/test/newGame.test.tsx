@@ -1,4 +1,4 @@
-import { ENGINE_LEVELS, type GameDto } from '@chess-goat/shared';
+import { ENGINE_LEVELS, type BotCardDto, type GameDto } from '@chess-goat/shared';
 import { describe, expect, it } from 'vitest';
 import { App } from '../src/ui/App';
 import { NewGame } from '../src/ui/screens/NewGame';
@@ -292,5 +292,140 @@ describe('NewGame', () => {
     );
     await r.click('[data-opponent="2"]');
     expect(r.root.querySelector('[data-opponent="2"]')?.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  describe('with bots', () => {
+    const botCard = (overrides: Partial<BotCardDto> = {}): BotCardDto => ({
+      ...playerRef('9', '🤖 Rook (@zed)'),
+      botActivity: { lastActiveAt: new Date().toISOString() },
+      tagline: null,
+      owner: '@zed',
+      isMine: false,
+      gamesPlayed: 0,
+      record: { wins: 0, draws: 0, losses: 0 },
+      ...overrides,
+    });
+    const route =
+      (bot: BotCardDto | null, picker: unknown = players) =>
+      ({ method, path }: { method: string; path: string }) => {
+        if (method === 'POST') return { status: 200, body: challenge };
+        if (path.endsWith('/bots/9')) {
+          return bot
+            ? { status: 200, body: bot }
+            : { status: 404, body: { error: { code: 'not_found', message: 'bot not found' } } };
+        }
+        return { status: 200, body: picker };
+      };
+    const tiles = (root: HTMLElement) =>
+      [...root.querySelectorAll('[data-time]')].map((el) => el.getAttribute('data-time'));
+    const idle = 'may not answer';
+
+    it('preselects the bot named by opponentId', async () => {
+      const r = renderApp(() => <NewGame groupId="GrOuPiDxYz" opponentId="9" />, route(botCard()));
+      await r.flush();
+      expect(r.calls.some((c) => c.path === '/api/groups/GrOuPiDxYz/bots/9')).toBe(true);
+      expect(r.root.querySelector('[data-bot-opponent="9"]')?.getAttribute('aria-pressed')).toBe(
+        'true',
+      );
+      expect(r.text()).toContain('Rook');
+    });
+
+    it('says so when the bot is not available, and selects nothing', async () => {
+      const r = renderApp(() => <NewGame groupId="GrOuPiDxYz" opponentId="9" />, route(null));
+      await r.flush();
+      expect(r.text()).toContain("That bot isn't available in this group any more.");
+      expect(pressedOpponentRows(r.root)).toHaveLength(0);
+      expect(r.root.querySelector('[data-bot-opponent]')).toBeNull();
+    });
+
+    it('does not look a bot up when opponentId is a human', async () => {
+      const r = renderApp(() => <NewGame groupId="GrOuPiDxYz" opponentId="2" />, route(botCard()));
+      await r.flush();
+      expect(r.calls.some((c) => c.path.includes('/bots/'))).toBe(false);
+    });
+
+    it('hides No clock for a bot, replacing a null time, and restores it for a human', async () => {
+      const r = renderApp(
+        () => <NewGame groupId="GrOuPiDxYz" opponentId="9" />,
+        route(botCard(), { ...players, settings: { ...settings, defaultTimePerMove: null } }),
+      );
+      await r.flush();
+      expect(tiles(r.root)).not.toContain('none');
+      expect(r.root.querySelector('[data-time="259200"]')?.getAttribute('aria-pressed')).toBe(
+        'true',
+      );
+      await r.click('[data-opponent="2"]');
+      expect(tiles(r.root)).toContain('none');
+      expect(r.root.querySelector('[data-time="none"]')?.getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('defaults a bot to the group clock when there is one', async () => {
+      const r = renderApp(() => <NewGame groupId="GrOuPiDxYz" opponentId="9" />, route(botCard()));
+      await r.flush();
+      expect(r.root.querySelector('[data-time="86400"]')?.getAttribute('aria-pressed')).toBe(
+        'true',
+      );
+    });
+
+    it('warns about idle bots only', async () => {
+      const fresh = renderApp(
+        () => <NewGame groupId="GrOuPiDxYz" opponentId="9" />,
+        route(botCard()),
+      );
+      await fresh.flush();
+      expect(fresh.text()).not.toContain(idle);
+      for (const lastActiveAt of [null, new Date(Date.now() - 25 * 3_600_000).toISOString()]) {
+        const r = renderApp(
+          () => <NewGame groupId="GrOuPiDxYz" opponentId="9" />,
+          route(botCard({ botActivity: { lastActiveAt } })),
+        );
+        await r.flush();
+        expect(r.text()).toContain(
+          "🤖 Rook (@zed) hasn't been active for a while, so it may not answer. Challenges expire after 24 hours.",
+        );
+      }
+    });
+
+    it('notes that your own bot is casual and disables the rated switch', async () => {
+      const r = renderApp(
+        () => <NewGame groupId="GrOuPiDxYz" opponentId="9" />,
+        route(botCard({ isMine: true })),
+      );
+      await r.flush();
+      expect(r.text()).toContain('Games against your own bot are always casual.');
+      expect(r.root.querySelector('[data-rated]')?.hasAttribute('disabled')).toBe(true);
+      window.__tg!.clickMain();
+      await r.flush();
+      expect(r.calls.find((c) => c.method === 'POST')?.body).toMatchObject({ rated: false });
+    });
+
+    it('lets rated be chosen against another owner bot, and no casual note', async () => {
+      const r = renderApp(() => <NewGame groupId="GrOuPiDxYz" opponentId="9" />, route(botCard()));
+      await r.flush();
+      expect(r.text()).not.toContain('always casual');
+      expect(r.root.querySelector('[data-rated]')?.hasAttribute('disabled')).toBe(false);
+    });
+
+    it('submits the bot id with a non-null time', async () => {
+      const r = renderApp(
+        () => <NewGame groupId="GrOuPiDxYz" opponentId="9" />,
+        route(botCard(), { ...players, settings: { ...settings, defaultTimePerMove: null } }),
+      );
+      await r.flush();
+      window.__tg!.clickMain();
+      await r.flush();
+      expect(r.calls.find((c) => c.method === 'POST')).toMatchObject({
+        path: '/api/groups/GrOuPiDxYz/challenges',
+        body: { opponentId: '9', timePerMove: 259200, colour: 'random', rated: true },
+      });
+    });
+
+    it('opens the bot browser from the "Bots in this group" row', async () => {
+      const r = renderApp(() => <NewGame groupId="GrOuPiDxYz" />, route(null));
+      await r.flush();
+      expect(r.text()).toContain('Bots in this group');
+      await r.click('[data-testid="bots-row"]');
+      expect(r.app.router.current.value).toEqual({ name: 'botBrowser', groupId: 'GrOuPiDxYz' });
+    });
   });
 });
