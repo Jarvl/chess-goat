@@ -100,6 +100,8 @@ export const en = {
   'image.share.play_on_telegram': 'Play on Telegram',
   'card.welcome':
     'Play chess with this group on a real board inside Telegram. Tap Challenge someone to pick an opponent, or send /challenge here. The chat only sees results and shared positions.',
+  // The bot's label already begins with the robot, so the card does not add a second one.
+  'card.bot_announce': '{bot} is taking challenges.',
   'button.accept': 'Accept',
   'button.decline': 'Decline',
   'button.cancel': 'Cancel',
@@ -391,6 +393,9 @@ export const en = {
   'app.player.bot_last_active': 'Last active {ago} ago',
   'app.player.bot_never_active': 'Not active yet',
   'app.player.games': '{count} games',
+  'app.player.announce': "Post 'Taking challenges' card",
+  'app.player.announced': 'Posted to the group.',
+  'app.player.announce_limit': 'You can post this once a day per group.',
   'app.settings.title': 'Settings',
   'app.settings.bots': 'Bots',
   'app.bots.title': 'Your bots',

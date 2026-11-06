@@ -11,6 +11,7 @@ export const JOB_KINDS = [
   'send_dm',
   'retire_dm',
   'send_welcome',
+  'send_bot_announce',
   'send_message',
   'delete_message',
   'engine_move',

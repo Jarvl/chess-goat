@@ -338,6 +338,23 @@ export function renderWelcomeCard(links: { challenge: string; lobby: string }): 
   };
 }
 
+/** The owner-posted card that tells the group a bot will play: its challenge link, then the lobby. */
+export function renderBotAnnounceCard(view: {
+  bot: string;
+  tagline: string | null;
+  challengeLink: string;
+  lobbyLink: string;
+}): RenderedMessage {
+  const lines = [t('card.bot_announce', { bot: view.bot })];
+  if (view.tagline) lines.push(`"${view.tagline}"`);
+  const challenge = urlButton(t('button.challenge_bot', { bot: view.bot }), view.challengeLink);
+  return {
+    text: lines.join('\n'),
+    entities: [],
+    reply_markup: keyboard([challenge ? [challenge] : [], lobbyRow(view)]),
+  };
+}
+
 export function renderShareCaption(view: {
   sharer: string;
   moveNumber: number;

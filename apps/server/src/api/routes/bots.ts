@@ -6,6 +6,7 @@ import {
   searchGroupBots,
   type BotSearchRow,
 } from '../../domain/botGroups';
+import { announceBot } from '../../domain/botAnnounce';
 import { buildBotLobby } from '../../domain/botLobby';
 import { DomainError } from '../../domain/errors';
 import { requireGroupByPublicId } from '../../domain/groups';
@@ -66,5 +67,16 @@ export function botsRoutes(api: Hono<ApiEnv>, ctx: ApiContext): void {
       : [];
     if (!row) throw new DomainError('not_found', 'bot not found');
     return c.json(toBotCard(row, viewer.id));
+  });
+
+  /** The owner posts the bot's "Taking challenges" card to the group; 404 unless it is theirs. */
+  api.post('/groups/:g/bots/:id/announce', async (c) => {
+    const group = await requireGroupByPublicId(db, publicIdParam(c, 'g'));
+    const viewer = c.get('user');
+    await requireMember(ctx, group, viewer);
+    const id = Number(c.req.param('id'));
+    if (!Number.isSafeInteger(id)) throw new DomainError('not_found', 'bot not found');
+    await announceBot(ctx.deps, { ownerId: viewer.id, botId: id, groupId: group.id });
+    return c.json({ ok: true });
   });
 }

@@ -102,6 +102,57 @@ describe('Player', () => {
       });
     });
 
+    it('offers the Taking challenges card to the owner only', async () => {
+      const mine = renderApp(
+        () => <Player groupId="GrOuPiDxYz" userId="2" />,
+        () => ({ status: 200, body: botPage(true) }),
+      );
+      await mine.flush();
+      expect(mine.root.querySelector('[data-action="announce"]')?.textContent).toBe(
+        "Post 'Taking challenges' card",
+      );
+      const theirs = renderApp(
+        () => <Player groupId="GrOuPiDxYz" userId="2" />,
+        () => ({ status: 200, body: botPage(false) }),
+      );
+      await theirs.flush();
+      expect(theirs.root.querySelector('[data-action="announce"]')).toBeNull();
+    });
+
+    it('posts the card and says so', async () => {
+      const r = renderApp(
+        () => <Player groupId="GrOuPiDxYz" userId="2" />,
+        (call) =>
+          call.method === 'POST'
+            ? { status: 200, body: { ok: true } }
+            : { status: 200, body: botPage(true) },
+      );
+      await r.flush();
+      await r.click('[data-action="announce"]');
+      await r.flush();
+      expect(r.calls.at(-1)).toMatchObject({
+        method: 'POST',
+        path: '/api/groups/GrOuPiDxYz/bots/2/announce',
+      });
+      expect(r.root.querySelector('.toast')?.textContent).toBe('Posted to the group.');
+    });
+
+    it('explains the daily limit when it is refused', async () => {
+      const r = renderApp(
+        () => <Player groupId="GrOuPiDxYz" userId="2" />,
+        (call) =>
+          call.method === 'POST'
+            ? { status: 429, body: { error: { code: 'rate_limited', message: 'too soon' } } }
+            : { status: 200, body: botPage(true) },
+      );
+      await r.flush();
+      await r.click('[data-action="announce"]');
+      await r.flush();
+      expect(r.root.querySelector('.toast')?.textContent).toBe(
+        'You can post this once a day per group.',
+      );
+    });
+
     it('offers no Challenge button to the bot’s owner', async () => {
       const r = renderApp(
         () => <Player groupId="GrOuPiDxYz" userId="2" />,

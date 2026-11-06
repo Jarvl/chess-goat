@@ -3,15 +3,18 @@ import { z } from 'zod';
 import { games, groups, type GameRow } from '../../db/schema';
 import { getChallengeById, setChallengeMessage } from '../../domain/challenges';
 import { requireGameById } from '../../domain/games';
-import { requireGroup } from '../../domain/groups';
+import { requireGroup, settingsOf } from '../../domain/groups';
+import { isOwnedBot, requireUser } from '../../domain/users';
 import {
+  renderBotAnnounceCard,
   renderChallengeCard,
   renderGameCard,
   renderWelcomeCard,
   type RenderedMessage,
 } from '../../telegram/cards';
 import { miniAppLink } from '../../telegram/links';
-import { challengeCardView, gameCardView } from '../../telegram/views';
+import { challengeCardView, gameCardView, personView } from '../../telegram/views';
+import { label } from '../../telegram/cards';
 import { enqueue } from '../queue';
 import { retireDm, sendDm } from './dm';
 import { call, settle, type TelegramHandlerContext } from './telegramCall';
@@ -164,6 +167,39 @@ const sendWelcome =
     return { outcome: 'done' };
   };
 
+const sendBotAnnounce =
+  (ctx: TelegramHandlerContext): JobHandler =>
+  async ({ job }) => {
+    const { botId, groupId } = z
+      .object({ botId: z.number().int(), groupId: z.number().int() })
+      .parse(job.payload);
+    const group = await requireGroup(ctx.deps.db, groupId);
+    if (group.botStatus === 'left') return { outcome: 'done' };
+    const bot = await requireUser(ctx.deps.db, botId);
+    // The bot was deleted between the post and the send: there is nothing to invite anyone to.
+    if (!isOwnedBot(bot) || bot.deletedAt) return { outcome: 'done' };
+    const settings = settingsOf(group);
+    const rendered = renderBotAnnounceCard({
+      bot: label(personView(bot)),
+      tagline: bot.tagline,
+      challengeLink: miniAppLink(ctx.config, {
+        kind: 'challengeBot',
+        groupId: group.publicId,
+        botId: bot.id,
+      }),
+      lobbyLink: miniAppLink(ctx.config, { kind: 'lobby', groupId: group.publicId }),
+    });
+    const result = await call(ctx, group.telegramChatId, () =>
+      ctx.api.sendMessage(group.telegramChatId, rendered.text, {
+        entities: rendered.entities,
+        reply_markup: rendered.reply_markup,
+        message_thread_id:
+          (settings.cardTopicMode === 'fixed' ? settings.fixedTopicId : null) ?? undefined,
+      }),
+    );
+    return settle(result);
+  };
+
 const sendMessage =
   (ctx: TelegramHandlerContext): JobHandler =>
   async ({ job }) => {
@@ -200,6 +236,7 @@ export function telegramJobHandlers(ctx: TelegramHandlerContext): JobHandlers {
     send_dm: sendDm(ctx),
     retire_dm: retireDm(ctx),
     send_welcome: sendWelcome(ctx),
+    send_bot_announce: sendBotAnnounce(ctx),
     send_message: sendMessage(ctx),
     delete_message: deleteMessage(ctx),
   };
