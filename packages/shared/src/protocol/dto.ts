@@ -180,6 +180,23 @@ export const LeaderboardEntrySchema = PlayerRefSchema.extend({
 
 export type LeaderboardEntry = z.infer<typeof LeaderboardEntrySchema>;
 
+/** A bot in a group's bot browser, with its owner's name and its record there. */
+export const BotCardDtoSchema = PlayerRefSchema.extend({
+  tagline: z.string().nullable(),
+  owner: z.string(),
+  gamesPlayed: z.number().int().min(0),
+  record: WinDrawLossSchema,
+});
+
+export type BotCardDto = z.infer<typeof BotCardDtoSchema>;
+
+export const BotListDtoSchema = z.object({
+  bots: z.array(BotCardDtoSchema),
+  nextCursor: z.string().nullable(),
+});
+
+export type BotListDto = z.infer<typeof BotListDtoSchema>;
+
 export const GroupSettingsSchema = z.object({
   defaultTimePerMove: TimePerMoveSchema,
   ratedDefault: z.boolean(),

@@ -101,6 +101,14 @@ export const FinishedQuerySchema = z.object({
   cursor: z.string().max(64).optional(),
 });
 
+export const BotListQuerySchema = z.object({
+  q: z.string().max(64).optional(),
+  sort: z.enum(['rating', 'active', 'newest']).optional(),
+  cursor: z.string().min(1).max(200).optional(),
+});
+
+export type BotListQuery = z.infer<typeof BotListQuerySchema>;
+
 export type FinishedQuery = z.infer<typeof FinishedQuerySchema>;
 
 /** Tip jar spec §2.1: whole Stars, one invoice per tap. */

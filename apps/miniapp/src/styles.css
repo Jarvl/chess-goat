@@ -2393,3 +2393,18 @@ coords.squares:nth-of-type(even) :nth-child(even) {
   font-size: 13px;
   font-weight: 700;
 }
+
+.search-input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--sep);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+}
+
+.search-input:focus {
+  outline: 2px solid var(--acc);
+  outline-offset: -1px;
+}
