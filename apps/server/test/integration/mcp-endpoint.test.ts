@@ -199,7 +199,7 @@ describe('toolError', () => {
       },
     ]);
     expect(toolError(new DomainError('not_found', 'unknown bot')).content[0]?.text).toBe(
-      'Unknown bot.',
+      'Unknown bot. (code: not_found)',
     );
   });
 
@@ -253,7 +253,7 @@ describe('registerTool', () => {
     });
     const result = await callTool(app, token, 'probe');
     expect(result.isError).toBe(true);
-    expect(resultText(result)).toBe('Unknown bot.');
+    expect(resultText(result)).toBe('Unknown bot. (code: not_found)');
   });
 
   it('sends progress only when the request carries a progressToken', async () => {

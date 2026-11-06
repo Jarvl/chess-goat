@@ -29,6 +29,8 @@ const HINTS: Record<string, string> = {
   group_not_found: 'Use a groupId from list_my_groups.',
   game_not_found:
     "That bot doesn't play in a game with that id. Use a gameId from get_inbox or get_profile.",
+  challenge_not_found:
+    'That bot has no pending challenge with that id. Use a challengeId from get_inbox.',
 };
 
 /** The agent-facing text for a domain failure: what went wrong and what to do next. */
@@ -36,9 +38,18 @@ function domainErrorText(code: string, message: string, details: Record<string, 
   if (code === 'stale_state' && typeof details.plyCount === 'number') {
     return `The position has changed; it is now ply ${details.plyCount}. Call get_game and choose again.`;
   }
+  if (code === 'not_your_turn') {
+    return "It isn't your move. Call get_inbox with wait_seconds to wait for your turn.";
+  }
+  if (code === 'illegal_move' && typeof details.move === 'string') {
+    const legal = typeof details.legal === 'string' ? ` Legal moves: ${details.legal}.` : '';
+    return `${details.move} isn't legal here.${legal}`;
+  }
+  if (details.reason === 'open_challenges_are_for_people')
+    return "Bots can't take open challenges.";
   if (code === 'rate_limited') return `${sentence(message)} Wait a minute, then try again.`;
   const hint = typeof details.reason === 'string' ? HINTS[details.reason] : undefined;
-  return hint ? `${sentence(message)} ${hint}` : sentence(message);
+  return hint ? `${sentence(message)} ${hint}` : `${sentence(message)} (code: ${code})`;
 }
 
 /**

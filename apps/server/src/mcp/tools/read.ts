@@ -1,7 +1,8 @@
 import { and, desc, eq, isNull, or } from 'drizzle-orm';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/server';
-import { games, groups, users } from '../../db/schema';
+import { games, groups, users, type GameRow, type UserRow } from '../../db/schema';
+import type { DbOrTx } from '../../db/client';
 import { resolveOwnBot, touchBotActivity } from '../../domain/bots';
 import { DomainError } from '../../domain/errors';
 import { listMoves } from '../../domain/games';
@@ -16,7 +17,7 @@ const premoveNode: z.ZodType<{ move: string; reply: string; children: unknown[] 
   z.object({ move: z.string(), reply: z.string(), children: z.array(premoveNode) }),
 );
 
-const gameViewSchema = z.object({
+export const gameViewSchema = z.object({
   gameId: z.string(),
   group: z.object({ groupId: z.string(), title: z.string() }),
   you: colour,
@@ -39,7 +40,7 @@ const gameViewSchema = z.object({
   pgn: z.string().optional(),
 });
 
-const gameText = (view: GameView): string => {
+export const gameText = (view: z.infer<typeof gameViewSchema>): string => {
   const head = view.yourTurn
     ? `Your move (${view.you}), ply ${view.ply}.`
     : view.status === 'active'
@@ -54,6 +55,45 @@ const gameText = (view: GameView): string => {
       : `\nDraw offer ${view.drawOffer === 'from_you' ? 'from you' : 'from your opponent'}.`;
   return `${head} vs ${view.opponent.name} in ${view.group.title}.\n${view.board}\nFEN: ${view.fen}${legal}${draw}`;
 };
+
+/** The game as `bot` sees it. A game that does not exist, or that the bot is not in, is `not_found`. */
+export async function loadGameView(
+  tx: DbOrTx,
+  bot: UserRow,
+  publicId: string,
+  withPgn = false,
+): Promise<GameView> {
+  const row = await findBotGame(tx, bot, publicId);
+  return viewOf(tx, row, bot, withPgn);
+}
+
+export async function findBotGame(tx: DbOrTx, bot: UserRow, publicId: string): Promise<GameRow> {
+  const [row] = await tx.select().from(games).where(eq(games.publicId, publicId)).limit(1);
+  if (!row || (row.whiteId !== bot.id && row.blackId !== bot.id)) {
+    throw new DomainError('not_found', 'game not found', { reason: 'game_not_found' });
+  }
+  return row;
+}
+
+export async function viewOf(
+  tx: DbOrTx,
+  row: GameRow,
+  bot: UserRow,
+  withPgn = false,
+): Promise<GameView> {
+  const [moves, [group], [white], [black]] = await Promise.all([
+    listMoves(tx, row.id),
+    tx.select().from(groups).where(eq(groups.id, row.groupId)).limit(1),
+    tx.select().from(users).where(eq(users.id, row.whiteId)).limit(1),
+    tx.select().from(users).where(eq(users.id, row.blackId)).limit(1),
+  ]);
+  const view = renderGame(
+    { game: row, moves, group: group!, white: white!, black: black! },
+    bot.id,
+  );
+  if (withPgn) view.pgn = await buildGamePgn(tx, row);
+  return view;
+}
 
 function registerGetGame(server: McpServer): void {
   registerTool(server, {
@@ -71,26 +111,7 @@ function registerGetGame(server: McpServer): void {
       deps.db.transaction(async (tx) => {
         const bot = await resolveOwnBot(tx, owner.id, input.bot);
         await touchBotActivity(tx, bot.id);
-        const [row] = await tx
-          .select()
-          .from(games)
-          .where(eq(games.publicId, input.game_id))
-          .limit(1);
-        if (!row || (row.whiteId !== bot.id && row.blackId !== bot.id)) {
-          throw new DomainError('not_found', 'game not found', { reason: 'game_not_found' });
-        }
-        const [moves, [group], [white], [black]] = await Promise.all([
-          listMoves(tx, row.id),
-          tx.select().from(groups).where(eq(groups.id, row.groupId)).limit(1),
-          tx.select().from(users).where(eq(users.id, row.whiteId)).limit(1),
-          tx.select().from(users).where(eq(users.id, row.blackId)).limit(1),
-        ]);
-        const view = renderGame(
-          { game: row, moves, group: group!, white: white!, black: black! },
-          bot.id,
-        );
-        if (input.format === 'detailed') view.pgn = await buildGamePgn(tx, row);
-        return view;
+        return loadGameView(tx, bot, input.game_id, input.format === 'detailed');
       }),
     text: gameText,
   });
