@@ -2,14 +2,12 @@ import { INITIAL_FEN, type PremoveNode } from '@chess-goat/shared';
 import { Chess } from 'chess.js';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/server';
-import type { UserRow } from '../../db/schema';
-import { resolveOwnBot, touchBotActivity } from '../../domain/bots';
 import { acceptChallenge, declineChallenge, getChallengeByPublicId } from '../../domain/challenges';
 import { checkPremoveShape } from '../../domain/botPremoves';
 import { DomainError } from '../../domain/errors';
 import { abortGame, listMoves, playMove, resign } from '../../domain/games';
 import { acceptDraw, claimDraw, declineDraw, offerDraw } from '../../domain/draws';
-import { registerTool } from '../tool';
+import { registerTool, resolveAndTouch } from '../tool';
 import { gameText, gameViewSchema, findBotGame, loadGameView } from './read';
 import { botRef } from './manage';
 import { premoveTreeInput } from './premoves';
@@ -40,6 +38,7 @@ function resolveMove(fen: string, move: string): Resolved {
 
 const stale = (plyCount: number) =>
   new DomainError('stale_state', 'the position has changed', { plyCount });
+const gameOver = () => new DomainError('stale_state', 'the game is over', { reason: 'game_over' });
 
 function registerMakeMove(server: McpServer): void {
   registerTool(server, {
@@ -55,15 +54,17 @@ function registerMakeMove(server: McpServer): void {
     }),
     output: gameViewSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    run: async ({ deps, owner }, input) => {
+    run: async (call, input) => {
+      const { deps } = call;
       let premoveNodes: PremoveNode[] = [];
-      const { bot, move } = await deps.db.transaction(async (tx) => {
-        const bot = await resolveOwnBot(tx, owner.id, input.bot);
-        await touchBotActivity(tx, bot.id);
+      const bot = await resolveAndTouch(call, input.bot);
+      const move = await deps.db.transaction(async (tx) => {
         // Checked before anything is played, so a malformed tree never leaves a move without it.
         if (input.premoves) premoveNodes = checkPremoveShape(input.premoves);
         const row = await findBotGame(tx, bot, input.game_id);
-        if (input.expected_ply > row.plyCount) throw stale(row.plyCount);
+        if (input.expected_ply > row.plyCount) {
+          throw row.status === 'active' ? stale(row.plyCount) : gameOver();
+        }
         const history = await listMoves(tx, row.id);
         const fen =
           input.expected_ply === row.plyCount
@@ -75,11 +76,9 @@ function registerMakeMove(server: McpServer): void {
         const clientMoveId = (u: string) => `mcp:${bot.id}:${row.id}:${input.expected_ply}:${u}`;
         // A retry of a move already made returns the game as it is now, whatever has happened since.
         if (resolved.uci && history.some((m) => m.clientMoveId === clientMoveId(resolved.uci))) {
-          return { bot, move: null };
+          return null;
         }
-        if (row.status !== 'active') {
-          throw new DomainError('stale_state', 'the game is over');
-        }
+        if (row.status !== 'active') throw gameOver();
         if (input.expected_ply !== row.plyCount) throw stale(row.plyCount);
         const botIsWhite = row.whiteId === bot.id;
         if ((fen.split(' ')[1] === 'w') !== botIsWhite) {
@@ -91,7 +90,7 @@ function registerMakeMove(server: McpServer): void {
             legal: resolved.legal,
           });
         }
-        return { bot, move: { uci: resolved.uci, clientMoveId: clientMoveId(resolved.uci) } };
+        return { uci: resolved.uci, clientMoveId: clientMoveId(resolved.uci) };
       });
       if (move !== null) {
         await playMove(deps, {
@@ -130,13 +129,10 @@ function registerGameAction(server: McpServer): void {
     }),
     output: gameViewSchema,
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
-    run: async ({ deps, owner }, input) => {
-      const bot = await deps.db.transaction(async (tx) => {
-        const bot = await resolveOwnBot(tx, owner.id, input.bot);
-        await touchBotActivity(tx, bot.id);
-        await findBotGame(tx, bot, input.game_id);
-        return bot;
-      });
+    run: async (call, input) => {
+      const { deps } = call;
+      const bot = await resolveAndTouch(call, input.bot);
+      await deps.db.transaction((tx) => findBotGame(tx, bot, input.game_id));
       const act = { gameId: input.game_id, userId: bot.id };
       switch (input.action) {
         case 'offer_draw':
@@ -178,20 +174,19 @@ function registerRespondToChallenge(server: McpServer): void {
     }),
     output: respondOutput,
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    run: async ({ deps, owner }, input) => {
-      const { bot, challenge } = await deps.db.transaction(async (tx) => {
-        const bot: UserRow = await resolveOwnBot(tx, owner.id, input.bot);
-        await touchBotActivity(tx, bot.id);
+    run: async (call, input) => {
+      const { deps } = call;
+      const bot = await resolveAndTouch(call, input.bot);
+      const challenge = await deps.db.transaction(async (tx) => {
         const challenge = await getChallengeByPublicId(tx, input.challenge_id);
-        // A challenge that is not the bot's to answer looks like one that does not exist.
-        const mine =
-          challenge && (challenge.opponentId === bot.id || challenge.opponentId === null);
-        if (!challenge || !mine) {
+        // A challenge that is not made to this bot by name (an open one, or one it sent) looks like
+        // one that does not exist.
+        if (!challenge || challenge.opponentId !== bot.id) {
           throw new DomainError('not_found', 'challenge not found', {
             reason: 'challenge_not_found',
           });
         }
-        return { bot, challenge };
+        return challenge;
       });
       if (!input.accept) {
         await declineChallenge(deps, { challengeId: challenge.id, userId: bot.id });

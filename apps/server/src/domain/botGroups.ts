@@ -85,6 +85,41 @@ export type BotSearchOptions = {
 };
 export type BotSearchPage = { rows: BotSearchRow[]; next: { key: number; id: number } | null };
 
+const ownerMember = alias(groupMembers, 'owner_member');
+
+/**
+ * The bots `find_bots` shows, from `groupMembers` joined to `users` and `ownerMember`: live owned
+ * bots that are members of the group, unblocked, whose owners are unblocked members too.
+ */
+function findableIn(groupId: number) {
+  return [
+    eq(groupMembers.groupId, groupId),
+    eq(groupMembers.status, 'member'),
+    isNull(groupMembers.blockedAt),
+    eq(ownerMember.status, 'member'),
+    isNull(ownerMember.blockedAt),
+    isNull(users.deletedAt),
+    sql`${users.ownerId} is not null`,
+  ];
+}
+
+const ownerJoin = and(
+  eq(ownerMember.groupId, groupMembers.groupId),
+  eq(ownerMember.userId, users.ownerId),
+);
+
+/** Whether `botId` is one of the bots `find_bots` shows in the group. */
+export async function isFindableBot(tx: DbOrTx, groupId: number, botId: number): Promise<boolean> {
+  const [row] = await tx
+    .select({ id: users.id })
+    .from(groupMembers)
+    .innerJoin(users, eq(users.id, groupMembers.userId))
+    .innerJoin(ownerMember, ownerJoin)
+    .where(and(...findableIn(groupId), eq(users.id, botId)))
+    .limit(1);
+  return row !== undefined;
+}
+
 /**
  * Live, unblocked member bots of a group (their owners unblocked too), best first by `sort`, with
  * keyset pagination on (sort key, id). Rating is the bot's rating here (the default if unrated).
@@ -94,7 +129,6 @@ export async function searchGroupBots(
   groupId: number,
   opts: BotSearchOptions,
 ): Promise<BotSearchPage> {
-  const ownerMember = alias(groupMembers, 'owner_member');
   const rating = sql<number>`coalesce(${ratings.rating}, ${freshPlayerState().rating})`;
   const key =
     opts.sort === 'rating'
@@ -102,15 +136,7 @@ export async function searchGroupBots(
       : opts.sort === 'active'
         ? sql<number>`coalesce(floor(extract(epoch from ${users.lastActiveAt}) * 1000), -1)`
         : sql<number>`${users.id}`;
-  const conditions = [
-    eq(groupMembers.groupId, groupId),
-    eq(groupMembers.status, 'member'),
-    isNull(groupMembers.blockedAt),
-    eq(ownerMember.status, 'member'),
-    isNull(ownerMember.blockedAt),
-    isNull(users.deletedAt),
-    sql`${users.ownerId} is not null`,
-  ];
+  const conditions = findableIn(groupId);
   const query = opts.query?.trim();
   if (query) {
     const escaped = query.replace(/[\\%_]/g, '\\$&');
@@ -123,10 +149,7 @@ export async function searchGroupBots(
     .select({ user: users, rating, key: sql<number>`(${key})::float8` })
     .from(groupMembers)
     .innerJoin(users, eq(users.id, groupMembers.userId))
-    .leftJoin(
-      ownerMember,
-      and(eq(ownerMember.groupId, groupMembers.groupId), eq(ownerMember.userId, users.ownerId)),
-    )
+    .leftJoin(ownerMember, ownerJoin)
     .leftJoin(ratings, and(eq(ratings.groupId, groupMembers.groupId), eq(ratings.userId, users.id)))
     .where(and(...conditions))
     .orderBy(sql`(${key}) desc`, sql`${users.id} desc`)

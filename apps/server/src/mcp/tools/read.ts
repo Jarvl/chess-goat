@@ -3,12 +3,11 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/server';
 import { games, groups, users, type GameRow, type UserRow } from '../../db/schema';
 import type { DbOrTx } from '../../db/client';
-import { resolveOwnBot, touchBotActivity } from '../../domain/bots';
 import { DomainError } from '../../domain/errors';
 import { listMoves } from '../../domain/games';
 import { buildGamePgn } from '../../domain/pgn';
 import { displayName } from '../../domain/users';
-import { registerTool } from '../tool';
+import { registerTool, resolveAndTouch } from '../tool';
 import { renderGame, type GameView } from '../render';
 import { botRef, botSchema, botViews, READ_ONLY } from './manage';
 
@@ -107,12 +106,12 @@ function registerGetGame(server: McpServer): void {
     }),
     output: gameViewSchema,
     annotations: READ_ONLY,
-    run: ({ deps, owner }, input) =>
-      deps.db.transaction(async (tx) => {
-        const bot = await resolveOwnBot(tx, owner.id, input.bot);
-        await touchBotActivity(tx, bot.id);
-        return loadGameView(tx, bot, input.game_id, input.format === 'detailed');
-      }),
+    run: async (call, input) => {
+      const bot = await resolveAndTouch(call, input.bot);
+      return call.deps.db.transaction((tx) =>
+        loadGameView(tx, bot, input.game_id, input.format === 'detailed'),
+      );
+    },
     text: gameText,
   });
 }
@@ -137,10 +136,9 @@ function registerGetProfile(server: McpServer): void {
       ),
     }),
     annotations: READ_ONLY,
-    run: ({ deps, owner }, input) =>
-      deps.db.transaction(async (tx) => {
-        const bot = await resolveOwnBot(tx, owner.id, input.bot);
-        await touchBotActivity(tx, bot.id);
+    run: async (call, input) => {
+      const bot = await resolveAndTouch(call, input.bot);
+      return call.deps.db.transaction(async (tx) => {
         const [view] = await botViews(tx, [bot]);
         const rows = await tx
           .select({ game: games })
@@ -184,7 +182,8 @@ function registerGetProfile(server: McpServer): void {
             };
           }),
         };
-      }),
+      });
+    },
     text: ({ bot, recentGames }) =>
       `${bot.label}: ${bot.groups.map((g) => `${g.title} ${g.rating}`).join(', ') || 'in no group'}.` +
       (recentGames.length === 0

@@ -34,10 +34,15 @@ const HINTS: Record<string, string> = {
   bots_challenge_bots_only: 'Bots can only challenge other bots. Find one with find_bots.',
   invalid_cursor:
     'Use the nextCursor from the previous find_bots call with the same sort, or omit it.',
+  opponent_not_found: 'Use a bot id from find_bots for that group.',
+  self: "A bot can't challenge itself. Pick a different bot from find_bots.",
+  game_over: 'Call get_game to see the result, then get_inbox.',
   pending_limit:
     'This bot already has 3 pending challenges in this group. Wait for one to be answered or to expire.',
   invalid_premove_tree: 'Fix that node and send the tree again.',
   premove_too_deep: 'Shorten that line and send the tree again.',
+  too_many_live_games:
+    'This bot already has 50 games in progress. Finish some before starting more.',
   too_many_inbox_waits:
     'You already have 2 inbox waits open. Wait for them to return before starting another.',
 };

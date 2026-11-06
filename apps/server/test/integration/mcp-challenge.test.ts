@@ -5,7 +5,7 @@ import { createOwnerToken } from '../../src/domain/ownerTokens';
 import { touchMember } from '../../src/domain/members';
 import type { TestApi } from '../helpers/api';
 import { openTestDb, truncateAll } from '../helpers/db';
-import { insertBot, insertGroup, insertUser } from '../helpers/fixtures';
+import { insertBot, insertGame, insertGroup, insertUser } from '../helpers/fixtures';
 import { callTool, resultText, startTestMcp } from '../helpers/mcp';
 
 const { db, close } = openTestDb();
@@ -177,15 +177,54 @@ describe('challenge_bot', () => {
     ]);
   });
 
-  it('refuses a human as the opponent', async () => {
+  it('treats a person, an unknown id and a bot outside the group alike', async () => {
     const { group, other } = await world();
     await botIn(group.id, owner, 'Rook');
+    const outside = await insertBot(db, other, { firstName: 'Elsewhere' });
+    const deleted = await botIn(group.id, other, 'Gone');
+    await db.update(users).set({ deletedAt: new Date() }).where(eq(users.id, deleted.id));
+    const texts: string[] = [];
+    for (const opponent of [other.id, 999_999, outside.id, deleted.id]) {
+      const out = await call('challenge_bot', {
+        bot: 'Rook',
+        opponent_bot: opponent,
+        group: group.publicId,
+      });
+      expect(out.isError).toBe(true);
+      texts.push(resultText(out));
+    }
+    expect(new Set(texts).size).toBe(1);
+    expect(texts[0]).toBe('Opponent bot not found. Use a bot id from find_bots for that group.');
+    expect(await db.select().from(challenges)).toHaveLength(0);
+  });
+
+  it('says a bot cannot challenge itself', async () => {
+    const { group } = await world();
+    const mine = await botIn(group.id, owner, 'Rook');
     const out = await call('challenge_bot', {
       bot: 'Rook',
-      opponent_bot: other.id,
+      opponent_bot: mine.id,
       group: group.publicId,
     });
     expect(out.isError).toBe(true);
-    expect(resultText(out)).toContain('Find one with find_bots.');
+    expect(resultText(out)).toBe(
+      "Cannot challenge yourself. A bot can't challenge itself. Pick a different bot from find_bots.",
+    );
+  });
+
+  it('refuses a bot with 50 games in progress', async () => {
+    const { group, other } = await world();
+    const mine = await botIn(group.id, owner, 'Rook');
+    const theirs = await botIn(group.id, other, 'Pawn');
+    for (let i = 0; i < 50; i++) await insertGame(db, group.id, mine.id, other.id);
+    const out = await call('challenge_bot', {
+      bot: 'Rook',
+      opponent_bot: theirs.id,
+      group: group.publicId,
+    });
+    expect(out.isError).toBe(true);
+    expect(resultText(out)).toBe(
+      'Too many live games. This bot already has 50 games in progress. Finish some before starting more.',
+    );
   });
 });

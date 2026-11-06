@@ -1,14 +1,13 @@
 import { TimePerMoveSchema } from '@chess-goat/shared';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/server';
-import { resolveOwnBot, touchBotActivity } from '../../domain/bots';
-import { searchGroupBots, type BotSort } from '../../domain/botGroups';
+import { isFindableBot, searchGroupBots, type BotSort } from '../../domain/botGroups';
 import { createChallenge } from '../../domain/challenges';
 import { DomainError } from '../../domain/errors';
 import { requireGroupByPublicId } from '../../domain/groups';
 import { getMember } from '../../domain/members';
 import { displayName } from '../../domain/users';
-import { registerTool } from '../tool';
+import { registerTool, resolveAndTouch } from '../tool';
 import { botRef, READ_ONLY } from './manage';
 
 const groupRef = z.string().min(1).max(64).describe("The group's id, from list_my_groups.");
@@ -118,11 +117,21 @@ function registerChallengeBot(server: McpServer): void {
     }),
     output: z.object({ challengeId: z.string(), expiresAt: z.string() }),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    run: async ({ deps, owner }, input) => {
-      const { bot, group } = await deps.db.transaction(async (tx) => {
-        const bot = await resolveOwnBot(tx, owner.id, input.bot);
-        await touchBotActivity(tx, bot.id);
-        return { bot, group: await requireGroupByPublicId(tx, input.group) };
+    run: async (call, input) => {
+      const { deps } = call;
+      const bot = await resolveAndTouch(call, input.bot);
+      const group = await deps.db.transaction(async (tx) => {
+        const group = await requireGroupByPublicId(tx, input.group);
+        if (input.opponent_bot === bot.id) {
+          throw new DomainError('validation', 'cannot challenge yourself', { reason: 'self' });
+        }
+        // A person, an unknown id and a bot find_bots wouldn't show all look the same.
+        if (!(await isFindableBot(tx, group.id, input.opponent_bot))) {
+          throw new DomainError('not_found', 'opponent bot not found', {
+            reason: 'opponent_not_found',
+          });
+        }
+        return group;
       });
       const challenge = await createChallenge(deps, {
         groupId: group.id,

@@ -1,21 +1,15 @@
 import { freshPlayerState } from '@chess-goat/shared';
-import { and, asc, eq, inArray, isNull, or } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { DbOrTx } from '../../db/client';
 import { games, groupMembers, groups, ratings, type UserRow } from '../../db/schema';
-import {
-  createBot,
-  deleteBot,
-  listBots,
-  resolveOwnBot,
-  touchBotActivity,
-  updateBot,
-} from '../../domain/bots';
+import { createBot, deleteBot, listBots, resolveOwnBot, updateBot } from '../../domain/bots';
 import { addBotToGroup, removeBotFromGroup } from '../../domain/botGroups';
 import { requireGroupByPublicId } from '../../domain/groups';
 import { displayName } from '../../domain/users';
 import type { McpServer } from '@modelcontextprotocol/server';
-import { registerTool } from '../tool';
+import { BOT_DOCS_URL } from '../../links';
+import { registerTool, resolveAndTouch } from '../tool';
 
 /** A bot by name (case-insensitive) or numeric id. */
 export const botRef = z
@@ -62,17 +56,16 @@ export async function botViews(tx: DbOrTx, bots: readonly UserRow[]): Promise<Bo
     )
     .where(and(inArray(groupMembers.userId, ids), eq(groupMembers.status, 'member')))
     .orderBy(asc(groups.title), asc(groups.id));
-  const live = await tx
-    .select({ whiteId: games.whiteId, blackId: games.blackId })
-    .from(games)
-    .where(
-      and(eq(games.status, 'active'), or(inArray(games.whiteId, ids), inArray(games.blackId, ids))),
-    );
+  // Counted in SQL, a side at a time: a bot never plays both sides of one game.
+  const liveOn = (side: typeof games.whiteId | typeof games.blackId) =>
+    tx
+      .select({ id: side, n: sql<number>`count(*)::int` })
+      .from(games)
+      .where(and(eq(games.status, 'active'), inArray(side, ids)))
+      .groupBy(side);
   const liveByBot = new Map<number, number>();
-  for (const game of live) {
-    for (const id of new Set([game.whiteId, game.blackId])) {
-      if (ids.includes(id)) liveByBot.set(id, (liveByBot.get(id) ?? 0) + 1);
-    }
+  for (const { id, n } of [...(await liveOn(games.whiteId)), ...(await liveOn(games.blackId))]) {
+    liveByBot.set(id, (liveByBot.get(id) ?? 0) + n);
   }
   const start = freshPlayerState().rating;
   return bots.map((bot) => ({
@@ -104,7 +97,8 @@ const botLine = (bot: BotView): string => {
 };
 
 const NEXT_STEPS =
-  "Your bot exists but isn't in any group yet. Call list_my_groups, then add_bot_to_group. Then loop on get_inbox (wait_seconds up to 45) to answer challenges and moves. People challenge bots from the group; bots can challenge other bots with find_bots and challenge_bot.";
+  "Your bot exists but isn't in any group yet. Call list_my_groups, then add_bot_to_group. Then loop on get_inbox (wait_seconds up to 45) to answer challenges and moves. People challenge bots from the group; bots can challenge other bots with find_bots and challenge_bot." +
+  ` Docs: ${BOT_DOCS_URL}.`;
 
 export const READ_ONLY = { readOnlyHint: true, openWorldHint: false } as const;
 const WRITE = { readOnlyHint: false, destructiveHint: false, openWorldHint: false } as const;
@@ -161,17 +155,19 @@ function registerUpdateBot(server: McpServer): void {
     }),
     output: z.object({ bot: botSchema }),
     annotations: { ...WRITE, idempotentHint: true },
-    run: async ({ deps, owner }, input) => ({
-      bot: await deps.db.transaction(async (tx) => {
-        const own = await resolveOwnBot(tx, owner.id, input.bot);
-        await touchBotActivity(tx, own.id);
-        const patch: { name?: string; tagline?: string } = {};
-        if (input.name !== undefined) patch.name = input.name;
-        if (input.tagline !== undefined) patch.tagline = input.tagline;
-        const updated = await updateBot(tx, owner.id, own.id, patch);
-        return (await botViews(tx, [updated]))[0]!;
-      }),
-    }),
+    run: async (call, input) => {
+      const { deps, owner } = call;
+      const own = await resolveAndTouch(call, input.bot);
+      return {
+        bot: await deps.db.transaction(async (tx) => {
+          const patch: { name?: string; tagline?: string } = {};
+          if (input.name !== undefined) patch.name = input.name;
+          if (input.tagline !== undefined) patch.tagline = input.tagline;
+          const updated = await updateBot(tx, owner.id, own.id, patch);
+          return (await botViews(tx, [updated]))[0]!;
+        }),
+      };
+    },
     text: ({ bot }) => `Updated. ${botLine(bot)}`,
   });
 }
@@ -274,11 +270,11 @@ function registerMembership(
     input: z.object({ bot: botRef, group: groupRef }),
     output: z.object({ ok: z.literal(true) }),
     annotations: { ...WRITE, idempotentHint: true },
-    run: async ({ deps, owner }, input) => {
+    run: async (call, input) => {
+      const { deps, owner } = call;
+      const bot = await resolveAndTouch(call, input.bot);
       await deps.db.transaction(async (tx) => {
-        const bot = await resolveOwnBot(tx, owner.id, input.bot);
         const group = await requireGroupByPublicId(tx, input.group);
-        await touchBotActivity(tx, bot.id);
         await (adding ? addBotToGroup : removeBotFromGroup)(tx, owner.id, bot.id, group.id);
       });
       return { ok: true as const };

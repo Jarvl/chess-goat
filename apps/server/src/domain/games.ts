@@ -273,7 +273,9 @@ export async function lockActiveGame(
   const game = await requireGameByPublicId(tx, publicId, { forUpdate: true });
   const colour = colourOf(game, userId);
   if (!colour) throw new DomainError('forbidden', 'only the players can do that');
-  if (game.status !== 'active') throw new DomainError('stale_state', 'the game is over');
+  if (game.status !== 'active') {
+    throw new DomainError('stale_state', 'the game is over', { reason: 'game_over' });
+  }
   const now = await dbNow(tx);
   if (game.deadlineAt && game.deadlineAt.getTime() < now.getTime()) {
     return { game: await applyTimeout(tx, game, now), colour, now, ended: true };

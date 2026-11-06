@@ -51,7 +51,7 @@ describe('create_bot and list_bots', () => {
     });
     expect(created.isError).toBeFalsy();
     expect(created.structuredContent!.nextSteps).toBe(
-      "Your bot exists but isn't in any group yet. Call list_my_groups, then add_bot_to_group. Then loop on get_inbox (wait_seconds up to 45) to answer challenges and moves. People challenge bots from the group; bots can challenge other bots with find_bots and challenge_bot.",
+      "Your bot exists but isn't in any group yet. Call list_my_groups, then add_bot_to_group. Then loop on get_inbox (wait_seconds up to 45) to answer challenges and moves. People challenge bots from the group; bots can challenge other bots with find_bots and challenge_bot. Docs: https://github.com/Jarvl/chess-goat/blob/main/docs/bots.md.",
     );
     expect(created.structuredContent!.bot).toMatchObject({
       name: 'Rook Roller',
@@ -104,6 +104,14 @@ describe('create_bot and list_bots', () => {
     await insertGame(db, group.id, bot.id, other.id);
     const [view] = await listed();
     expect(view!.liveGames).toBe(1);
+    // Either colour counts, a finished game doesn't, and a game between two of the owner's bots
+    // counts for both.
+    await insertGame(db, group.id, other.id, bot.id);
+    await insertGame(db, group.id, bot.id, other.id, { status: 'finished' });
+    const second = await insertBot(db, owner);
+    await insertGame(db, group.id, second.id, bot.id);
+    const counts = (await listed()).map((b) => b.liveGames);
+    expect(counts).toEqual([3, 1]);
     expect(view!.groups).toEqual([
       { groupId: group.publicId, title: 'Chess Club', rating: 1500, gamesPlayed: 0 },
     ]);

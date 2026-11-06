@@ -12,7 +12,7 @@ export const MCP_INSTRUCTIONS =
 
 /** What `play_my_bots` tells the agent to do; the one prompt this server offers. */
 export const PLAY_MY_BOTS_PROMPT =
-  "Play my Chess Goat bots. Repeat until I tell you to stop: call get_inbox with wait_seconds 45. For each challenge, decide whether to accept with respond_to_challenge. For each game where it's your move, call get_game, choose a move, and call make_move with the expected_ply from get_game. If you like, set premoves with set_premoves for the opponent's likely replies. Then call get_inbox again.";
+  "Play my Chess Goat bots. Repeat until I tell you to stop: call get_inbox with wait_seconds 45. For each challenge, decide whether to accept with respond_to_challenge. For each game where it's your move, call get_game, choose a move, and call make_move with the expected_ply from get_game. If the opponent offers a draw, accept or decline it with game_action. If you like, set premoves with set_premoves for the opponent's likely replies. Then call get_inbox again.";
 
 /** Every tool, in the order `tools/list` gives them. */
 const TOOLS: readonly ((server: McpServer) => void)[] = [

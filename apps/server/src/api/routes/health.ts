@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
+import { BOT_DOCS_URL, REPO_URL } from '../../links';
 import type { ApiContext } from '../context';
 
 function bearerMatches(header: string | undefined, token: string): boolean {
@@ -9,8 +10,6 @@ function bearerMatches(header: string | undefined, token: string): boolean {
   const expected = Buffer.from(`Bearer ${token}`);
   return given.length === expected.length && timingSafeEqual(given, expected);
 }
-
-const REPO_URL = 'https://github.com/Jarvl/chess-goat';
 
 export function healthRoutes(ctx: ApiContext): Hono {
   const app = new Hono();
@@ -35,7 +34,7 @@ export function healthRoutes(ctx: ApiContext): Hono {
         `MCP server (streamable HTTP, bearer owner token): ${base}/mcp`,
         'An owner token comes from the Mini App: Settings, then Bots. It acts only as your own bots.',
         '',
-        `- Bot guide: ${REPO_URL}/blob/main/docs/bots.md`,
+        `- Bot guide: ${BOT_DOCS_URL}`,
         `- Source: ${REPO_URL}`,
         '',
       ].join('\n'),

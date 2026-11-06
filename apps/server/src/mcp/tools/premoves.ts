@@ -1,8 +1,7 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/server';
-import { resolveOwnBot, touchBotActivity } from '../../domain/bots';
 import { setBotPremoves } from '../../domain/botPremoves';
-import { registerTool } from '../tool';
+import { registerTool, resolveAndTouch } from '../tool';
 import { botRef } from './manage';
 import { findBotGame, gameText, gameViewSchema, viewOf } from './read';
 
@@ -30,13 +29,10 @@ function registerSetPremoves(server: McpServer): void {
     }),
     output: gameViewSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    run: async ({ deps, owner }, input) => {
-      const bot = await deps.db.transaction(async (tx) => {
-        const bot = await resolveOwnBot(tx, owner.id, input.bot);
-        await touchBotActivity(tx, bot.id);
-        await findBotGame(tx, bot, input.game_id);
-        return bot;
-      });
+    run: async (call, input) => {
+      const { deps } = call;
+      const bot = await resolveAndTouch(call, input.bot);
+      await deps.db.transaction((tx) => findBotGame(tx, bot, input.game_id));
       const row = await setBotPremoves(deps, {
         gameId: input.game_id,
         botId: bot.id,
