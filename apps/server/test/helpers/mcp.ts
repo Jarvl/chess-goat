@@ -151,3 +151,34 @@ export function resultText(result: ToolResult<unknown>): string {
     .map((c) => c.text ?? '')
     .join('\n');
 }
+
+/**
+ * Opens a `subscriptions/listen` stream and returns the live response without reading it, so a
+ * test can hold it open. Cancel its body to close it. `target` is a test app or a live `/mcp` URL.
+ */
+export async function openListen(target: RequestApp | string, token: string): Promise<Response> {
+  nextId += 1;
+  const init: RequestInit = {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      accept: 'application/json, text/event-stream',
+      'mcp-protocol-version': MCP_PROTOCOL_VERSION,
+      'mcp-method': 'subscriptions/listen',
+      authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: nextId,
+      method: 'subscriptions/listen',
+      params: {
+        notifications: { toolsListChanged: true },
+        _meta: {
+          'io.modelcontextprotocol/protocolVersion': MCP_PROTOCOL_VERSION,
+          'io.modelcontextprotocol/clientCapabilities': {},
+        },
+      },
+    }),
+  };
+  return typeof target === 'string' ? fetch(target, init) : target.request('/mcp', init);
+}

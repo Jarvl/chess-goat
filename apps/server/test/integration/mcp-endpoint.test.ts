@@ -7,12 +7,13 @@ import { createOwnerToken, revokeOwnerToken } from '../../src/domain/ownerTokens
 import { DomainError } from '../../src/domain/errors';
 import { scopeAuthInfo, type McpCall } from '../../src/mcp/context';
 import { toolError } from '../../src/mcp/errors';
+import { mcpEndpoint } from '../../src/mcp/routes';
 import { MCP_INSTRUCTIONS } from '../../src/mcp/server';
 import { registerTool } from '../../src/mcp/tool';
 import type { TestApi } from '../helpers/api';
 import { openTestDb, truncateAll } from '../helpers/db';
 import { insertUser } from '../helpers/fixtures';
-import { callTool, mcpCall, resultText, startTestMcp } from '../helpers/mcp';
+import { callTool, mcpCall, openListen, resultText, startTestMcp } from '../helpers/mcp';
 
 const { db, close } = openTestDb();
 let api: TestApi;
@@ -263,5 +264,47 @@ describe('registerTool', () => {
       }),
     ]);
     expect((await callTool(app, token, 'probe')).notifications).toEqual([]);
+  });
+});
+
+describe('/mcp listen streams', () => {
+  /** Opens a listen stream and waits for its acknowledgement; `close` cancels it. */
+  const listen = async (app: Parameters<typeof openListen>[0], who: string) => {
+    const res = await openListen(app, who);
+    expect(res.status).toBe(200);
+    const reader = res.body!.getReader();
+    const first = await reader.read();
+    expect(new TextDecoder().decode(first.value)).toContain('subscriptions/acknowledged');
+    return { close: () => reader.cancel() };
+  };
+
+  it('holds each owner to two concurrent listen streams', async () => {
+    const one = await listen(api.app, token);
+    const two = await listen(api.app, token);
+
+    const third = await openListen(api.app, token);
+    expect(third.status).toBe(HTTP_STATUS_BY_ERROR_CODE.rate_limited);
+    expect(await third.json()).toEqual(
+      apiErrorBody('rate_limited', 'too many open listen streams'),
+    );
+
+    const other = await insertUser(db);
+    const otherToken = await db.transaction((tx) => createOwnerToken(tx, other.id));
+    const theirs = await listen(api.app, otherToken);
+
+    await one.close();
+    const again = await listen(api.app, token);
+    await Promise.all([two, theirs, again].map((stream) => stream.close()));
+  });
+
+  it('ends open listen streams on close', async () => {
+    const endpoint = mcpEndpoint(api.ctx);
+    const res = await openListen(endpoint.routes, token);
+    const reader = res.body!.getReader();
+    await reader.read(); // the acknowledgement
+    await endpoint.close();
+    let done = false;
+    while (!done) done = (await reader.read()).done;
+    expect(done).toBe(true);
   });
 });
