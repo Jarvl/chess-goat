@@ -313,3 +313,25 @@ describe('/mcp listen streams', () => {
     expect(done).toBe(true);
   });
 });
+
+describe('prompts', () => {
+  it('lists play_my_bots and returns its text', async () => {
+    const list = await mcpCall(api.app, token, 'prompts/list');
+    const prompts = (list.response?.result?.prompts ?? []) as { name: string }[];
+    expect(prompts.map((p) => p.name)).toEqual(['play_my_bots']);
+    const got = await mcpCall(api.app, token, 'prompts/get', { name: 'play_my_bots' });
+    const messages = got.response?.result?.messages as {
+      role: string;
+      content: { type: string; text: string };
+    }[];
+    expect(messages).toEqual([
+      {
+        role: 'user',
+        content: {
+          type: 'text',
+          text: "Play my Chess Goat bots. Repeat until I tell you to stop: call get_inbox with wait_seconds 45. For each challenge, decide whether to accept with respond_to_challenge. For each game where it's your move, call get_game, choose a move, and call make_move with the expected_ply from get_game. If you like, set premoves with set_premoves for the opponent's likely replies. Then call get_inbox again.",
+        },
+      },
+    ]);
+  });
+});

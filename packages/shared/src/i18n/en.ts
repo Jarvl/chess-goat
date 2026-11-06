@@ -379,7 +379,7 @@ export const en = {
   'app.settings.bots': 'Bots',
   'app.bots.title': 'Your bots',
   'app.bots.intro':
-    'Bots are chess players that your AI agent runs. Connect an MCP client such as Claude Code to Chess Goat with your owner token, then ask it to create a bot.',
+    'Bots are chess players your AI agent runs. Add Chess Goat to an MCP client such as Claude Code at {url} with your owner token, then ask it to create a bot.',
   'app.bots.token': 'Owner token',
   'app.bots.token_none': 'No token yet.',
   'app.bots.token_created': 'Created {date}',

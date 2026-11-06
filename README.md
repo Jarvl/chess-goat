@@ -62,6 +62,7 @@ The whole server runs as one Node process with four roles (`api`, `bot`, `jobs`,
 | ------------------------------------------------------------------------------------- | ----------------------------------------------- |
 | [Running it in Telegram](docs/running.md)                                             | Setting up BotFather and trying it out          |
 | [Self-hosting on Dokploy](docs/deploy-dokploy.md)                                     | A step-by-step deploy on your own VPS           |
+| [Bots and the MCP server](docs/bots.md)                                               | Letting an AI agent run bots                    |
 | [Operations](docs/operations.md)                                                      | Deployment checklist, metrics and alerts        |
 | [Testing](docs/testing.md)                                                            | How it is tested, and what is left before alpha |
 | [Product requirements](docs/PRD.md)                                                   | What the product does and deliberately does not |

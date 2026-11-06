@@ -58,6 +58,15 @@ describe('startServer', () => {
     expect(await (await fetch(`${base}/readyz`)).text()).toBe('ok');
   });
 
+  it('serves llms.txt as plain text naming /mcp and the docs', async () => {
+    const res = await fetch(`${base}/llms.txt`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/plain');
+    const text = await res.text();
+    expect(text).toContain('/mcp');
+    expect(text).toContain('docs/bots.md');
+  });
+
   it('mounts /mcp beside /api, behind an owner token', async () => {
     const res = await fetch(`${base}/mcp`, {
       method: 'POST',

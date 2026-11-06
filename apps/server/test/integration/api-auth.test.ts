@@ -141,7 +141,11 @@ describe('POST /api/launch', () => {
     expect(body.route.kind).toBe('home');
     expect(body.user).toEqual({ id: expect.any(String), name: '@alice', username: 'alice' });
     expect(body.askWriteAccess).toBe(true);
-    expect(body.bot).toEqual({ username: 'TestChessBot', miniAppShortName: 'chess' });
+    expect(body.bot).toEqual({
+      username: 'TestChessBot',
+      miniAppShortName: 'chess',
+      mcpUrl: 'https://chess.test/mcp',
+    });
     const me = await api.request('GET', '/api/me/groups', { token: body.token });
     expect(me.status).toBe(200);
   });

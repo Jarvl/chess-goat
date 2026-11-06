@@ -51,7 +51,11 @@ export function renderApp(
   client.setToken('jwt');
   session.value = {
     user: { id: '1', name: 'Alice', username: 'alice' },
-    bot: { username: 'TestChessBot', miniAppShortName: 'chess' },
+    bot: {
+      username: 'TestChessBot',
+      miniAppShortName: 'chess',
+      mcpUrl: 'https://chess.test/mcp',
+    },
     launchedFrom: null,
   };
   prefs.value = {

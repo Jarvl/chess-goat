@@ -5,6 +5,7 @@ import {
   type OwnerTokenStatusDto,
 } from '@chess-goat/shared';
 import { useEffect, useState } from 'preact/hooks';
+import { session } from '../../state/session';
 import { useApp } from '../context';
 import { confirmDialog } from '../dialog';
 import { dateLabel } from '../format';
@@ -76,7 +77,7 @@ export function Bots() {
   return (
     <div class="screen">
       <h1 class="title">{t('app.bots.title')}</h1>
-      <p class="hint">{t('app.bots.intro')}</p>
+      <p class="hint">{t('app.bots.intro', { url: session.value?.bot.mcpUrl ?? '' })}</p>
       <div class="card" data-card="owner-token">
         <div class="field">
           <span class="grow">

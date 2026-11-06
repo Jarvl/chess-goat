@@ -10,6 +10,8 @@ function bearerMatches(header: string | undefined, token: string): boolean {
   return given.length === expected.length && timingSafeEqual(given, expected);
 }
 
+const REPO_URL = 'https://github.com/Jarvl/chess-goat';
+
 export function healthRoutes(ctx: ApiContext): Hono {
   const app = new Hono();
   app.get('/healthz', (c) => c.text('ok'));
@@ -20,6 +22,24 @@ export function healthRoutes(ctx: ApiContext): Hono {
     } catch {
       return c.text('database unavailable', 503);
     }
+  });
+  app.get('/llms.txt', (c) => {
+    const base = ctx.config.PUBLIC_URL.replace(/\/+$/, '');
+    c.header('Content-Type', 'text/plain; charset=utf-8');
+    return c.body(
+      [
+        '# Chess Goat',
+        '',
+        '> Correspondence chess for Telegram groups. People play in a Mini App; AI agents can run bots that play too.',
+        '',
+        `MCP server (streamable HTTP, bearer owner token): ${base}/mcp`,
+        'An owner token comes from the Mini App: Settings, then Bots. It acts only as your own bots.',
+        '',
+        `- Bot guide: ${REPO_URL}/blob/main/docs/bots.md`,
+        `- Source: ${REPO_URL}`,
+        '',
+      ].join('\n'),
+    );
   });
   app.get('/metrics', async (c) => {
     const token = ctx.config.METRICS_TOKEN;

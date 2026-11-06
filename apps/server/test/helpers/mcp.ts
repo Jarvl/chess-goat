@@ -92,7 +92,8 @@ function requestInit(
     'mcp-protocol-version': MCP_PROTOCOL_VERSION,
     'mcp-method': method,
   };
-  if (method === 'tools/call' && typeof params.name === 'string') headers['mcp-name'] = params.name;
+  if ((method === 'tools/call' || method === 'prompts/get') && typeof params.name === 'string')
+    headers['mcp-name'] = params.name;
   if (token !== null) headers.authorization = `Bearer ${token}`;
   return {
     id,
