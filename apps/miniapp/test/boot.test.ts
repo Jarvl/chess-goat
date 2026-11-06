@@ -195,6 +195,7 @@ describe('boot', () => {
       group: { id: 'GrOuPiDxYz', title: 'Club' },
       settings: GROUP_SETTINGS_DEFAULTS,
       blocked: [],
+      bots: [],
       botIsAdmin: true,
       isForum: false,
     };

@@ -10,7 +10,7 @@ import type { DbOrTx } from '../db/client';
 import type { ChallengeRow, GameRow, GroupRow, UserRow } from '../db/schema';
 import { listMoves } from '../domain/games';
 import { getPlayerRating } from '../domain/ratings';
-import { displayName, flairEmoji, requireUser } from '../domain/users';
+import { displayName, flairEmoji, isOwnedBot, requireUser } from '../domain/users';
 import type { ChallengeCardView, GameCardView, PersonView } from './cards';
 import { miniAppLink } from './links';
 
@@ -53,6 +53,9 @@ export async function challengeCardView(
             flair: '',
           }
         : null,
+    opponentIsBot: opponent !== null && isOwnedBot(opponent),
+    opponentActivity:
+      opponent !== null && isOwnedBot(opponent) ? { lastActiveAt: opponent.lastActiveAt } : null,
     timePerMove: challenge.timePerMove as TimePerMove,
     rated: challenge.rated,
     challengerColour: challenge.challengerColour,

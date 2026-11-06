@@ -1,5 +1,6 @@
 import type { PlayerRef } from '@chess-goat/shared';
 import { and, desc, eq, isNull, ne, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import type { DbOrTx } from '../db/client';
 import { groupMembers, ratings, users, type GroupMemberRow, type UserRow } from '../db/schema';
 import { toPlayerRef } from './players';
@@ -51,7 +52,19 @@ export async function getMember(
   return row ?? null;
 }
 
+/** A bot is blocked here when it is, or when its owner is: blocking a person blocks their bots. */
 export async function isBlocked(tx: DbOrTx, groupId: number, userId: number): Promise<boolean> {
+  const own = alias(groupMembers, 'own_member');
+  const owner = alias(groupMembers, 'owner_member');
+  const [row] = await tx
+    .select({ own: own.blockedAt, owner: owner.blockedAt })
+    .from(users)
+    .leftJoin(own, and(eq(own.groupId, groupId), eq(own.userId, users.id)))
+    .leftJoin(owner, and(eq(owner.groupId, groupId), eq(owner.userId, users.ownerId)))
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (row) return row.own != null || row.owner != null;
+  // No such user: fall back to the plain membership row.
   const member = await getMember(tx, groupId, userId);
   return member?.blockedAt != null;
 }

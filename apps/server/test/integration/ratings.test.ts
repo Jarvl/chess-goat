@@ -9,7 +9,7 @@ import {
 } from '../../src/domain/ratings';
 import { resign } from '../../src/domain/games';
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
-import { insertGame, insertGroup, insertUser, world } from '../helpers/fixtures';
+import { insertBot, insertGame, insertGroup, insertUser, world } from '../helpers/fixtures';
 import { AFTER_E4_E5 } from '../helpers/chess';
 
 const { db, close } = openTestDb();
@@ -28,9 +28,11 @@ async function finished(
   endReason: GameRow['endReason'],
   day: number,
   rated = true,
+  botPlayers = 0,
 ): Promise<GameRow> {
   const game = await insertGame(db, groupId, whiteId, blackId, {
     rated,
+    botPlayers,
     status: 'finished',
     result,
     endReason,
@@ -145,6 +147,94 @@ describe('rebuildGroupRatings', () => {
       .where(eq(games.id, a.id));
     await rebuildGroupRatings(db, group.id);
     expect(await db.select().from(ratings)).toHaveLength(0);
+  });
+});
+
+describe('the bot rating pool', () => {
+  const ratingRows = () => db.select().from(ratings).orderBy(ratings.userId);
+  const ratingOf = async (userId: number) =>
+    (await ratingRows()).find((row) => row.userId === userId);
+
+  it('a rated human-vs-bot game moves only the bot', async () => {
+    const { group, alice, bob, carol } = await world(db, { game: false });
+    const bot = await insertBot(db, bob);
+    const game = await finished(group.id, alice.id, bot.id, '1-0', 'resignation', 1, true, 1);
+
+    const snapshot = await applyGameResultToRatings(db, game, finishedAt(1));
+
+    expect(snapshot).not.toBeNull();
+    expect(await ratingOf(alice.id)).toBeUndefined();
+    expect(await ratingOf(bot.id)).toMatchObject({ gamesPlayed: 1, losses: 1 });
+    expect((await ratingOf(bot.id))!.rating).toBeLessThan(1500);
+    const stored = await reload(game.id);
+    expect([
+      stored.whiteRatingBefore,
+      stored.whiteRatingAfter,
+      stored.whiteRdBefore,
+      stored.whiteRdAfter,
+    ]).toEqual([null, null, null, null]);
+    expect(stored.blackRatingBefore).toBe(1500);
+    expect(stored.blackRatingAfter).toBeCloseTo((await ratingOf(bot.id))!.rating, 9);
+
+    // A human with a rating keeps it unchanged, and it is the bot's opponent rating.
+    const warmUp = await finished(group.id, carol.id, alice.id, '1-0', 'resignation', 2);
+    await applyGameResultToRatings(db, warmUp, finishedAt(2));
+    const carolBefore = await ratingOf(carol.id);
+    const second = await finished(group.id, bot.id, carol.id, '0-1', 'checkmate', 3, true, 1);
+    await applyGameResultToRatings(db, second, finishedAt(3));
+    expect(await ratingOf(carol.id)).toEqual(carolBefore);
+    const stored2 = await reload(second.id);
+    expect(stored2.blackRatingBefore).toBeNull();
+    expect(stored2.whiteRatingBefore).toBeCloseTo((await reload(game.id)).blackRatingAfter!, 9);
+  });
+
+  it('rated bot-vs-bot updates both bots', async () => {
+    const { group, alice, bob } = await world(db, { game: false });
+    const botA = await insertBot(db, alice);
+    const botB = await insertBot(db, bob);
+    const game = await finished(group.id, botA.id, botB.id, '0-1', 'checkmate', 1, true, 2);
+
+    await applyGameResultToRatings(db, game, finishedAt(1));
+
+    expect(await ratingOf(botA.id)).toMatchObject({ gamesPlayed: 1, losses: 1 });
+    expect(await ratingOf(botB.id)).toMatchObject({ gamesPlayed: 1, wins: 1 });
+    const stored = await reload(game.id);
+    expect(stored.whiteRatingBefore).toBe(1500);
+    expect(stored.blackRatingAfter).toBeGreaterThan(1500);
+  });
+
+  it('rebuild matches incremental', async () => {
+    const { group, alice, bob, carol } = await world(db, { game: false });
+    const botB = await insertBot(db, bob);
+    const botC = await insertBot(db, carol);
+    const hvh = await finished(group.id, alice.id, carol.id, '1-0', 'checkmate', 1);
+    const hvb = await finished(group.id, botB.id, alice.id, '1-0', 'resignation', 2, true, 1);
+    const bvb = await finished(group.id, botB.id, botC.id, '1/2-1/2', 'stalemate', 3, true, 2);
+    for (const game of [hvh, hvb, bvb]) await applyGameResultToRatings(db, game, game.finishedAt!);
+    const incremental = await ratingRows();
+    expect(incremental.find((row) => row.userId === alice.id)?.gamesPlayed).toBe(1);
+    const snapshots = await Promise.all([hvh, hvb, bvb].map((g) => reload(g.id)));
+
+    const { changedGameIds } = await rebuildGroupRatings(db, group.id);
+
+    expect(changedGameIds).toEqual([]);
+    expect(await ratingRows()).toEqual(incremental);
+    expect(await Promise.all([hvh, hvb, bvb].map((g) => reload(g.id)))).toEqual(snapshots);
+
+    await db
+      .update(games)
+      .set({ voidedAt: sql`now()`, voidedBy: alice.id })
+      .where(eq(games.id, hvb.id));
+    await rebuildGroupRatings(db, group.id);
+    const aliceAfterVoid = await ratingOf(alice.id);
+
+    await truncateAll(db);
+    const solo = await world(db, { game: false });
+    const only = await finished(solo.group.id, solo.alice.id, solo.carol.id, '1-0', 'checkmate', 1);
+    await applyGameResultToRatings(db, only, only.finishedAt!);
+    const { userId: _a, groupId: _g, ...expected } = (await ratingOf(solo.alice.id))!;
+    const { userId: _b, groupId: _h, ...actual } = aliceAfterVoid!;
+    expect(actual).toEqual(expected);
   });
 });
 

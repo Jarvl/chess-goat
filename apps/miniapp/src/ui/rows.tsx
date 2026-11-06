@@ -1,7 +1,7 @@
 import { ratingLabel, t, type ChallengeDto, type LeaderboardEntry } from '@chess-goat/shared';
 import { Avatar } from './Avatar';
 import { Flair } from './Flair';
-import { termsLabel } from './format';
+import { botActivityLabel, termsLabel } from './format';
 
 export function ChallengeCard(props: {
   challenge: ChallengeDto;
@@ -72,8 +72,10 @@ export function PlayerRow(props: {
   rank: number;
   you: boolean;
   onOpen: (id: string) => void;
+  now?: Date;
 }) {
   const { entry } = props;
+  const activity = botActivityLabel(entry, props.now ?? new Date());
   // "(you)" is part of the name's text, as in the prototype, so the two ellipsise together and the
   // flair and rating beside them stay whole (flair spec §5.1).
   const name = props.you ? `${entry.name} ${t('app.leaderboard.you')}` : entry.name;
@@ -92,6 +94,7 @@ export function PlayerRow(props: {
           <span class="rating">{ratingLabel(entry.rating, entry.provisional)}</span>
         </span>
         <span class="secondary">{t('app.player.record', entry.record)}</span>
+        {activity ? <span class="secondary bot-activity">{activity}</span> : null}
       </span>
       <span class="hint">{t('app.player.games', { count: entry.gamesPlayed })}</span>
     </button>

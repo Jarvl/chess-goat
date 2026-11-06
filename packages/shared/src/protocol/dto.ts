@@ -41,6 +41,8 @@ export const PlayerRefSchema = z.object({
   photoUrl: z.string().nullable(),
   /** Worn flair ids in slot order; the app skips ids it does not know. */
   flair: z.array(z.string()).max(MAX_WORN_FLAIR).default([]),
+  /** Owned bots only (null for humans and the engine): when the bot last did anything, null if never. */
+  botActivity: z.object({ lastActiveAt: IsoDateSchema.nullable() }).nullable(),
 });
 
 export type PlayerRef = z.infer<typeof PlayerRefSchema>;
@@ -286,6 +288,8 @@ export const GroupSettingsDtoSchema = z.object({
   group: GroupRefSchema,
   settings: GroupSettingsSchema,
   blocked: z.array(PlayerRefSchema),
+  /** The group's bots; `blockedViaOwner` marks a bot blocked only because its owner is. */
+  bots: z.array(PlayerRefSchema.extend({ blocked: z.boolean(), blockedViaOwner: z.boolean() })),
   botIsAdmin: z.boolean(),
   isForum: z.boolean(),
 });

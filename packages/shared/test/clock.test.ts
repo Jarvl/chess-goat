@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { deadlineAfterMove, formatClock, formatTimeLeft, reminderAt } from '../src/clock';
+import {
+  compactDuration,
+  deadlineAfterMove,
+  formatClock,
+  formatTimeLeft,
+  reminderAt,
+} from '../src/clock';
 
 const now = new Date('2026-09-20T10:00:00.000Z');
 
@@ -64,5 +70,15 @@ describe('formatClock', () => {
 
   it('formats a passed deadline as zero', () => {
     expect(formatClock(-1000)).toBe('0:00');
+  });
+});
+
+describe('compactDuration', () => {
+  it('uses the largest whole unit, minutes at least', () => {
+    expect(compactDuration(3 * 86_400_000 + 5 * 3_600_000)).toBe('3d');
+    expect(compactDuration(5 * 3_600_000 + 59 * 60_000)).toBe('5h');
+    expect(compactDuration(12 * 60_000)).toBe('12m');
+    expect(compactDuration(5_000)).toBe('0m');
+    expect(compactDuration(-1)).toBe('0m');
   });
 });

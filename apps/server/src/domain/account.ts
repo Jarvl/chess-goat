@@ -11,12 +11,11 @@ import {
 } from '../db/schema';
 import type { Deps } from './deps';
 import { deletedStub } from './dmText';
-import { retireChallengeDm } from './challenges';
+import { settleInChat } from './challenges';
 import { retireUserDms } from './dms';
 import { finishGame } from './games';
 import { revokeOwnerToken } from './ownerTokens';
 import { deletePhoto } from './photos';
-import { enqueue } from '../jobs/queue';
 
 /** The live games and pending challenges of players who are leaving, locked by `lockPlay`. */
 export type Play = { leaving: ReadonlySet<number>; games: GameRow[]; challenges: ChallengeRow[] };
@@ -89,19 +88,14 @@ export async function leavePlay(
       .update(challenges)
       .set({ status: outcome, resolvedAt: sql`now()` })
       .where(eq(challenges.id, challenge.id));
-    await retireChallengeDm(tx, challenge, outcome);
-    await enqueue(tx, {
-      kind: 'edit_card',
-      payload: { challengeId: challenge.id },
-      dedupKey: `card:ch:${challenge.publicId}`,
-    });
+    await settleInChat(tx, challenge, outcome);
   }
   return publicIds;
 }
 
 /** What a deleted bot's `users` row keeps: its id, owner and history, under the anonymous name. */
 export function deletedBotFields(now: Date) {
-  return { firstName: 'Deleted bot', tagline: null, deletedAt: now };
+  return { firstName: 'Deleted bot', tagline: null, lastActiveAt: null, deletedAt: now };
 }
 
 /** Spec §12 "Delete my data": immediate and irreversible; opponents' histories stay consistent. */

@@ -1281,7 +1281,8 @@ button {
   color: var(--text);
 }
 
-.player-bar .sub {
+.player-bar .sub,
+.player-bar .bot-activity {
   min-width: 0;
   color: var(--hint);
   white-space: nowrap;

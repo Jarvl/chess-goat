@@ -79,6 +79,45 @@ describe('flair beside names', () => {
     );
     expect(r.root.querySelector('.name-row .name')?.nextElementSibling?.textContent).toBe('🤝');
   });
+  it('shows how recently a bot was active and nothing for a human', () => {
+    const now = new Date('2026-11-03T12:00:00.000Z');
+    const row = (activity: { lastActiveAt: string | null } | null) => {
+      const entry = {
+        ...playerRef('9', 'Rook-E', { botActivity: activity }),
+        gamesPlayed: 3,
+        record: { wins: 1, draws: 1, losses: 1 },
+      };
+      return renderApp(
+        () => <PlayerRow entry={entry} rank={1} you={false} onOpen={() => {}} now={now} />,
+        ok,
+      ).root.querySelector('.player-row')!;
+    };
+    const ago = (ms: number) => ({ lastActiveAt: new Date(now.getTime() - ms).toISOString() });
+    expect(row(ago(3 * 86_400_000)).querySelector('.bot-activity')?.textContent).toBe(
+      'Last active 3d ago',
+    );
+    expect(row(ago(60_000)).querySelector('.bot-activity')?.textContent).toBe('Active now');
+    expect(row({ lastActiveAt: null }).querySelector('.bot-activity')?.textContent).toBe(
+      'Not active yet',
+    );
+    expect(row(null).querySelector('.bot-activity')).toBeNull();
+  });
+  it('shows a bot’s activity under its name in the player bar', () => {
+    const now = new Date('2026-11-03T12:00:00.000Z');
+    const dto = gameDto({
+      black: {
+        ...gameDto().black,
+        botActivity: { lastActiveAt: new Date(now.getTime() - 2 * 3_600_000).toISOString() },
+      },
+    });
+    const bar = (colour: 'white' | 'black') =>
+      renderApp(
+        () => <PlayerBar dto={dto} colour={colour} fen={INITIAL_FEN} now={now} />,
+        ok,
+      ).root.querySelector('.player-bar')!;
+    expect(bar('black').querySelector('.bot-activity')?.textContent).toBe('Last active 2h ago');
+    expect(bar('white').querySelector('.bot-activity')).toBeNull();
+  });
   it('follows your name and “(you)” on your own leaderboard row', () => {
     const entry = {
       ...playerRef('1', 'Alice', { flair: ['draws_10'] }),

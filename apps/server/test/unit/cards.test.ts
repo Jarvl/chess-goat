@@ -22,6 +22,7 @@ const challenge = (over: Partial<ChallengeCardView> = {}): ChallengeCardView => 
   status: 'pending',
   challenger: alice,
   opponent: bob,
+  opponentIsBot: false,
   timePerMove: 86400,
   rated: true,
   challengerColour: 'random',
@@ -49,6 +50,42 @@ const game = (over: Partial<GameCardView> = {}): GameCardView => ({
   openLink: 'https://t.me/ChessGoatBot/chess?startapp=g_game000001',
   lobbyLink,
   ...over,
+});
+
+describe('renderChallengeCard to a bot', () => {
+  const now = new Date('2026-11-03T12:00:00.000Z');
+  const bot = { name: 'Rook-E', username: null, telegramUserId: null, flair: '' };
+  const toBot = (lastActiveAt: Date | null) =>
+    renderChallengeCard(
+      challenge({ opponent: bot, opponentIsBot: true, opponentActivity: { lastActiveAt } }),
+      now,
+    ).text.split('\n');
+
+  it('says when the bot was last active', () => {
+    const lines = toBot(new Date(now.getTime() - 3 * 86_400_000));
+    expect(lines[1]).toBe('Rook-E was last active 3d ago.');
+  });
+
+  it('says the bot is active now within five minutes', () => {
+    expect(toBot(new Date(now.getTime() - 60_000))[1]).toBe('Rook-E is active now.');
+  });
+
+  it('says a bot with no activity has not been active yet', () => {
+    expect(toBot(null)[1]).toBe("Rook-E hasn't been active yet.");
+  });
+
+  it('adds no activity line once the challenge is settled', () => {
+    const card = renderChallengeCard(
+      challenge({
+        status: 'expired',
+        opponent: bot,
+        opponentIsBot: true,
+        opponentActivity: { lastActiveAt: null },
+      }),
+      now,
+    );
+    expect(card.text).not.toContain('active');
+  });
 });
 
 describe('renderChallengeCard', () => {

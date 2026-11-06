@@ -160,6 +160,30 @@ describe('edit_card', () => {
     ]);
   });
 
+  it('drops an edit for a bot-vs-bot game or challenge, which never has a card', async () => {
+    const { group, alice, bob } = await people();
+    const game = await insertGame(db, group.id, alice.id, bob.id, { botPlayers: 2 });
+    const challenge = await insertChallenge(db, group.id, alice.id, bob.id, { botPlayers: 2 });
+    await enqueue(db, {
+      kind: 'edit_card',
+      payload: { gameId: game.id },
+      dedupKey: `card:g:${game.publicId}`,
+    });
+    await enqueue(db, {
+      kind: 'edit_card',
+      payload: { challengeId: challenge.id },
+      dedupKey: `card:ch:${challenge.publicId}`,
+    });
+    await worker.runOnce();
+    await worker.runOnce();
+    const rows = await jobRows();
+    expect(rows.map((job) => [job.doneAt !== null, job.lastError])).toEqual([
+      [true, null],
+      [true, null],
+    ]);
+    expect(fake.callsTo('editMessageText')).toHaveLength(0);
+  });
+
   it('retries an edit for a card that has no message id yet', async () => {
     const { group, alice, bob } = await people();
     const game = await insertGame(db, group.id, alice.id, bob.id);

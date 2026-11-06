@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { Config } from '../../config';
 import { games } from '../../db/schema';
 import type { Deps } from '../../domain/deps';
-import { requireGameById } from '../../domain/games';
+import { postsToChat, requireGameById } from '../../domain/games';
 import { buildGamePgn } from '../../domain/pgn';
 import type { Metrics } from '../../metrics';
 import { enqueue } from '../queue';
@@ -122,11 +122,14 @@ const lichessImport =
         .update(games)
         .set({ lichessUrl: parsed.data.url, lichessImportStatus: 'done' })
         .where(eq(games.id, game.id));
-      await enqueue(tx, {
-        kind: 'edit_card',
-        payload: { gameId: game.id },
-        dedupKey: `card:g:${game.publicId}`,
-      });
+      // The card shows the Lichess link; a bot-vs-bot game has no card.
+      if (postsToChat(game)) {
+        await enqueue(tx, {
+          kind: 'edit_card',
+          payload: { gameId: game.id },
+          dedupKey: `card:g:${game.publicId}`,
+        });
+      }
     });
     ctx.metrics?.lichessImports.inc({ outcome: 'done' });
     log.info({ gameId: game.id }, 'lichess import done');

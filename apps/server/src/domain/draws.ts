@@ -6,7 +6,15 @@ import { isEngineGame } from './engineGames';
 import { DomainError } from './errors';
 import { positionKeys } from './gameDto';
 import { enqueue } from '../jobs/queue';
-import { finishGame, listMoves, loadGameDto, lockActiveGame, type EndInput } from './games';
+import {
+  finishGame,
+  listMoves,
+  loadGameDto,
+  lockActiveGame,
+  postsToChat,
+  type EndInput,
+} from './games';
+import { isOwnedBot, requireUser } from './users';
 
 type OfferState = Pick<
   GameRow,
@@ -56,8 +64,13 @@ export async function offerDraw(deps: Deps, input: Input): Promise<GameDto> {
     if (!updated) throw new DomainError('not_found', 'game not found');
     // DM notifications spec §2.4: an offer made while the recipient is to move is a DM of its own;
     // one made by the player to move rides on the recipient's next turn DM.
-    if (sideToMove(game.fen) !== colour) {
-      const recipientId = opposite(colour) === 'white' ? game.whiteId : game.blackId;
+    // A bot gets no DMs, and nothing about a bot-vs-bot game reaches the chat.
+    const recipientId = opposite(colour) === 'white' ? game.whiteId : game.blackId;
+    if (
+      sideToMove(game.fen) !== colour &&
+      postsToChat(game) &&
+      !isOwnedBot(await requireUser(tx, recipientId))
+    ) {
       await enqueue(tx, {
         kind: 'send_dm',
         payload: { userId: recipientId, template: 'draw_offer', gameId: game.id },

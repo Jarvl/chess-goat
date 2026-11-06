@@ -10,6 +10,7 @@ export function playerRef(id: string, name: string, overrides: Partial<PlayerRef
     isBot: false,
     photoUrl: null,
     flair: [],
+    botActivity: null,
     ...overrides,
   };
 }

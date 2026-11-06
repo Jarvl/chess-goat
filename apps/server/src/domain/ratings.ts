@@ -4,10 +4,13 @@ import {
   isRatedEndReason,
   replayRatings,
   type LeaderboardEntry,
+  type Colour,
   type PlayerRatingState,
+  type RatedGameRecord,
   type RatingSnapshot,
 } from '@chess-goat/shared';
 import { and, asc, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import type { DbOrTx } from '../db/client';
 import { games, groupMembers, ratings, users, type GameRow, type RatingRow } from '../db/schema';
 import { toPlayerRef } from './players';
@@ -67,17 +70,43 @@ export async function loadRatingState(
   return row ? toState(row) : freshPlayerState();
 }
 
-function snapshotColumns(snapshot: RatingSnapshot) {
-  return {
-    whiteRatingBefore: snapshot.white.before.rating,
-    whiteRatingAfter: snapshot.white.after.rating,
-    whiteRdBefore: snapshot.white.before.rd,
-    whiteRdAfter: snapshot.white.after.rd,
-    blackRatingBefore: snapshot.black.before.rating,
-    blackRatingAfter: snapshot.black.after.rating,
-    blackRdBefore: snapshot.black.before.rd,
-    blackRdAfter: snapshot.black.after.rd,
+/**
+ * The game row's rating snapshot. A frozen (human) side is stored as null so readers fall back
+ * to the live rating: a human never sees a change from a bot game.
+ */
+function snapshotColumns(snapshot: RatingSnapshot, frozen: Colour | undefined) {
+  const side = (colour: Colour) => {
+    const { before, after } = snapshot[colour];
+    return frozen === colour
+      ? { ratingBefore: null, ratingAfter: null, rdBefore: null, rdAfter: null }
+      : {
+          ratingBefore: before.rating,
+          ratingAfter: after.rating,
+          rdBefore: before.rd,
+          rdAfter: after.rd,
+        };
   };
+  const white = side('white');
+  const black = side('black');
+  return {
+    whiteRatingBefore: white.ratingBefore,
+    whiteRatingAfter: white.ratingAfter,
+    whiteRdBefore: white.rdBefore,
+    whiteRdAfter: white.rdAfter,
+    blackRatingBefore: black.ratingBefore,
+    blackRatingAfter: black.ratingAfter,
+    blackRdBefore: black.rdBefore,
+    blackRdAfter: black.rdAfter,
+  };
+}
+
+/**
+ * In a human-vs-bot game only the bot is rated: the human's colour is frozen. `whiteOwnerId` is
+ * the white player's `users.owner_id` (non-null for a bot).
+ */
+function frozenColour(botPlayers: number, whiteOwnerId: number | null): RatedGameRecord['frozen'] {
+  if (botPlayers !== 1) return undefined;
+  return whiteOwnerId === null ? 'white' : 'black';
 }
 
 async function upsertStates(
@@ -105,6 +134,8 @@ async function lockGroupRatings(tx: DbOrTx, groupId: number): Promise<void> {
 /**
  * Each rated result is its own rating period for both players (spec §7.5). Returns null and
  * touches nothing for casual games and for results that do not change ratings (aborts, voids).
+ * In a bot-vs-human game the human's side is frozen: the returned snapshot has before = after for
+ * it, while the stored rating columns for that side are null.
  */
 export async function applyGameResultToRatings(
   tx: DbOrTx,
@@ -116,17 +147,34 @@ export async function applyGameResultToRatings(
   await lockGroupRatings(tx, game.groupId);
   const white = String(game.whiteId);
   const black = String(game.blackId);
+  let frozen: RatedGameRecord['frozen'];
+  if (game.botPlayers === 1) {
+    const [whiteUser] = await tx
+      .select({ ownerId: users.ownerId })
+      .from(users)
+      .where(eq(users.id, game.whiteId));
+    frozen = frozenColour(game.botPlayers, whiteUser?.ownerId ?? null);
+  }
   const states = new Map<string, PlayerRatingState>([
     [white, await loadRatingState(tx, game.groupId, game.whiteId)],
     [black, await loadRatingState(tx, game.groupId, game.blackId)],
   ]);
-  const snapshot = applyRatedGame(states, { white, black, result: game.result, finishedAt });
+  const snapshot = applyRatedGame(states, {
+    white,
+    black,
+    result: game.result,
+    finishedAt,
+    frozen,
+  });
+  // The frozen human's state was only read; never create or rewrite their row.
+  if (frozen) states.delete(frozen === 'white' ? white : black);
   await upsertStates(tx, game.groupId, states);
-  await tx.update(games).set(snapshotColumns(snapshot)).where(eq(games.id, game.id));
+  await tx.update(games).set(snapshotColumns(snapshot, frozen)).where(eq(games.id, game.id));
   return snapshot;
 }
 
-const close = (a: number | null, b: number): boolean => a !== null && Math.abs(a - b) < 1e-6;
+const close = (a: number | null, b: number | null): boolean =>
+  a === null || b === null ? a === b : Math.abs(a - b) < 1e-6;
 
 /** Spec §3.5, §7.5: replay every rated, finished, non-voided game in order; rewrite what changed. */
 export async function rebuildGroupRatings(
@@ -134,9 +182,11 @@ export async function rebuildGroupRatings(
   groupId: number,
 ): Promise<{ changedGameIds: number[] }> {
   await lockGroupRatings(tx, groupId);
-  const rows = await tx
-    .select()
+  const whitePlayer = alias(users, 'white_player');
+  const joined = await tx
+    .select({ game: games, whiteOwnerId: whitePlayer.ownerId })
     .from(games)
+    .innerJoin(whitePlayer, eq(whitePlayer.id, games.whiteId))
     .where(
       and(
         eq(games.groupId, groupId),
@@ -147,6 +197,10 @@ export async function rebuildGroupRatings(
       ),
     )
     .orderBy(asc(games.finishedAt), asc(games.id));
+  const frozenById = new Map(
+    joined.map(({ game, whiteOwnerId }) => [game.id, frozenColour(game.botPlayers, whiteOwnerId)]),
+  );
+  const rows = joined.map(({ game }) => game);
   const rated = rows.filter(
     (row): row is GameRow & { result: RatedResult; finishedAt: Date } =>
       isRatedResult(row.result) &&
@@ -160,14 +214,16 @@ export async function rebuildGroupRatings(
       black: String(row.blackId),
       result: row.result,
       finishedAt: row.finishedAt,
+      frozen: frozenById.get(row.id),
     })),
   );
   await tx.delete(ratings).where(eq(ratings.groupId, groupId));
   await upsertStates(tx, groupId, states);
   const changedGameIds: number[] = [];
+  const columnsOf = (index: number) =>
+    snapshotColumns(snapshots[index]!, frozenById.get(rated[index]!.id));
   rated.forEach((row, index) => {
-    const snapshot = snapshots[index]!;
-    const columns = snapshotColumns(snapshot);
+    const columns = columnsOf(index);
     const unchanged =
       close(row.whiteRatingBefore, columns.whiteRatingBefore) &&
       close(row.whiteRatingAfter, columns.whiteRatingAfter) &&
@@ -181,7 +237,7 @@ export async function rebuildGroupRatings(
   });
   for (const id of changedGameIds) {
     const index = rated.findIndex((row) => row.id === id);
-    await tx.update(games).set(snapshotColumns(snapshots[index]!)).where(eq(games.id, id));
+    await tx.update(games).set(columnsOf(index)).where(eq(games.id, id));
   }
   return { changedGameIds };
 }

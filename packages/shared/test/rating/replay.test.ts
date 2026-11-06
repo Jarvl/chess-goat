@@ -66,6 +66,33 @@ describe('applyRatedGame', () => {
   });
 });
 
+describe('a frozen side', () => {
+  it("a frozen side's state is untouched", () => {
+    const states = new Map<string, PlayerRatingState>();
+    applyRatedGame(states, game('bob', 'human', '1-0', 0));
+    applyRatedGame(states, game('bot', 'carol', '0-1', 0));
+    const humanBefore = structuredClone(states.get('human')!);
+    const reference = new Map(
+      [...states].map(([id, state]) => [id, structuredClone(state)] as const),
+    );
+
+    const frozen = applyRatedGame(states, { ...game('bot', 'human', '1-0', 30), frozen: 'black' });
+    const plain = applyRatedGame(reference, game('bot', 'human', '1-0', 30));
+
+    expect(states.get('human')).toEqual(humanBefore);
+    expect(states.get('bot')).toEqual(reference.get('bot'));
+    expect(frozen.white).toEqual(plain.white);
+    expect(frozen.black.before).toEqual(plain.black.before);
+    expect(frozen.black.after).toEqual(frozen.black.before);
+  });
+
+  it('never creates a state for a frozen newcomer', () => {
+    const { states } = replayRatings([{ ...game('human', 'bot', '0-1', 0), frozen: 'white' }]);
+    expect([...states.keys()]).toEqual(['bot']);
+    expect(states.get('bot')).toMatchObject({ gamesPlayed: 1, wins: 1 });
+  });
+});
+
 describe('replayRatings', () => {
   const games = [
     game('alice', 'bob', '1-0', 0),

@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { dbNow, type DbOrTx } from '../db/client';
 import { users, type UserRow } from '../db/schema';
 import { deletedBotFields, leavePlay, lockPlay } from './account';
@@ -140,4 +140,29 @@ export function listBots(tx: DbOrTx, ownerId: number): Promise<UserRow[]> {
     .from(users)
     .where(and(eq(users.ownerId, ownerId), isNull(users.deletedAt)))
     .orderBy(asc(users.createdAt), asc(users.id));
+}
+
+/** How many of a game's two players are bots; `b` is null for a challenge with no opponent yet. */
+export function countBotPlayers(
+  a: Pick<UserRow, 'ownerId'>,
+  b: Pick<UserRow, 'ownerId'> | null,
+): 0 | 1 | 2 {
+  return ((a.ownerId !== null ? 1 : 0) + (b && b.ownerId !== null ? 1 : 0)) as 0 | 1 | 2;
+}
+
+/**
+ * Record that a bot just did something. Writes at most once a minute so a busy bot doesn't churn
+ * its row. Humans and the engine have no owner, so they never match.
+ */
+export async function touchBotActivity(tx: DbOrTx, botId: number): Promise<void> {
+  await tx
+    .update(users)
+    .set({ lastActiveAt: sql`now()` })
+    .where(
+      and(
+        eq(users.id, botId),
+        isNotNull(users.ownerId),
+        or(isNull(users.lastActiveAt), sql`${users.lastActiveAt} < now() - interval '60 seconds'`),
+      ),
+    );
 }

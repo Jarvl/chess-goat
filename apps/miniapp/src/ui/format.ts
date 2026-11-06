@@ -1,4 +1,6 @@
 import {
+  BOT_ACTIVE_NOW_MS,
+  compactDuration,
   ratedLabel,
   ratingLabel,
   t,
@@ -55,4 +57,14 @@ export function flairEarnedLabel(
   return t('app.flair.earned', {
     when: t('app.flair.earned_vs', { opponent: earned.opponent, date }),
   });
+}
+
+/** A bot's activity as a short line ("Active now", "Last active 3d ago"); null for people. */
+export function botActivityLabel(player: Pick<PlayerRef, 'botActivity'>, now: Date): string | null {
+  if (!player.botActivity) return null;
+  const { lastActiveAt } = player.botActivity;
+  if (lastActiveAt === null) return t('app.player.bot_never_active');
+  const age = now.getTime() - new Date(lastActiveAt).getTime();
+  if (age <= BOT_ACTIVE_NOW_MS) return t('app.player.bot_active_now');
+  return t('app.player.bot_last_active', { ago: compactDuration(age) });
 }

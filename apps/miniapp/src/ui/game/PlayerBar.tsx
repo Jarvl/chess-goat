@@ -11,6 +11,7 @@ import { h } from 'preact';
 import { clockLabel, isUrgent, remainingMs } from '../../state/clock';
 import { Avatar } from '../Avatar';
 import { Flair } from '../Flair';
+import { botActivityLabel } from '../format';
 import { sideResult } from './result';
 
 const PIECE_CLASS: Record<PieceLetter, string> = {
@@ -42,6 +43,7 @@ export function PlayerBar(props: { dto: GameDto; colour: Colour; fen: string; no
   const result = sideResult(dto, colour);
   const sub =
     result?.reason ?? (yours ? t('app.lobby.your_move') : toMove ? t('app.game.to_move') : null);
+  const activity = dto.status === 'active' ? botActivityLabel(player, props.now) : null;
   const taken: SideMaterial = material(props.fen)[colour];
   const opponent = colour === 'white' ? 'black' : 'white';
   const clockClass = ['clock', toMove && 'active', yours && 'yours', urgent && 'urgent']
@@ -76,6 +78,7 @@ export function PlayerBar(props: { dto: GameDto; colour: Colour; fen: string; no
               {sub}
             </span>
           ) : null}
+          {activity ? <span class="bot-activity">{activity}</span> : null}
         </span>
       </span>
       {dto.status === 'active' ? (

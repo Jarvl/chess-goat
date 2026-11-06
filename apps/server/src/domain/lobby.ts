@@ -43,7 +43,7 @@ function decodeCursor(cursor: string): { finishedAt: Date; id: number } | null {
 export async function activeGames(tx: DbOrTx, groupId: number, viewerId: number) {
   const rows = await gameSummaryRows(
     tx,
-    and(eq(games.groupId, groupId), eq(games.status, 'active')),
+    and(eq(games.groupId, groupId), eq(games.status, 'active'), ne(games.botPlayers, 2)),
     [desc(games.lastMoveAt), desc(games.startedAt)],
     200,
   );
@@ -59,7 +59,12 @@ export async function listFinished(
   cursor: string | null,
 ): Promise<FinishedPageDto> {
   const after = cursor ? decodeCursor(cursor) : null;
-  const conditions = [eq(games.groupId, groupId), eq(games.status, 'finished')];
+  // The lobby never shows bot-vs-bot play.
+  const conditions = [
+    eq(games.groupId, groupId),
+    eq(games.status, 'finished'),
+    ne(games.botPlayers, 2),
+  ];
   if (after) {
     conditions.push(
       or(
@@ -92,7 +97,11 @@ export async function pendingChallenges(
 ) {
   const rows = await challengeDtoRows(
     tx,
-    and(eq(challenges.groupId, groupId), eq(challenges.status, 'pending')),
+    and(
+      eq(challenges.groupId, groupId),
+      eq(challenges.status, 'pending'),
+      ne(challenges.botPlayers, 2),
+    ),
     50,
   );
   return rows.map((row) => challengeToDto(row, viewer));
