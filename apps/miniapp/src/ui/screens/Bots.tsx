@@ -27,10 +27,18 @@ function BotCard(props: { bot: OwnerBotDto }) {
           <span class="primary">{bot.label}</span>
           {bot.tagline ? <span class="secondary">{bot.tagline}</span> : null}
           {bot.liveGames > 0 ? (
-            <span class="secondary">{t('app.bots.live_games', { count: bot.liveGames })}</span>
+            <span class="secondary">
+              {t(bot.liveGames === 1 ? 'app.bots.live_games_one' : 'app.bots.live_games', {
+                count: bot.liveGames,
+              })}
+            </span>
           ) : null}
           {bot.groups.length > 0 ? (
-            <span class="secondary">{t('app.bots.groups', { count: bot.groups.length })}</span>
+            <span class="secondary">
+              {t(bot.groups.length === 1 ? 'app.bots.groups_one' : 'app.bots.groups', {
+                count: bot.groups.length,
+              })}
+            </span>
           ) : null}
         </span>
       </div>
@@ -64,6 +72,7 @@ function BotCard(props: { bot: OwnerBotDto }) {
 export function Bots() {
   const { client } = useApp();
   const [bots, setBots] = useState<OwnerBotDto[] | undefined>(undefined);
+  const [botsFailed, setBotsFailed] = useState(false);
   const [info, setInfo] = useState<Info | undefined>(undefined);
   const [failed, setFailed] = useState(false);
   // The plaintext token lives only here: shown once, gone when the screen closes.
@@ -79,12 +88,14 @@ export function Bots() {
   };
   useEffect(load, [client]);
   // The list is an extra: if it will not load, the token card still works.
-  useEffect(() => {
+  const loadBots = () => {
+    setBotsFailed(false);
     client
       .get('/api/me/bots', OwnerBotsDtoSchema)
       .then((list) => setBots(list.bots))
-      .catch(() => setBots([]));
-  }, [client]);
+      .catch(() => setBotsFailed(true));
+  };
+  useEffect(loadBots, [client]);
 
   const create = async (confirmMessage?: string) => {
     if (busy) return;
@@ -132,7 +143,17 @@ export function Bots() {
   return (
     <div class="screen">
       <h1 class="title">{t('app.bots.title')}</h1>
-      {bots === undefined ? null : (
+      {botsFailed ? (
+        <>
+          <div class="section">{t('app.bots.yours')}</div>
+          <div class="card empty" data-bots-failed>
+            {t('app.bots.load_failed')}
+            <button class="btn" data-action="retry-bots" onClick={loadBots}>
+              {t('app.common.retry')}
+            </button>
+          </div>
+        </>
+      ) : bots === undefined ? null : (
         <>
           <div class="section">{t('app.bots.yours')}</div>
           {bots.length === 0 ? (

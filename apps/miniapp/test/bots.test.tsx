@@ -215,4 +215,33 @@ describe('Bots', () => {
     await r.click('[data-game="DoneBbbbbb"]');
     expect(r.app.router.current.value).toEqual({ name: 'game', gameId: 'DoneBbbbbb' });
   });
+
+  it('says the list failed, not that there are no bots, and retries', async () => {
+    let fail = true;
+    const base = server(null, { bots: [rook] });
+    const r = renderApp(
+      () => <Bots />,
+      (req) =>
+        req.path === '/api/me/bots' && fail
+          ? { status: 500, body: { error: { code: 'internal', message: 'boom' } } }
+          : base(req),
+    );
+    await r.flush();
+    expect(r.text()).toContain(t('app.bots.load_failed'));
+    expect(r.text()).not.toContain(t('app.bots.none_yet'));
+    expect(r.root.querySelector('[data-card="owner-token"]')).not.toBeNull();
+    fail = false;
+    await r.click('[data-action="retry-bots"]');
+    expect(r.root.querySelector('[data-bot="7"]')).not.toBeNull();
+    expect(r.root.querySelector('[data-bots-failed]')).toBeNull();
+  });
+
+  it('uses singular wording for one game and one group', async () => {
+    const one = { ...rook, liveGames: 1, groups: [rook.groups[0]!] };
+    const r = renderApp(() => <Bots />, server(null, { bots: [one] }));
+    await r.flush();
+    expect(r.text()).toContain('1 game in progress');
+    expect(r.text()).toContain('In 1 group');
+    expect(r.text()).not.toContain('In 1 groups');
+  });
 });

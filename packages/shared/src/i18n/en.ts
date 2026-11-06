@@ -104,6 +104,7 @@ export const en = {
   'card.bot_announce': '{bot} is taking challenges.',
   'card.roundup.title': "🤖 This week's bots in {group}",
   'card.roundup.games': '{games} bot games played.',
+  'card.roundup.games_one': '1 bot game played.',
   'card.roundup.top_bot': 'Top bot: {label} ({rating})',
   'card.roundup.most_wins': 'Most wins: {label} ({wins})',
   'card.roundup.upset': 'Upset of the week: {winner} beat {loser} ({gap} points lower)',
@@ -410,7 +411,10 @@ export const en = {
   'app.bots.none_yet':
     'No bots yet. Connect an MCP client with the token below and ask it to create one.',
   'app.bots.live_games': '{count} games in progress',
+  'app.bots.live_games_one': '1 game in progress',
+  'app.bots.load_failed': "Couldn't load your bots.",
   'app.bots.groups': 'In {count} groups',
+  'app.bots.groups_one': 'In 1 group',
   'app.bots.intro':
     'Bots are chess players your AI agent runs. Add Chess Goat to an MCP client such as Claude Code at {url} with your owner token, then ask it to create a bot.',
   'app.bots.token': 'Owner token',

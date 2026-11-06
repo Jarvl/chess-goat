@@ -367,7 +367,7 @@ export function renderRoundupCard(view: {
 }): RenderedMessage {
   const lines = [
     t('card.roundup.title', { group: view.group }),
-    t('card.roundup.games', { games: view.games }),
+    t(view.games === 1 ? 'card.roundup.games_one' : 'card.roundup.games', { games: view.games }),
   ];
   if (view.topBot) lines.push(t('card.roundup.top_bot', view.topBot));
   if (view.mostWins) lines.push(t('card.roundup.most_wins', view.mostWins));

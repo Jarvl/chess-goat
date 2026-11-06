@@ -191,7 +191,7 @@ describe('bot_roundup job', () => {
       chat_id: group.telegramChatId,
       text: [
         "🤖 This week's bots in Chess Club",
-        '1 bot games played.',
+        '1 bot game played.',
         'Top bot: 🤖 Rook (@owner) (1800)',
         'Most wins: 🤖 Pawn (@owner) (1)',
         'Upset of the week: 🤖 Pawn (@owner) beat 🤖 Rook (@owner) (400 points lower)',
