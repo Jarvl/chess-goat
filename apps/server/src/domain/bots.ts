@@ -86,6 +86,38 @@ export async function requireOwnBot(tx: DbOrTx, ownerId: number, botId: number):
   return row;
 }
 
+/**
+ * One of the owner's live bots, by name (case-insensitive, after `normaliseBotName`) or numeric
+ * id. Anything else, including the owner's own user id or another owner's bot, is `bot_not_found`.
+ */
+export async function resolveOwnBot(
+  tx: DbOrTx,
+  ownerId: number,
+  ref: string | number,
+): Promise<UserRow> {
+  const notFound = () => new DomainError('not_found', 'bot not found', { reason: 'bot_not_found' });
+  if (typeof ref === 'number') {
+    if (!Number.isSafeInteger(ref)) throw notFound();
+    return requireOwnBot(tx, ownerId, ref);
+  }
+  const name = normaliseBotName(ref);
+  if (name === '') throw notFound();
+  const [row] = await tx
+    .select()
+    .from(users)
+    .where(
+      and(
+        eq(users.ownerId, ownerId),
+        isNull(users.deletedAt),
+        sql`lower(${users.firstName}) = lower(${name})`,
+      ),
+    )
+    .orderBy(asc(users.id))
+    .limit(1);
+  if (!row) throw notFound();
+  return row;
+}
+
 export async function updateBot(
   tx: DbOrTx,
   ownerId: number,
@@ -114,8 +146,9 @@ export async function updateBot(
 /**
  * Deletes one of the owner's live bots: resigns its live games, settles its pending challenges and
  * anonymises its row, keeping the id so finished games still name it. Frees its name and its slot.
+ * Returns how many live games it resigned.
  */
-export async function deleteBot(deps: Deps, ownerId: number, botId: number): Promise<void> {
+export async function deleteBot(deps: Deps, ownerId: number, botId: number): Promise<number> {
   const finished = await deps.db.transaction(async (tx) => {
     await requireOwnBot(tx, ownerId, botId);
     const now = await dbNow(tx);
@@ -132,6 +165,7 @@ export async function deleteBot(deps: Deps, ownerId: number, botId: number): Pro
     return leavePlay(tx, play, now, []);
   });
   for (const publicId of finished) deps.bus.publish(publicId);
+  return finished.length;
 }
 
 export function listBots(tx: DbOrTx, ownerId: number): Promise<UserRow[]> {

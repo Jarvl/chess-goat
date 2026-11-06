@@ -60,10 +60,10 @@ describe('/mcp auth', () => {
     expect(await res.text()).not.toContain(wrong);
   });
 
-  it('accepts a token with a trailing newline; ping returns the owner name', async () => {
-    const result = await callTool(api.app, `${token}\n`, 'ping');
+  it('accepts a token with a trailing newline; list_bots answers', async () => {
+    const result = await callTool(api.app, `${token}\n`, 'list_bots');
     expect(result.isError).toBeFalsy();
-    expect(result.structuredContent).toEqual({ owner: '@alice' });
+    expect(result.structuredContent).toEqual({ bots: [] });
     expect(result.content[0]).toMatchObject({ type: 'text' });
   });
 
@@ -71,13 +71,13 @@ describe('/mcp auth', () => {
     const result = await callTool(
       api.app,
       '',
-      'ping',
+      'list_bots',
       {},
       {
         headers: { authorization: `Bearer  ${token}  ` },
       },
     );
-    expect(result.structuredContent).toEqual({ owner: '@alice' });
+    expect(result.structuredContent).toEqual({ bots: [] });
   });
 
   it('still refuses an owner token on /api/me/groups', async () => {
@@ -86,10 +86,10 @@ describe('/mcp auth', () => {
   });
 
   it('stops a revoked token at once', async () => {
-    expect((await callTool(api.app, token, 'ping')).structuredContent).toEqual({ owner: '@alice' });
+    expect((await callTool(api.app, token, 'list_bots')).structuredContent).toEqual({ bots: [] });
     await revokeOwnerToken(db, owner.id);
     expectBearerChallenge(
-      await mcpCall(api.app, token, 'tools/call', { name: 'ping', arguments: {} }),
+      await mcpCall(api.app, token, 'tools/call', { name: 'list_bots', arguments: {} }),
     );
   });
 });
@@ -115,7 +115,7 @@ describe('/mcp limits', () => {
 
   it('lets a body just under 512 KB through', async () => {
     const reply = await mcpCall(api.app, token, 'tools/call', {
-      name: 'ping',
+      name: 'list_bots',
       arguments: {},
       pad: 'x'.repeat(500 * 1024),
     });
@@ -124,7 +124,10 @@ describe('/mcp limits', () => {
 
   it('answers the 121st call within a minute like the /api rate limiter', async () => {
     for (let i = 0; i < 120; i += 1) {
-      const reply = await mcpCall(api.app, token, 'tools/call', { name: 'ping', arguments: {} });
+      const reply = await mcpCall(api.app, token, 'tools/call', {
+        name: 'list_bots',
+        arguments: {},
+      });
       expect(reply.status).toBe(200);
     }
     const res = await api.app.request('/mcp', {
@@ -164,7 +167,9 @@ describe('/mcp surface', () => {
       expect(tool.outputSchema, tool.name).toBeDefined();
       expect(tool.annotations, tool.name).toBeDefined();
     }
-    expect(tools.find((t) => t.name === 'ping')?.annotations).toMatchObject({ readOnlyHint: true });
+    expect(tools.find((t) => t.name === 'list_bots')?.annotations).toMatchObject({
+      readOnlyHint: true,
+    });
   });
 
   it('answers over SSE', async () => {
