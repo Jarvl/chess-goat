@@ -75,7 +75,10 @@ export async function sayPrivately(
   params: MessageParams = {},
 ): Promise<void> {
   const text = t(key, params);
-  if (answer.trigger && (await sendEphemeral(api, { ...answer, trigger: answer.trigger, text })))
+  if (
+    answer.trigger &&
+    (await sendEphemeral(api, { ...answer, trigger: answer.trigger, text }, deps.log))
+  )
     return;
   await sayPublicly(deps, api, answer, text);
 }
@@ -158,16 +161,29 @@ export async function openPrompt(
   const view = promptView('main', from.id, settings);
   if (
     input.trigger &&
-    (await sendEphemeral(api, {
-      chatId: input.chatId,
-      threadId: input.threadId,
-      receiverId: from.id,
-      trigger: input.trigger,
-      text: view.text,
-      replyMarkup: view.replyMarkup,
-    }))
+    (await sendEphemeral(
+      api,
+      {
+        chatId: input.chatId,
+        threadId: input.threadId,
+        receiverId: from.id,
+        trigger: input.trigger,
+        text: view.text,
+        replyMarkup: view.replyMarkup,
+      },
+      deps.log,
+    ))
   )
     return;
+  // Why everyone can see it: an ordinary (not private) command with no admin rights to answer
+  // privately, or Telegram refused the private answer (logged by sendEphemeral with its reason).
+  deps.log.info(
+    {
+      reason: input.trigger ? 'private_send_refused' : 'not_private_command',
+      chatId: input.chatId,
+    },
+    'challenge prompt posted publicly',
+  );
   await sendFallbackPrompt(
     deps,
     api,

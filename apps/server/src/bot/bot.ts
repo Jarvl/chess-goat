@@ -183,14 +183,18 @@ export async function createBot(deps: Deps, config: Config): Promise<Bot> {
       if (
         !anonymous &&
         ephemeralMessageId !== null &&
-        (await sendEphemeral(directApi, {
-          chatId: ctx.chat.id,
-          threadId,
-          receiverId: ctx.from.id,
-          trigger: { ephemeralMessageId },
-          text: t(key),
-          replyMarkup: { inline_keyboard: buttons.map((button) => [button]) },
-        }))
+        (await sendEphemeral(
+          directApi,
+          {
+            chatId: ctx.chat.id,
+            threadId,
+            receiverId: ctx.from.id,
+            trigger: { ephemeralMessageId },
+            text: t(key),
+            replyMarkup: { inline_keyboard: buttons.map((button) => [button]) },
+          },
+          deps.log,
+        ))
       )
         return;
       await sendLine(ctx.chat.id, threadId, key, {}, { buttons });

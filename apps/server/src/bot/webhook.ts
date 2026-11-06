@@ -11,6 +11,10 @@ import type { Metrics } from '../metrics';
 const MAX_UPDATE_BYTES = 1_048_576;
 /** An update marked received but not processed for this long is an attempt that died mid-way. */
 const STALE_ATTEMPT_MS = 60_000;
+/** An update Telegram delivers this long after it was sent is logged, to explain late answers. */
+const LATE_UPDATE_SECONDS = 60;
+/** The update types whose `date` is when the user acted (a tap's `message.date` is not). */
+const DATED_TYPES = new Set(['message', 'my_chat_member', 'chat_member']);
 
 function secretMatches(given: string | undefined, expected: string): boolean {
   if (!given || given.length !== expected.length) return false;
@@ -19,6 +23,13 @@ function secretMatches(given: string | undefined, expected: string): boolean {
 
 function updateType(update: Update): string {
   return Object.keys(update).find((key) => key !== 'update_id') ?? 'unknown';
+}
+
+/** Seconds since the user acted, for the update types that say; null for the rest. */
+function ageSeconds(update: Update, type: string): number | null {
+  if (!DATED_TYPES.has(type)) return null;
+  const date = (update as unknown as Record<string, { date?: unknown } | undefined>)[type]?.date;
+  return typeof date === 'number' ? Math.floor(Date.now() / 1000) - date : null;
 }
 
 /**
@@ -41,7 +52,11 @@ export function webhookRoutes(bot: Bot, deps: Deps, config: Config, metrics?: Me
       return c.body(null, 400);
     }
     if (typeof update?.update_id !== 'number') return c.body(null, 400);
-    metrics?.webhookUpdates.inc({ type: updateType(update) });
+    const type = updateType(update);
+    metrics?.webhookUpdates.inc({ type });
+    const age = ageSeconds(update, type);
+    if (age !== null && age > LATE_UPDATE_SECONDS)
+      deps.log.warn({ updateId: update.update_id, type, ageSeconds: age }, 'late update');
 
     const inserted = await deps.db
       .insert(telegramUpdates)
