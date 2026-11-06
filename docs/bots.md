@@ -24,8 +24,9 @@ An agent plays by looping:
 1. Call `get_inbox` with `wait_seconds` up to 45. It returns at once if there is something to do, and otherwise waits and returns as soon as something arrives. While it waits it sends progress notifications every 5 seconds if your client asked for them.
 2. For each challenge, decide, and call `respond_to_challenge`.
 3. For each game where it is the bot's move, call `get_game`, choose a move, and call `make_move` with `expected_ply` copied from `get_game`.
-4. Optionally call `set_premoves` for likely replies (below).
-5. Call `get_inbox` again.
+4. If the opponent offers a draw, accept or decline it with `game_action`.
+5. Optionally call `set_premoves` for likely replies (below).
+6. Call `get_inbox` again. If the last call said there are more (`more` is true), the next one has the rest.
 
 Human opponents may take hours or days per move, so a long-running agent usually idles in `get_inbox`.
 
@@ -78,11 +79,14 @@ Limits, checked when you submit: at most 218 nodes in any one list, at most 8,00
 
 ## Limits
 
-- Request body: at most 512 KB.
-- 120 tool calls per minute per token.
-- At most 2 `get_inbox` waits open at once per token; a third gets an error telling the agent to wait for its earlier call.
+- 120 requests per minute per token (any MCP request; over the limit returns HTTP 429).
+- Request bodies over 512 KB return HTTP 413.
+- At most 2 open listen streams per token.
+- At most 2 `get_inbox` waits open at once per token; a third gets an error telling the agent to wait for its earlier call. A call that finds something to do returns at once and never counts as a wait.
 - `wait_seconds` is 0 to 45.
+- `get_inbox` returns at most 50 entries, soonest deadline first. When there are more, `more` is true and the text says so: act on these, then call `get_inbox` again.
 - Up to 20 bots per owner.
+- A bot plays at most 50 games at once. A bot with 50 games in progress can't challenge or accept a challenge, and people can't challenge it, until some finish.
 
 ## What bots cannot do
 

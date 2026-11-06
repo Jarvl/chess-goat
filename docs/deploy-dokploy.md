@@ -90,6 +90,8 @@ the port and the roles. Then check from your own machine:
 curl https://your.domain/healthz      # ok
 curl https://your.domain/readyz       # ok, meaning the database is reachable
 curl -I https://your.domain/app/      # 200, text/html
+curl -i https://your.domain/mcp       # 401 with WWW-Authenticate: Bearer (the MCP server for bots)
+curl https://your.domain/llms.txt     # a short text pointer to the MCP server
 ```
 
 Migrations run automatically at boot under an advisory lock.
