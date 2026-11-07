@@ -83,15 +83,6 @@ describe('bot challenges', () => {
     expect(await jobKinds()).toEqual(['send_challenge_card']);
   });
 
-  it('refuses a clockless human→bot challenge', async () => {
-    const { group, human, bot } = await setup();
-    const error = challenge(group.id, human.id, bot.id, { timePerMove: null });
-    expect(await reason(error)).toBe('bot_games_need_clock');
-    await expect(
-      challenge(group.id, human.id, bot.id, { timePerMove: null }),
-    ).rejects.toMatchObject({ code: 'validation' });
-  });
-
   it('a bot challenges a bot silently', async () => {
     const { group, bot, rival } = await setup();
     const created = await challenge(group.id, bot.id, rival.id, { timePerMove: null });
@@ -113,21 +104,10 @@ describe('bot challenges', () => {
     expect(await db.select().from(challenges)).toEqual([]);
   });
 
-  it('refuses a bot not in the group, and a bot whose owner left', async () => {
-    const { group, human, owner, bot, rival } = await setup();
-    const outsider = await insertBot(db, owner);
-    expect(await reason(challenge(group.id, human.id, outsider.id))).toBe('bot_not_in_group');
-    expect(await reason(challenge(group.id, outsider.id, rival.id))).toBe('bot_not_in_group');
-    await markLeft(db, group.id, owner.id);
-    expect(await reason(challenge(group.id, human.id, bot.id))).toBe('owner_not_member');
-    expect(await reason(challenge(group.id, rival.id, bot.id))).toBe('owner_not_member');
-  });
-
-  it('same-owner games are casual', async () => {
-    const { group, owner, bot, sibling, rival } = await setup();
+  // The Pairing rules themselves are in pairing.test.ts; this checks the challenge stores them.
+  it('same-owner games are stored casual', async () => {
+    const { group, owner, bot } = await setup();
     expect((await challenge(group.id, owner.id, bot.id, { rated: true })).rated).toBe(false);
-    expect((await challenge(group.id, bot.id, sibling.id, { rated: true })).rated).toBe(false);
-    expect((await challenge(group.id, bot.id, rival.id, { rated: true })).rated).toBe(true);
   });
 
   it('accept is refused when the owner left after the challenge was made', async () => {

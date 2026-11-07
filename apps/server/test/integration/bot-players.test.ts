@@ -1,5 +1,4 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { countBotPlayers } from '../../src/domain/bots';
 import { openTestDb, truncateAll } from '../helpers/db';
 import {
   insertBot,
@@ -53,18 +52,5 @@ describe('bot_players', () => {
     const bot = await insertBot(db, owner);
     expect(bot.lastActiveAt).toBeNull();
     expect(owner.lastActiveAt).toBeNull();
-  });
-});
-
-describe('countBotPlayers', () => {
-  it('counts the bots among the players', () => {
-    const human = { ownerId: null };
-    const bot = { ownerId: 5 };
-    expect(countBotPlayers(human, human)).toBe(0);
-    expect(countBotPlayers(human, bot)).toBe(1);
-    expect(countBotPlayers(bot, human)).toBe(1);
-    expect(countBotPlayers(bot, bot)).toBe(2);
-    expect(countBotPlayers(bot, null)).toBe(1);
-    expect(countBotPlayers(human, null)).toBe(0);
   });
 });

@@ -1,16 +1,12 @@
 import { TimePerMoveSchema } from '@chess-goat/shared';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/server';
-import {
-  decodeBotCursor,
-  encodeBotCursor,
-  isFindableBot,
-  searchGroupBots,
-} from '../../domain/botGroups';
+import { decodeBotCursor, encodeBotCursor, searchGroupBots } from '../../domain/botGroups';
 import { createChallenge } from '../../domain/challenges';
 import { DomainError } from '../../domain/errors';
 import { requireGroupByPublicId } from '../../domain/groups';
-import { getMember } from '../../domain/members';
+import { isActiveMember } from '../../domain/members';
+import { isFindableBot } from '../../domain/pairing';
 import { displayName } from '../../domain/users';
 import { registerTool, resolveAndTouch } from '../tool';
 import { botRef, READ_ONLY } from './manage';
@@ -44,8 +40,7 @@ function registerFindBots(server: McpServer): void {
     run: ({ deps, owner }, input) =>
       deps.db.transaction(async (tx) => {
         const group = await requireGroupByPublicId(tx, input.group);
-        const member = await getMember(tx, group.id, owner.id);
-        if (member?.status !== 'member' || member.blockedAt !== null) {
+        if (!(await isActiveMember(tx, group.id, owner.id))) {
           throw new DomainError('forbidden', 'you are not a member of that group', {
             reason: 'owner_not_member',
           });
