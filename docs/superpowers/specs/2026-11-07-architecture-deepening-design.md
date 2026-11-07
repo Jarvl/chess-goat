@@ -59,14 +59,15 @@ procedural copy does not. "Is an active member" is spelled three ways
 The per-pair check is the source of truth. **One table of cases runs against both** `mayPlay` and
 `findableIn`, so the two forms cannot drift apart.
 
-`isActiveMember(tx, group, user)` in `members.ts` replaces the three spellings.
-`botGroups.ts:29` stays status-only on purpose (leaving a group must not require being unblocked),
-with a comment saying so.
+`isActiveMember(tx, group, user)` in `members.ts` replaces the MCP `find_bots` owner check.
+`addBotToGroup` keeps its two separate checks (owner is a member; bot or owner not blocked) because
+they answer with different reasons. `list_my_groups` moves to the domain in step 6.
 
 **Callers.**
 
 - `createChallenge` and `acceptChallenge` call `checkPairing`.
-- The announce job (`jobs/handlers/telegram.ts:183`) calls `mayPlay`.
+- `announceBot` calls `mayPlay`. The announce job (`jobs/handlers/telegram.ts:183`) and the
+  lobby's `findable` flag keep `isFindableBot`, the SQL form, since they want a yes/no answer.
 - MCP `challenge_bot` drops its `isFindableBot` pre-check. Today that pre-check deliberately gives
   the same `opponent_not_found` answer for a human, an unknown id and an unfindable Bot, so that an
   agent cannot probe who exists. After step 2, the MCP translator does that hiding instead: a
