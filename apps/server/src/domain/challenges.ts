@@ -7,21 +7,17 @@ import { challenges, games, type ChallengeRow, type GameRow, type UserRow } from
 import { enqueue } from '../jobs/queue';
 import type { Deps } from './deps';
 import { DomainError } from './errors';
-import { assertBotMayPlay } from './botGroups';
-import { countBotPlayers } from './bots';
 import { requireGroup, settingsOf } from './groups';
 import {
-  MAX_LIVE_GAMES_PER_BOT,
   MAX_PENDING_CHALLENGES,
-  countLiveGames,
   countPendingChallenges,
   deadlineExpression,
   reminderExpression,
 } from './limits';
-import { isBlocked } from './members';
+import { checkPairing } from './pairing';
 import { challengeStub, type ChallengeOutcome } from './dmText';
 import { retireChallengeDms } from './dms';
-import { displayName, isOwnedBot, nameWithFlair, requireUser, wantsDms } from './users';
+import { isOwnedBot, nameWithFlair, requireUser, wantsDms } from './users';
 
 export type CreateChallengeInput = {
   groupId: number;
@@ -43,60 +39,8 @@ export function randomColour(): 'white' | 'black' {
 
 /**
  * A person has no cap on how many games they have going, or on how many with one opponent: they
- * decide what they can keep up with. A bot has one (`MAX_LIVE_GAMES_PER_BOT`), checked by
- * `assertBotsNotBusy`. Otherwise, being blocked in the group is the only thing that stops a game.
+ * decide what they can keep up with. A bot has one; `checkPairing` holds that rule with the rest.
  */
-async function assertNotBlocked(tx: DbOrTx, groupId: number, user: UserRow): Promise<void> {
-  if (await isBlocked(tx, groupId, user.id)) {
-    throw new DomainError('forbidden', 'blocked in this group', {
-      reason: 'blocked',
-      userId: user.id,
-    });
-  }
-}
-
-/** Every bot among the players must be allowed to play in the group (it and its owner are members). */
-async function assertBotsMayPlay(
-  tx: DbOrTx,
-  groupId: number,
-  players: (UserRow | null)[],
-): Promise<void> {
-  for (const player of players) {
-    if (player && isOwnedBot(player)) await assertBotMayPlay(tx, groupId, player);
-  }
-}
-
-/** Every bot among the players must have room for another game (`MAX_LIVE_GAMES_PER_BOT`). */
-async function assertBotsNotBusy(tx: DbOrTx, players: (UserRow | null)[]): Promise<void> {
-  for (const player of players) {
-    if (!player || !isOwnedBot(player)) continue;
-    if ((await countLiveGames(tx, player.id)) >= MAX_LIVE_GAMES_PER_BOT) {
-      throw new DomainError('limit_exceeded', 'too many live games', {
-        reason: 'too_many_live_games',
-        limit: MAX_LIVE_GAMES_PER_BOT,
-        name: displayName(player),
-      });
-    }
-  }
-}
-
-/** An owner against their own bot, or two bots of one owner: always casual. */
-function sameOwner(a: UserRow, b: UserRow | null): boolean {
-  if (!b) return false;
-  return (
-    (a.ownerId !== null && a.ownerId === b.ownerId) || a.ownerId === b.id || b.ownerId === a.id
-  );
-}
-
-/** A game with exactly one bot runs on a time-per-move clock. */
-function assertBotClock(botPlayers: number, timePerMove: TimePerMove): void {
-  if (botPlayers === 1 && timePerMove === null) {
-    throw new DomainError('validation', 'games against a bot need a time per move', {
-      reason: 'bot_games_need_clock',
-    });
-  }
-}
-
 export async function getChallengeById(tx: DbOrTx, id: number): Promise<ChallengeRow | null> {
   const [row] = await tx.select().from(challenges).where(eq(challenges.id, id)).limit(1);
   return row ?? null;
@@ -171,9 +115,6 @@ export async function createChallenge(
         reason: 'opponent_ambiguous',
       });
     }
-    if (input.opponentId !== null && input.opponentId === input.challengerId) {
-      throw new DomainError('validation', 'cannot challenge yourself', { reason: 'self' });
-    }
     if (input.opponentId === null && opponentUsername === null && !settings.allowOpenChallenges) {
       throw new DomainError('forbidden', 'open challenges are off in this group', {
         reason: 'open_disabled',
@@ -183,7 +124,14 @@ export async function createChallenge(
     if (opponentUsername !== null && opponentUsername === challenger.username?.toLowerCase()) {
       throw new DomainError('validation', 'cannot challenge yourself', { reason: 'self' });
     }
-    await assertNotBlocked(tx, group.id, challenger);
+    let opponent: UserRow | null = null;
+    if (input.opponentId !== null) opponent = await requireUser(tx, input.opponentId);
+    const { botPlayers, rated } = await checkPairing(
+      tx,
+      group.id,
+      { challenger, opponent, open: input.opponentId === null && opponentUsername === null },
+      { timePerMove: input.timePerMove, rated: input.rated },
+    );
     const pending = await countPendingChallenges(tx, group.id, challenger.id);
     if (pending >= MAX_PENDING_CHALLENGES) {
       throw new DomainError('limit_exceeded', 'too many pending challenges', {
@@ -191,25 +139,6 @@ export async function createChallenge(
         count: pending,
       });
     }
-    let opponent: UserRow | null = null;
-    if (input.opponentId !== null) {
-      opponent = await requireUser(tx, input.opponentId);
-      if (opponent.deletedAt) {
-        throw new DomainError('not_found', 'opponent no longer plays here', {
-          reason: 'opponent_gone',
-        });
-      }
-      await assertNotBlocked(tx, group.id, opponent);
-    }
-    if (isOwnedBot(challenger) && (opponent === null || !isOwnedBot(opponent))) {
-      throw new DomainError('forbidden', 'bots only challenge bots', {
-        reason: 'bots_challenge_bots_only',
-      });
-    }
-    await assertBotsMayPlay(tx, group.id, [challenger, opponent]);
-    await assertBotsNotBusy(tx, [challenger, opponent]);
-    const botPlayers = countBotPlayers(challenger, opponent);
-    assertBotClock(botPlayers, input.timePerMove);
     const [challenge] = await tx
       .insert(challenges)
       .values({
@@ -220,7 +149,7 @@ export async function createChallenge(
         opponentUsername,
         timePerMove: input.timePerMove,
         challengerColour: input.colour,
-        rated: input.rated && !sameOwner(challenger, opponent),
+        rated,
         botPlayers,
         threadId: input.threadId,
         expiresAt: sql`now() + interval '24 hours'`,
@@ -309,12 +238,6 @@ export async function acceptChallenge(
     const challenge = await lockPendingChallenge(tx, input.challengeId);
     const accepter = await requireUser(tx, input.userId);
     assertIsOpponent(challenge, accepter, 'accept');
-    // A bot answers only challenges made to it by name.
-    if (isOwnedBot(accepter) && challenge.opponentId === null) {
-      throw new DomainError('forbidden', 'bots cannot take open challenges', {
-        reason: 'open_challenges_are_for_people',
-      });
-    }
     if (challenge.challengerId === input.userId) {
       throw new DomainError('forbidden', 'cannot accept your own challenge', {
         reason: 'own_challenge',
@@ -322,15 +245,14 @@ export async function acceptChallenge(
     }
     const group = await requireGroup(tx, challenge.groupId);
     const challenger = await requireUser(tx, challenge.challengerId);
-    await assertNotBlocked(tx, group.id, accepter);
-    await assertNotBlocked(tx, group.id, challenger);
-    // The owner may have left, or been blocked, since the challenge was made.
-    await assertBotsMayPlay(tx, group.id, [challenger, accepter]);
-    await assertBotsNotBusy(tx, [challenger, accepter]);
-    const botPlayers = countBotPlayers(challenger, accepter);
     const timePerMove = challenge.timePerMove as TimePerMove;
-    assertBotClock(botPlayers, timePerMove);
-
+    // Checked again: the owner may have left, or someone been blocked, since the challenge was made.
+    const { botPlayers, rated } = await checkPairing(
+      tx,
+      group.id,
+      { challenger, opponent: accepter, open: challenge.opponentId === null },
+      { timePerMove, rated: challenge.rated },
+    );
     const challengerColour =
       challenge.challengerColour === 'random' ? randomColour() : challenge.challengerColour;
     const white = challengerColour === 'white' ? challenger : accepter;
@@ -343,7 +265,7 @@ export async function acceptChallenge(
         whiteId: white.id,
         blackId: black.id,
         timePerMove,
-        rated: challenge.rated && !sameOwner(challenger, accepter),
+        rated,
         botPlayers,
         fen: INITIAL_FEN,
         deadlineAt: deadlineExpression(timePerMove),

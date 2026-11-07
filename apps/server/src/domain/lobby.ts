@@ -20,7 +20,7 @@ import {
   type UserRow,
 } from '../db/schema';
 import type { Deps } from './deps';
-import { isFindableBot } from './botGroups';
+import { isFindableBot } from './pairing';
 import { settingsOf } from './groups';
 import { toPlayerRef } from './players';
 import { isOwnedBot } from './users';

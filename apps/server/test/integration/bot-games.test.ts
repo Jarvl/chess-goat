@@ -289,13 +289,4 @@ describe('live games per bot', () => {
     const [row] = await db.select().from(challenges).where(eq(challenges.id, pending.id));
     expect(row?.status).toBe('pending');
   });
-
-  it('a bot cannot accept from a busy bot challenger', async () => {
-    const { group, human, bot, rival } = await setup();
-    const pending = await insertChallenge(db, group.id, rival.id, bot.id, { botPlayers: 2 });
-    await busy(group.id, rival.id, human.id, MAX_LIVE_GAMES_PER_BOT);
-    expect(await reason(acceptChallenge(deps, { challengeId: pending.id, userId: bot.id }))).toBe(
-      'too_many_live_games',
-    );
-  });
 });

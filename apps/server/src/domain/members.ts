@@ -52,6 +52,16 @@ export async function getMember(
   return row ?? null;
 }
 
+/** A member here now, and not blocked: someone who may act in the group. */
+export async function isActiveMember(
+  tx: DbOrTx,
+  groupId: number,
+  userId: number,
+): Promise<boolean> {
+  const member = await getMember(tx, groupId, userId);
+  return member?.status === 'member' && member.blockedAt === null;
+}
+
 /** A bot is blocked here when it is, or when its owner is: blocking a person blocks their bots. */
 export async function isBlocked(tx: DbOrTx, groupId: number, userId: number): Promise<boolean> {
   const own = alias(groupMembers, 'own_member');

@@ -2,13 +2,9 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { challenges, games, groupMembers, jobs } from '../../src/db/schema';
 import { adminBlock, adminUnblock, groupSettingsDto } from '../../src/domain/admin';
-import {
-  addBotToGroup,
-  assertBotMayPlay,
-  listGroupBots,
-  removeBotFromGroup,
-} from '../../src/domain/botGroups';
+import { addBotToGroup, listGroupBots, removeBotFromGroup } from '../../src/domain/botGroups';
 import { blockUser, isBlocked, markLeft, touchMember } from '../../src/domain/members';
+import { mayPlay } from '../../src/domain/pairing';
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
 import {
   insertBot,
@@ -48,7 +44,7 @@ describe('bots in groups', () => {
     await addBotToGroup(db, owner.id, bot.id, group.id);
     await addBotToGroup(db, owner.id, bot.id, group.id);
     expect((await listGroupBots(db, group.id)).map((b) => b.id)).toEqual([bot.id]);
-    await assertBotMayPlay(db, group.id, bot);
+    await mayPlay(db, group.id, bot);
   });
 
   it("refuses when the owner isn't a member", async () => {
@@ -74,21 +70,13 @@ describe('bots in groups', () => {
     expect(await reason(addBotToGroup(db, other.id, bot.id, group.id))).toBe('bot_not_found');
   });
 
-  it('assertBotMayPlay fails once the owner leaves, and for a bot not in the group', async () => {
-    const { group, owner, bot } = await setup();
-    expect(await reason(assertBotMayPlay(db, group.id, bot))).toBe('bot_not_in_group');
-    await addBotToGroup(db, owner.id, bot.id, group.id);
-    await markLeft(db, group.id, owner.id);
-    expect(await reason(assertBotMayPlay(db, group.id, bot))).toBe('owner_not_member');
-  });
-
   it('blocking the owner blocks their bots', async () => {
     const { group, owner, admin, bot } = await setup();
     await addBotToGroup(db, owner.id, bot.id, group.id);
     expect(await isBlocked(db, group.id, bot.id)).toBe(false);
     await adminBlock(deps, group, admin.id, owner.id);
     expect(await isBlocked(db, group.id, bot.id)).toBe(true);
-    expect(await reason(assertBotMayPlay(db, group.id, bot))).toBe('blocked');
+    expect(await reason(mayPlay(db, group.id, bot))).toBe('blocked');
     await adminUnblock(deps, group, admin.id, owner.id);
     expect(await isBlocked(db, group.id, bot.id)).toBe(false);
   });

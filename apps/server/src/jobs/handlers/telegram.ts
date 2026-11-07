@@ -2,7 +2,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { games, groups, type GameRow } from '../../db/schema';
 import { getChallengeById, setChallengeMessage } from '../../domain/challenges';
-import { isFindableBot } from '../../domain/botGroups';
+import { isFindableBot } from '../../domain/pairing';
 import { requireGameById } from '../../domain/games';
 import { requireGroup, settingsOf } from '../../domain/groups';
 import { isOwnedBot, requireUser } from '../../domain/users';

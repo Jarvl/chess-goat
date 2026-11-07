@@ -13,7 +13,7 @@ import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, sql } from 'drizzle
 import { alias } from 'drizzle-orm/pg-core';
 import type { DbOrTx } from '../db/client';
 import { games, groupMembers, ratings, users, type GameRow, type RatingRow } from '../db/schema';
-import { findableIn, ownerJoin, ownerMember } from './botGroups';
+import { findableIn, ownerJoin, ownerMember } from './pairing';
 import { toPlayerRef } from './players';
 
 const RATED_RESULTS = ['1-0', '0-1', '1/2-1/2'] as const;

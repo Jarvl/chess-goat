@@ -1,6 +1,5 @@
 import { freshPlayerState } from '@chess-goat/shared';
 import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
 import type { DbOrTx } from '../db/client';
 import {
   challenges,
@@ -14,6 +13,7 @@ import { requireOwnBot } from './bots';
 import { settleInChat } from './challenges';
 import { DomainError } from './errors';
 import { getMember, isBlocked, markLeft, touchMember } from './members';
+import { findableIn, ownerJoin, ownerMember } from './pairing';
 
 const forbidden = (reason: 'owner_not_member' | 'blocked' | 'bot_not_in_group', message: string) =>
   new DomainError('forbidden', message, { reason });
@@ -47,23 +47,6 @@ export async function removeBotFromGroup(
   await settleBotChallenges(tx, groupId, [botId]);
 }
 
-/** The "may play" rule: the bot and its owner are both members here and neither is blocked. */
-export async function assertBotMayPlay(
-  tx: DbOrTx,
-  groupId: number,
-  bot: Pick<UserRow, 'id' | 'ownerId'>,
-): Promise<void> {
-  const member = await getMember(tx, groupId, bot.id);
-  if (member?.status !== 'member' || bot.ownerId === null) {
-    throw forbidden('bot_not_in_group', 'this bot is not in the group');
-  }
-  const owner = await getMember(tx, groupId, bot.ownerId);
-  if (owner?.status !== 'member') {
-    throw forbidden('owner_not_member', "the bot's owner is not in the group");
-  }
-  if (await isBlocked(tx, groupId, bot.id)) throw forbidden('blocked', 'blocked in this group');
-}
-
 export async function listGroupBots(tx: DbOrTx, groupId: number): Promise<UserRow[]> {
   const rows = await tx
     .select({ user: users })
@@ -94,41 +77,6 @@ export type BotSearchOptions = {
   cursor?: { key: number; id: number };
 };
 export type BotSearchPage = { rows: BotSearchRow[]; next: { key: number; id: number } | null };
-
-export const ownerMember = alias(groupMembers, 'owner_member');
-
-/**
- * The bots `find_bots` shows, from `groupMembers` joined to `users` and `ownerMember`: live owned
- * bots that are members of the group, unblocked, whose owners are unblocked members too.
- */
-export function findableIn(groupId: number) {
-  return [
-    eq(groupMembers.groupId, groupId),
-    eq(groupMembers.status, 'member'),
-    isNull(groupMembers.blockedAt),
-    eq(ownerMember.status, 'member'),
-    isNull(ownerMember.blockedAt),
-    isNull(users.deletedAt),
-    sql`${users.ownerId} is not null`,
-  ];
-}
-
-export const ownerJoin = and(
-  eq(ownerMember.groupId, groupMembers.groupId),
-  eq(ownerMember.userId, users.ownerId),
-);
-
-/** Whether `botId` is one of the bots `find_bots` shows in the group. */
-export async function isFindableBot(tx: DbOrTx, groupId: number, botId: number): Promise<boolean> {
-  const [row] = await tx
-    .select({ id: users.id })
-    .from(groupMembers)
-    .innerJoin(users, eq(users.id, groupMembers.userId))
-    .innerJoin(ownerMember, ownerJoin)
-    .where(and(...findableIn(groupId), eq(users.id, botId)))
-    .limit(1);
-  return row !== undefined;
-}
 
 /**
  * Live, unblocked member bots of a group (their owners unblocked too), best first by `sort`, with

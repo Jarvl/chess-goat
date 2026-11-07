@@ -2,7 +2,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { botAnnouncements, users } from '../db/schema';
 import { enqueue } from '../jobs/queue';
 import { requireOwnBot } from './bots';
-import { assertBotMayPlay } from './botGroups';
+import { mayPlay } from './pairing';
 import type { Deps } from './deps';
 import { DomainError } from './errors';
 
@@ -17,7 +17,7 @@ export async function announceBot(
 ): Promise<void> {
   await deps.db.transaction(async (tx) => {
     const bot = await requireOwnBot(tx, input.ownerId, input.botId);
-    await assertBotMayPlay(tx, input.groupId, bot);
+    await mayPlay(tx, input.groupId, bot);
     // The owner's row is locked first, so two racing posts for any of their bots take turns and
     // the second sees the first's claim.
     await tx.select({ id: users.id }).from(users).where(eq(users.id, input.ownerId)).for('update');
