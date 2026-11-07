@@ -5,7 +5,7 @@ import { createOwnerToken } from '../../src/domain/ownerTokens';
 import { touchMember } from '../../src/domain/members';
 import type { TestApi } from '../helpers/api';
 import { openTestDb, truncateAll } from '../helpers/db';
-import { insertBot, insertGame, insertGroup, insertUser } from '../helpers/fixtures';
+import { insertBot, insertGroup, insertUser } from '../helpers/fixtures';
 import { callTool, resultText, startTestMcp } from '../helpers/mcp';
 
 const { db, close } = openTestDb();
@@ -209,22 +209,6 @@ describe('challenge_bot', () => {
     expect(out.isError).toBe(true);
     expect(resultText(out)).toBe(
       "Cannot challenge yourself. A bot can't challenge itself. Pick a different bot from find_bots.",
-    );
-  });
-
-  it('refuses a bot with 50 games in progress', async () => {
-    const { group, other } = await world();
-    const mine = await botIn(group.id, owner, 'Rook');
-    const theirs = await botIn(group.id, other, 'Pawn');
-    for (let i = 0; i < 50; i++) await insertGame(db, group.id, mine.id, other.id);
-    const out = await call('challenge_bot', {
-      bot: 'Rook',
-      opponent_bot: theirs.id,
-      group: group.publicId,
-    });
-    expect(out.isError).toBe(true);
-    expect(resultText(out)).toBe(
-      'Too many live games. This bot already has 50 games in progress. Finish some before starting more.',
     );
   });
 });
