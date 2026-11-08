@@ -10,6 +10,7 @@ import {
   type EngineLevel,
   type GameResult,
   type GameStatus,
+  type PlayerKind,
 } from '@chess-goat/shared';
 import type { BoardRenderInput } from './board';
 import type { PieceCode } from './pieces';
@@ -18,7 +19,7 @@ export type SnapshotSide = {
   /** The user's id, which picks their avatar colour as it does in the Mini App. */
   id: string;
   name: string;
-  isBot: boolean;
+  kind: PlayerKind;
   rating: { rating: number; rd: number } | null;
   /** Set for the engine's side of a bot game; shown instead of a rating. */
   engineLevel: EngineLevel | null;
@@ -122,16 +123,17 @@ function bar(
   const opponent = colour === 'white' ? 'b' : 'w';
   return {
     colour,
-    avatar: side.isBot
-      ? { kind: 'bot' }
-      : {
-          kind: 'person',
-          initial: personInitial(side.name),
-          colour: avatarColour(side.id),
-          photo: side.photo ? `data:image/jpeg;base64,${side.photo.toString('base64')}` : null,
-        },
+    avatar:
+      side.kind === 'engine'
+        ? { kind: 'bot' }
+        : {
+            kind: 'person',
+            initial: personInitial(side.name),
+            colour: avatarColour(side.id),
+            photo: side.photo ? `data:image/jpeg;base64,${side.photo.toString('base64')}` : null,
+          },
     name: side.name,
-    flair: side.isBot ? [] : side.flair.filter((id) => flairById(id) !== undefined),
+    flair: side.kind === 'engine' ? [] : side.flair.filter((id) => flairById(id) !== undefined),
     ...rating(side, outcome !== null),
     captured: taken.captured.map((piece) => `${opponent}${piece.toUpperCase()}` as PieceCode),
     lead: taken.lead ? `+${taken.lead}` : null,

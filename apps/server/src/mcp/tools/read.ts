@@ -1,4 +1,5 @@
 import { and, desc, eq, isNull, or } from 'drizzle-orm';
+import { PlayerKindSchema } from '@chess-goat/shared';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/server';
 import { games, groups, users, type GameRow, type UserRow } from '../../db/schema';
@@ -21,7 +22,7 @@ export const gameViewSchema = z.object({
   gameId: z.string(),
   group: z.object({ groupId: z.string(), title: z.string() }),
   you: colour,
-  opponent: z.object({ name: z.string(), isBot: z.boolean() }),
+  opponent: z.object({ name: z.string(), kind: PlayerKindSchema }),
   status: z.string(),
   result: z.string().nullable(),
   endReason: z.string().nullable(),

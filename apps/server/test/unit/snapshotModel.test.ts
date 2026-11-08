@@ -33,7 +33,12 @@ describe('buildSnapshotModel', () => {
     const model = buildSnapshotModel(
       snapshotInput({
         black: { ...snapshotInput().black, id: '13' },
-        white: { ...snapshotInput().white, name: 'Chess Goat', isBot: true, engineLevel: 'strong' },
+        white: {
+          ...snapshotInput().white,
+          name: 'Chess Goat',
+          kind: 'engine',
+          engineLevel: 'strong',
+        },
       }),
     );
     expect(model.top.avatar).toEqual({
@@ -52,7 +57,7 @@ describe('buildSnapshotModel', () => {
         white: {
           ...snapshotInput().white,
           name: 'Chess Goat',
-          isBot: true,
+          kind: 'engine',
           engineLevel: 'strong',
           photo: FIXTURE_JPEG,
         },
@@ -82,7 +87,7 @@ describe('buildSnapshotModel', () => {
         white: {
           ...snapshotInput().white,
           name: 'Chess Goat',
-          isBot: true,
+          kind: 'engine',
           engineLevel: 'strong',
           flair: ['rank_1800'],
         },
@@ -104,7 +109,7 @@ describe('buildSnapshotModel', () => {
         black: {
           ...snapshotInput().black,
           name: 'Chess Goat',
-          isBot: true,
+          kind: 'engine',
           rating: { rating: 1500, rd: 350 },
           engineLevel: 'strong',
         },

@@ -15,6 +15,7 @@ import { requireGroup } from './groups';
 import { isBlocked } from './members';
 import { generatePublicId } from '../db/ids';
 import { requireUser } from './users';
+import { isEngine } from './playerKind';
 
 /** The single engine user, created by migration 0002 (spec §5). */
 export async function getEngineUser(tx: DbOrTx): Promise<UserRow> {
@@ -52,7 +53,7 @@ export async function createEngineGame(deps: Deps, input: CreateEngineGameInput)
     const playerColour = input.colour === 'random' ? randomColour() : input.colour;
     const white = playerColour === 'white' ? player : engine;
     const black = playerColour === 'white' ? engine : player;
-    const engineToMove = white.isEngine;
+    const engineToMove = isEngine(white);
     const [game] = await tx
       .insert(games)
       .values({

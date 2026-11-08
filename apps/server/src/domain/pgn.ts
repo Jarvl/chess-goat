@@ -4,6 +4,7 @@ import type { GameRow, UserRow } from '../db/schema';
 import { listMoves } from './games';
 import { requireGroup } from './groups';
 import { displayName, requireUser } from './users';
+import { isEngine } from './playerKind';
 
 /**
  * Spec §5: the engine's name carries the level where it is meaningful (`Stockfish (Club)`). An
@@ -13,7 +14,7 @@ import { displayName, requireUser } from './users';
  */
 function playerName(user: UserRow, engineLevel: string | null): string {
   const name = displayName(user);
-  if (!user.isEngine || engineLevel === null) return name;
+  if (!isEngine(user) || engineLevel === null) return name;
   return `${name} (${t(`app.level.${engineLevel as EngineLevel}`)})`;
 }
 

@@ -10,7 +10,8 @@ import type { DbOrTx } from '../db/client';
 import type { ChallengeRow, GameRow, GroupRow, UserRow } from '../db/schema';
 import { listMoves } from '../domain/games';
 import { getPlayerRating } from '../domain/ratings';
-import { displayName, flairEmoji, isOwnedBot, requireUser } from '../domain/users';
+import { isBot } from '../domain/playerKind';
+import { displayName, flairEmoji, requireUser } from '../domain/users';
 import { label, type ChallengeCardView, type GameCardView, type PersonView } from './cards';
 import { miniAppLink } from './links';
 
@@ -60,15 +61,15 @@ export async function challengeCardView(
             flair: '',
           }
         : null,
-    opponentIsBot: opponent !== null && isOwnedBot(opponent),
+    opponentIsBot: opponent !== null && isBot(opponent),
     opponentActivity:
-      opponent !== null && isOwnedBot(opponent) ? { lastActiveAt: opponent.lastActiveAt } : null,
+      opponent !== null && isBot(opponent) ? { lastActiveAt: opponent.lastActiveAt } : null,
     timePerMove: challenge.timePerMove as TimePerMove,
     rated: challenge.rated,
     challengerColour: challenge.challengerColour,
     lobbyLink: lobbyLink(config, group),
     botChallenge:
-      opponent && isOwnedBot(opponent) && !opponent.deletedAt
+      opponent && isBot(opponent) && !opponent.deletedAt
         ? botChallenge(config, group, opponent)
         : null,
   };
@@ -114,7 +115,7 @@ export async function gameCardView(
     requireUser(tx, game.blackId),
   ]);
   // Bot-vs-bot games have no card, so a card has at most one bot side.
-  const botSide = isOwnedBot(white) ? 'white' : isOwnedBot(black) ? 'black' : null;
+  const botSide = isBot(white) ? 'white' : isBot(black) ? 'black' : null;
   const found = botSide === 'white' ? white : botSide === 'black' ? black : null;
   // A deleted bot can't be challenged: no button, no activity line.
   const bot = found && !found.deletedAt ? found : null;

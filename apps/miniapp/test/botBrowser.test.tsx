@@ -22,6 +22,7 @@ const card = (id: number, overrides: Partial<BotCardDto> = {}): BotCardDto => ({
   ...playerRef(String(id), `🤖 Bot${id} (@zed)`),
   rating: 1500 + id,
   provisional: false,
+  kind: 'bot',
   botActivity: { lastActiveAt: null },
   tagline: `Tagline ${id}`,
   owner: '@zed',

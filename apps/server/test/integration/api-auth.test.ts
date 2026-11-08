@@ -121,14 +121,14 @@ describe('GET /api/me/games', () => {
       fen: AFTER_E4,
       lastMove: 'e2e4',
       engineLevel: 'club',
-      white: { isBot: false },
-      black: { isBot: true },
+      white: { kind: 'human' },
+      black: { kind: 'engine' },
     });
     expect(byId.get(fresh.publicId)).toMatchObject({
       lastMove: null,
       engineLevel: 'casual',
-      white: { isBot: true },
-      black: { isBot: false },
+      white: { kind: 'engine' },
+      black: { kind: 'human' },
     });
   });
 });

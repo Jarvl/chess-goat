@@ -1,12 +1,13 @@
-import { sideToMove, type ColourChoice } from '@chess-goat/shared';
+import { sideToMove, type ColourChoice, type PlayerKind } from '@chess-goat/shared';
 import { and, asc, eq, gt, inArray, or, sql, type AnyColumn } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { DbOrTx } from '../db/client';
 import { challenges, games, groups, users, type UserRow } from '../db/schema';
-import { displayName, isOwnedBot } from './users';
+import { displayName } from './users';
+import { kindOf } from './playerKind';
 
 export type InboxBot = { id: number; name: string };
-export type InboxPerson = { name: string; isBot: boolean };
+export type InboxPerson = { name: string; kind: PlayerKind };
 
 /** What one of an owner's bots has to act on (bots spec §7; MCP plan, Task 5). */
 export type InboxEntry =
@@ -43,7 +44,8 @@ export const INBOX_PAGE = 50;
 export type Inbox = { entries: InboxEntry[]; more: boolean };
 
 /** The user columns an entry needs: a name, and whether it is a bot. */
-type PersonKey = 'id' | 'firstName' | 'username' | 'deletedAt' | 'ownerId' | 'ownerName';
+type PersonKey =
+  'id' | 'firstName' | 'username' | 'deletedAt' | 'isEngine' | 'ownerId' | 'ownerName';
 type Person = Pick<UserRow, PersonKey>;
 
 function personColumns<U extends Record<PersonKey, AnyColumn>>(user: U): Pick<U, PersonKey> {
@@ -52,6 +54,7 @@ function personColumns<U extends Record<PersonKey, AnyColumn>>(user: U): Pick<U,
     firstName: user.firstName,
     username: user.username,
     deletedAt: user.deletedAt,
+    isEngine: user.isEngine,
     ownerId: user.ownerId,
     ownerName: user.ownerName,
   };
@@ -60,7 +63,7 @@ function personColumns<U extends Record<PersonKey, AnyColumn>>(user: U): Pick<U,
 const botOf = (row: Person): InboxBot => ({ id: row.id, name: row.firstName });
 const personOf = (row: Person): InboxPerson => ({
   name: displayName(row),
-  isBot: isOwnedBot(row),
+  kind: kindOf(row),
 });
 const opposite = (colour: ColourChoice): ColourChoice =>
   colour === 'white' ? 'black' : colour === 'black' ? 'white' : 'random';

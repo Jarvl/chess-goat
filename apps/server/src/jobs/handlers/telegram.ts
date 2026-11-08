@@ -5,7 +5,7 @@ import { getChallengeById, setChallengeMessage } from '../../domain/challenges';
 import { isFindableBot } from '../../domain/pairing';
 import { requireGameById } from '../../domain/games';
 import { requireGroup, settingsOf } from '../../domain/groups';
-import { isOwnedBot, requireUser } from '../../domain/users';
+import { requireUser } from '../../domain/users';
 import {
   renderBotAnnounceCard,
   renderChallengeCard,
@@ -20,6 +20,7 @@ import { enqueue } from '../queue';
 import { retireDm, sendDm } from './dm';
 import { call, settle, type TelegramHandlerContext } from './telegramCall';
 import type { JobHandler, JobHandlers, JobResult } from '../types';
+import { isBot } from '../../domain/playerKind';
 
 const gameCardPayload = z.object({ gameId: z.number().int() });
 const challengePayload = z.object({ challengeId: z.number().int() });
@@ -178,7 +179,7 @@ const sendBotAnnounce =
     if (group.botStatus === 'left') return { outcome: 'done' };
     const bot = await requireUser(ctx.deps.db, botId);
     // The bot was deleted between the post and the send: there is nothing to invite anyone to.
-    if (!isOwnedBot(bot) || bot.deletedAt) return { outcome: 'done' };
+    if (!isBot(bot) || bot.deletedAt) return { outcome: 'done' };
     // Nor when it may no longer play here (it or its owner left or was blocked since).
     if (!(await isFindableBot(ctx.deps.db, group.id, bot.id))) return { outcome: 'done' };
     const settings = settingsOf(group);

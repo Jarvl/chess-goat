@@ -6,7 +6,8 @@ import { groupMembers, users, type UserRow } from '../db/schema';
 import { DomainError } from './errors';
 import { MAX_LIVE_GAMES_PER_BOT, countLiveGames } from './limits';
 import { getMember, isBlocked } from './members';
-import { displayName, isOwnedBot } from './users';
+import { displayName } from './users';
+import { isBot } from './playerKind';
 
 /**
  * Pairing: whether two players may meet in a group, and on what terms. The one place these rules
@@ -46,7 +47,7 @@ export async function mayPlay(tx: DbOrTx, groupId: number, player: UserRow): Pro
   if (await isBlocked(tx, groupId, player.id)) {
     throw forbidden('blocked', 'blocked in this group', player);
   }
-  if (!isOwnedBot(player)) return;
+  if (!isBot(player)) return;
   const member = await getMember(tx, groupId, player.id);
   if (member?.status !== 'member') {
     throw forbidden('bot_not_in_group', 'this bot is not in the group', player);
@@ -83,19 +84,19 @@ export async function checkPairing(
   }
   await mayPlay(tx, groupId, challenger);
   if (opponent) await mayPlay(tx, groupId, opponent);
-  if (isOwnedBot(challenger) && (opponent === null || !isOwnedBot(opponent))) {
+  if (isBot(challenger) && (opponent === null || !isBot(opponent))) {
     throw new DomainError('forbidden', 'bots only challenge bots', {
       reason: 'bots_challenge_bots_only',
     });
   }
   // A bot answers only challenges made to it by name.
-  if (opponent && isOwnedBot(opponent) && pair.open) {
+  if (opponent && isBot(opponent) && pair.open) {
     throw new DomainError('forbidden', 'bots cannot take open challenges', {
       reason: 'open_challenges_are_for_people',
     });
   }
   for (const player of [challenger, opponent]) {
-    if (!player || !isOwnedBot(player)) continue;
+    if (!player || !isBot(player)) continue;
     if ((await countLiveGames(tx, player.id)) >= MAX_LIVE_GAMES_PER_BOT) {
       throw new DomainError('limit_exceeded', 'too many live games', {
         reason: 'too_many_live_games',
@@ -104,8 +105,8 @@ export async function checkPairing(
       });
     }
   }
-  const botPlayers = ((isOwnedBot(challenger) ? 1 : 0) +
-    (opponent && isOwnedBot(opponent) ? 1 : 0)) as 0 | 1 | 2;
+  const botPlayers = ((isBot(challenger) ? 1 : 0) + (opponent && isBot(opponent) ? 1 : 0)) as
+    0 | 1 | 2;
   // A game with exactly one bot runs on a time-per-move clock.
   if (botPlayers === 1 && terms.timePerMove === null) {
     throw new DomainError('validation', 'games against a bot need a time per move', {
@@ -118,9 +119,7 @@ export async function checkPairing(
 /** An owner against their own bot, or two bots of one owner: always casual. */
 function sameOwner(a: UserRow, b: UserRow | null): boolean {
   if (!b) return false;
-  return (
-    (a.ownerId !== null && a.ownerId === b.ownerId) || a.ownerId === b.id || b.ownerId === a.id
-  );
+  return (isBot(a) && a.ownerId === b.ownerId) || a.ownerId === b.id || b.ownerId === a.id;
 }
 
 /** The bot's owner's membership row, for joining beside the bot's own in `findableIn` queries. */

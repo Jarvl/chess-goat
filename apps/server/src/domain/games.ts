@@ -38,7 +38,8 @@ import { resultRecipients } from './dmRules';
 import { markWaiting, retireGameDms } from './dms';
 import { parseTree, requireLegalTree } from './premoveCheck';
 import { applyGameResultToRatings, getPlayerRating } from './ratings';
-import { isOwnedBot, nameWithFlair, requireUser, wantsDms } from './users';
+import { nameWithFlair, requireUser, wantsDms } from './users';
+import { isBot, isEngine } from './playerKind';
 
 export type EndInput = { result: GameResult; endReason: EndReason };
 
@@ -222,7 +223,7 @@ async function endGameDms(
   );
   for (const colour of resultRecipients(endReason, endedBy)) {
     const recipient = colour === 'white' ? white : black;
-    if (isOwnedBot(recipient)) continue;
+    if (isBot(recipient)) continue;
     const userId = recipient.id;
     await enqueue(tx, {
       kind: 'send_dm',
@@ -481,7 +482,7 @@ async function commitMove(tx: DbOrTx, input: CommitInput): Promise<GameRow> {
   }
 
   const { opponent } = committed;
-  if (opponent.isEngine) {
+  if (isEngine(opponent)) {
     // Spec §8: engine games post no card, and the engine has no DM to receive.
     await enqueueEngineMove(tx, moved);
   } else if (postsToChat(moved)) {
@@ -493,7 +494,7 @@ async function commitMove(tx: DbOrTx, input: CommitInput): Promise<GameRow> {
       payload: { gameId: moved.id },
       dedupKey: `card:g:${moved.publicId}`,
     });
-    if (!isOwnedBot(opponent)) {
+    if (!isBot(opponent)) {
       await enqueue(tx, {
         kind: 'send_dm',
         payload: {

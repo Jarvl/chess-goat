@@ -7,7 +7,7 @@ export function playerRef(id: string, name: string, overrides: Partial<PlayerRef
     username: null,
     rating: 1500,
     provisional: true,
-    isBot: false,
+    kind: 'human',
     photoUrl: null,
     flair: [],
     botActivity: null,

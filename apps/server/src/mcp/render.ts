@@ -1,14 +1,20 @@
-import { decodePremoveBytes, type Colour, type PremoveNode } from '@chess-goat/shared';
+import {
+  decodePremoveBytes,
+  type Colour,
+  type PlayerKind,
+  type PremoveNode,
+} from '@chess-goat/shared';
 import { Chess } from 'chess.js';
 import type { GameRow, MoveRow, UserRow } from '../db/schema';
 import { colourOf, storedPremoveTree } from '../domain/gameDto';
-import { isOwnedBot, displayName } from '../domain/users';
+import { kindOf } from '../domain/playerKind';
+import { displayName } from '../domain/users';
 
 export type GameView = {
   gameId: string;
   group: { groupId: string; title: string };
   you: Colour;
-  opponent: { name: string; isBot: boolean };
+  opponent: { name: string; kind: PlayerKind };
   status: GameRow['status'];
   result: GameRow['result'];
   endReason: GameRow['endReason'];
@@ -66,7 +72,7 @@ export function renderGame(input: RenderInput, viewerBotId: number): GameView {
     gameId: game.publicId,
     group: { groupId: input.group.publicId, title: input.group.title },
     you,
-    opponent: { name: displayName(opponent), isBot: isOwnedBot(opponent) },
+    opponent: { name: displayName(opponent), kind: kindOf(opponent) },
     status: game.status,
     result: game.result,
     endReason: game.endReason,

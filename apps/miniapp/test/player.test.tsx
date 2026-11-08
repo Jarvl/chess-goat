@@ -72,6 +72,7 @@ describe('Player', () => {
       player: {
         ...page.player,
         name: '🤖 Rook (@owner)',
+        kind: 'bot',
         botActivity: { lastActiveAt: null },
       },
       bot: { tagline: 'Loves endgames', owner: '@owner', lastActiveAt: null, isMine, findable },

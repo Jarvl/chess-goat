@@ -14,7 +14,8 @@ import {
   postsToChat,
   type EndInput,
 } from './games';
-import { isOwnedBot, requireUser } from './users';
+import { requireUser } from './users';
+import { isBot } from './playerKind';
 
 type OfferState = Pick<
   GameRow,
@@ -69,7 +70,7 @@ export async function offerDraw(deps: Deps, input: Input): Promise<GameDto> {
     if (
       sideToMove(game.fen) !== colour &&
       postsToChat(game) &&
-      !isOwnedBot(await requireUser(tx, recipientId))
+      !isBot(await requireUser(tx, recipientId))
     ) {
       await enqueue(tx, {
         kind: 'send_dm',

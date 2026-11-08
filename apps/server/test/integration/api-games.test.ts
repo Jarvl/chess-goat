@@ -193,7 +193,7 @@ describe('challenges and lobby', () => {
       fen: AFTER_E4,
       lastMove: 'e2e4',
       engineLevel: null,
-      white: { isBot: false },
+      white: { kind: 'human' },
     });
     expect(lobby.finished.items[0]).toMatchObject({ id: done.publicId, lastMove: null });
     const page = PlayerPageDtoSchema.parse(
@@ -203,7 +203,7 @@ describe('challenges and lobby', () => {
         })
       ).json(),
     );
-    expect(page.player.isBot).toBe(false);
+    expect(page.player.kind).toBe('human');
     expect(page.recentGames.map((game) => game.lastMove)).toContain('e2e4');
   });
 });

@@ -31,14 +31,17 @@ export function PlayerBar(props: { dto: GameDto; colour: Colour; fen: string; no
   const yours = toMove && dto.viewerRole === colour;
   const remaining = toMove ? remainingMs(dto.deadlineAt, props.now) : null;
   const urgent = toMove && isUrgent(remaining, dto.timePerMove);
-  const rating = player.isBot
-    ? dto.engineLevel
-      ? t(`app.level.${dto.engineLevel}`)
-      : ''
-    : ratingLabel(player.rating, player.provisional) +
-      (dto.status === 'finished' && player.ratingAfter !== null && player.provisionalAfter !== null
-        ? ` → ${ratingLabel(player.ratingAfter, player.provisionalAfter)}`
-        : '');
+  const rating =
+    player.kind === 'engine'
+      ? dto.engineLevel
+        ? t(`app.level.${dto.engineLevel}`)
+        : ''
+      : ratingLabel(player.rating, player.provisional) +
+        (dto.status === 'finished' &&
+        player.ratingAfter !== null &&
+        player.provisionalAfter !== null
+          ? ` → ${ratingLabel(player.ratingAfter, player.provisionalAfter)}`
+          : '');
   // Once the game is over, a result tag takes the clock's place and the reason the second line's.
   const result = sideResult(dto, colour);
   const sub =

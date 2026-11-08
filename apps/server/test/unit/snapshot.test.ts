@@ -86,7 +86,12 @@ describe('renderSnapshotSvg', () => {
   it('draws the goat mark in the footer, and as the avatar of a bot', async () => {
     expect(placed(await render(), GOAT_MARK_PNG)).toHaveLength(1);
     const bot = await render({
-      black: { ...snapshotInput().black, name: 'Chess Goat', isBot: true, engineLevel: 'strong' },
+      black: {
+        ...snapshotInput().black,
+        name: 'Chess Goat',
+        kind: 'engine',
+        engineLevel: 'strong',
+      },
     });
     expect(placed(bot, GOAT_MARK_PNG)).toHaveLength(2);
   });

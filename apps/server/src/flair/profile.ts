@@ -4,7 +4,8 @@ import { alias } from 'drizzle-orm/pg-core';
 import type { DbOrTx } from '../db/client';
 import { games, userFlair, users } from '../db/schema';
 import { DomainError } from '../domain/errors';
-import { displayName, isHuman, requireUser } from '../domain/users';
+import { can } from '../domain/playerKind';
+import { displayName, requireUser } from '../domain/users';
 
 /**
  * Flair spec §4: what the player wears, in slot order, and what they have earned, in catalog order
@@ -23,6 +24,7 @@ export async function loadFlairDto(tx: DbOrTx, userId: number): Promise<FlairDto
         firstName: opponent.firstName,
         username: opponent.username,
         deletedAt: opponent.deletedAt,
+        isEngine: opponent.isEngine,
         ownerId: opponent.ownerId,
         ownerName: opponent.ownerName,
       },
@@ -72,7 +74,8 @@ export async function setWornFlair(
     .where(eq(users.id, userId))
     .for('no key update');
   if (!locked) throw new DomainError('not_found', 'user not found', { userId });
-  if (!isHuman(locked)) throw new DomainError('forbidden', 'bots wear no flair', { userId });
+  if (!can(locked, 'wearFlair'))
+    throw new DomainError('forbidden', 'bots wear no flair', { userId });
 
   const refuse = (reason: 'duplicate' | 'unknown' | 'not_earned') =>
     new DomainError('validation', 'invalid flair', { reason });

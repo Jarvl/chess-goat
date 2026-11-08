@@ -11,6 +11,7 @@ import type { DbOrTx } from '../db/client';
 import { users, type UserRow } from '../db/schema';
 import { DomainError } from './errors';
 import { queuePhotoRefresh } from './photos';
+import { can, isBot } from './playerKind';
 
 export type TelegramUserInfo = {
   telegramUserId: number;
@@ -90,10 +91,10 @@ export function prefsOf(user: Pick<UserRow, 'prefs'>): Prefs {
  * never gets one, whatever its row says, so it is never reminded either.
  */
 export function wantsDms(
-  user: Pick<UserRow, 'prefs' | 'dmAllowed' | 'deletedAt' | 'ownerId'>,
+  user: Pick<UserRow, 'prefs' | 'dmAllowed' | 'deletedAt' | 'isEngine' | 'ownerId'>,
 ): boolean {
   return (
-    !isOwnedBot(user) && user.dmAllowed && user.deletedAt === null && prefsOf(user).notifications
+    can(user, 'getDms') && user.dmAllowed && user.deletedAt === null && prefsOf(user).notifications
   );
 }
 
@@ -133,24 +134,17 @@ export async function setDmAllowed(tx: DbOrTx, userId: number, allowed: boolean)
   await tx.update(users).set({ dmAllowed: allowed }).where(eq(users.id, userId));
 }
 
-/** A bot is a user row owned by a human; the engine and humans have no owner. */
-export function isOwnedBot(user: Pick<UserRow, 'ownerId'>): boolean {
-  return user.ownerId !== null;
-}
-
-/** A real person: neither the engine nor an owned bot. */
-export function isHuman(user: Pick<UserRow, 'isEngine' | 'ownerId'>): boolean {
-  return !user.isEngine && !isOwnedBot(user);
-}
-
 /**
  * People are named by their Telegram handle; `first_name` only when they have no username. A bot
  * is `🤖 name (owner)`, or `🤖 Deleted bot` once deleted.
  */
 export function displayName(
-  user: Pick<UserRow, 'firstName' | 'username' | 'deletedAt' | 'ownerId' | 'ownerName'>,
+  user: Pick<
+    UserRow,
+    'firstName' | 'username' | 'deletedAt' | 'isEngine' | 'ownerId' | 'ownerName'
+  >,
 ): string {
-  if (isOwnedBot(user)) {
+  if (isBot(user)) {
     return user.deletedAt ? '🤖 Deleted bot' : `🤖 ${user.firstName} (${user.ownerName})`;
   }
   if (user.deletedAt) return 'Deleted player';
@@ -164,7 +158,7 @@ type Wearer = Pick<UserRow, 'deletedAt' | 'isEngine' | 'flairWorn' | 'ownerId'>;
  * no longer has is skipped, and a fourth is not worn: the app refuses a player with more.
  */
 export function wornFlair(user: Wearer): FlairEntry[] {
-  if (user.deletedAt || user.isEngine || isOwnedBot(user)) return [];
+  if (user.deletedAt || !can(user, 'wearFlair')) return [];
   return user.flairWorn.flatMap((id) => flairById(id) ?? []).slice(0, MAX_WORN_FLAIR);
 }
 
@@ -193,7 +187,12 @@ export function nameWithFlair(
  */
 export async function lockLiveHumanOwner(tx: DbOrTx, userId: number): Promise<UserRow> {
   const [owner] = await tx.select().from(users).where(eq(users.id, userId)).for('update');
-  if (!owner || !isHuman(owner) || owner.deletedAt !== null || owner.telegramUserId === null) {
+  if (
+    !owner ||
+    !can(owner, 'actAsPerson') ||
+    owner.deletedAt !== null ||
+    owner.telegramUserId === null
+  ) {
     throw new DomainError('forbidden', 'only a human can own bots', {
       reason: 'not_a_human_owner',
     });
