@@ -1,11 +1,12 @@
 import { GLICKO2 } from '@chess-goat/shared';
-import { and, eq, gte, gt, inArray, isNotNull, isNull } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNotNull, isNull } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client';
 import { games, groupMembers, ratings, users } from '../db/schema';
 import { findableIn, ownerJoin, ownerMember } from './pairing';
 import { getBotStandings } from './ratings';
 import { displayName } from './users';
 import { isBot } from './playerKind';
+import { mixFilter } from './gameMix';
 
 export type Roundup = {
   topBot: { label: string; rating: number } | null;
@@ -33,7 +34,7 @@ export async function buildRoundup(
         eq(games.status, 'finished'),
         gte(games.finishedAt, since),
         isNull(games.voidedAt),
-        gt(games.botPlayers, 0),
+        mixFilter.withABot(games.botPlayers),
       ),
     );
   const played = rows.filter(

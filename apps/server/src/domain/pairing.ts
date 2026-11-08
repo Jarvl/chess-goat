@@ -8,6 +8,7 @@ import { MAX_LIVE_GAMES_PER_BOT, countLiveGames } from './limits';
 import { getMember, isBlocked } from './members';
 import { displayName } from './users';
 import { isBot } from './playerKind';
+import { mixOfPlayers, type GameMix } from './gameMix';
 
 /**
  * Pairing: whether two players may meet in a group, and on what terms. The one place these rules
@@ -69,15 +70,15 @@ export type Pair = {
 export type PairingTerms = { timePerMove: TimePerMove; rated: boolean };
 
 /**
- * Checks that the pair may meet in the group on these terms, and returns what follows: how many
- * of the players are bots, and whether the game is rated. Throws the first rule broken.
+ * Checks that the pair may meet in the group on these terms, and returns what follows: the game
+ * mix, and whether the game is rated. Throws the first rule broken.
  */
 export async function checkPairing(
   tx: DbOrTx,
   groupId: number,
   pair: Pair,
   terms: PairingTerms,
-): Promise<{ botPlayers: 0 | 1 | 2; rated: boolean }> {
+): Promise<{ mix: GameMix; rated: boolean }> {
   const { challenger, opponent } = pair;
   if (opponent && opponent.id === challenger.id) {
     throw new DomainError('validation', 'cannot challenge yourself', { reason: 'self' });
@@ -105,15 +106,14 @@ export async function checkPairing(
       });
     }
   }
-  const botPlayers = ((isBot(challenger) ? 1 : 0) + (opponent && isBot(opponent) ? 1 : 0)) as
-    0 | 1 | 2;
+  const mix = mixOfPlayers(challenger, opponent);
   // A game with exactly one bot runs on a time-per-move clock.
-  if (botPlayers === 1 && terms.timePerMove === null) {
+  if (mix === 'mixed' && terms.timePerMove === null) {
     throw new DomainError('validation', 'games against a bot need a time per move', {
       reason: 'bot_games_need_clock',
     });
   }
-  return { botPlayers, rated: terms.rated && !sameOwner(challenger, opponent) };
+  return { mix, rated: terms.rated && !sameOwner(challenger, opponent) };
 }
 
 /** An owner against their own bot, or two bots of one owner: always casual. */

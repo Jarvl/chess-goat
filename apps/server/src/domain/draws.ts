@@ -6,16 +6,10 @@ import { isEngineGame } from './engineGames';
 import { DomainError } from './errors';
 import { positionKeys } from './gameDto';
 import { enqueue } from '../jobs/queue';
-import {
-  finishGame,
-  listMoves,
-  loadGameDto,
-  lockActiveGame,
-  postsToChat,
-  type EndInput,
-} from './games';
+import { finishGame, listMoves, loadGameDto, lockActiveGame, type EndInput } from './games';
 import { requireUser } from './users';
-import { isBot } from './playerKind';
+import { can } from './playerKind';
+import { audienceOf } from './gameMix';
 
 type OfferState = Pick<
   GameRow,
@@ -69,8 +63,8 @@ export async function offerDraw(deps: Deps, input: Input): Promise<GameDto> {
     const recipientId = opposite(colour) === 'white' ? game.whiteId : game.blackId;
     if (
       sideToMove(game.fen) !== colour &&
-      postsToChat(game) &&
-      !isBot(await requireUser(tx, recipientId))
+      audienceOf(game).chat &&
+      can(await requireUser(tx, recipientId), 'getDms')
     ) {
       await enqueue(tx, {
         kind: 'send_dm',

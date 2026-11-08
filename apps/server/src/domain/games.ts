@@ -29,7 +29,7 @@ import {
 import { isCountedGame } from '../flair/history';
 import { enqueue } from '../jobs/queue';
 import type { Deps } from './deps';
-import { enqueueEngineMove, isEngineGame } from './engineGames';
+import { enqueueEngineMove } from './engineGames';
 import { DomainError } from './errors';
 import { buildGameDto, colourOf, positionKeys, storedPremoveTree } from './gameDto';
 import { deadlineExpression, reminderExpression } from './limits';
@@ -39,7 +39,8 @@ import { markWaiting, retireGameDms } from './dms';
 import { parseTree, requireLegalTree } from './premoveCheck';
 import { applyGameResultToRatings, getPlayerRating } from './ratings';
 import { nameWithFlair, requireUser, wantsDms } from './users';
-import { isBot, isEngine } from './playerKind';
+import { can, isEngine } from './playerKind';
+import { audienceOf } from './gameMix';
 
 export type EndInput = { result: GameResult; endReason: EndReason };
 
@@ -109,14 +110,6 @@ export async function getGameDto(
   return loadGameDto(deps.db, game, input.viewerUserId);
 }
 
-/**
- * Whether the group chat hears about a game: its card, card edits and result photo. Engine games
- * (spec §8) and bot-vs-bot games never reach the chat.
- */
-export function postsToChat(game: Pick<GameRow, 'engineLevel' | 'botPlayers'>): boolean {
-  return !isEngineGame(game) && game.botPlayers !== 2;
-}
-
 const ABORT_REASONS: ReadonlySet<EndInput['endReason']> = new Set(['abort', 'timeout_abort']);
 
 /**
@@ -134,8 +127,7 @@ export async function finishGame(
   // A voided game is not worth an import; the fallback analysis link still works (review finding 10).
   // Spec §8: engine games post no card and are never imported — the Lichess quota is shared across
   // the deployment and these games have no human opponent.
-  const engineGame = isEngineGame(game);
-  const inChat = postsToChat(game);
+  const inChat = audienceOf(game).chat;
   // An abort is never imported: it covers the 30-day stale abort of bot-vs-bot games (a human abort
   // happens before both players have moved, so it has nothing to import anyway). Nor is any game
   // with an owned bot in it (bot accounts spec §3): bots could play thousands of games against the
@@ -144,8 +136,7 @@ export async function finishGame(
     game.plyCount > 0 &&
     end.endReason !== 'voided' &&
     end.endReason !== 'abort' &&
-    !engineGame &&
-    game.botPlayers === 0;
+    audienceOf(game).importable;
   const [updated] = await tx
     .update(games)
     .set({
@@ -223,7 +214,7 @@ async function endGameDms(
   );
   for (const colour of resultRecipients(endReason, endedBy)) {
     const recipient = colour === 'white' ? white : black;
-    if (isBot(recipient)) continue;
+    if (!can(recipient, 'getDms')) continue;
     const userId = recipient.id;
     await enqueue(tx, {
       kind: 'send_dm',
@@ -361,7 +352,7 @@ async function commitOne(
   if (!inserted) throw new Error('move insert returned no row');
   const history = [...input.history, inserted];
   const opponent = await requireUser(tx, colour === 'white' ? game.blackId : game.whiteId);
-  if (postsToChat(game)) {
+  if (audienceOf(game).chat) {
     // DM notifications spec §2.2: the mover's live DM quietly becomes the waiting line. A fired
     // premove comes through here too, for its owner. A bot has no DM to mark.
     await markWaiting(tx, {
@@ -485,16 +476,16 @@ async function commitMove(tx: DbOrTx, input: CommitInput): Promise<GameRow> {
   if (isEngine(opponent)) {
     // Spec §8: engine games post no card, and the engine has no DM to receive.
     await enqueueEngineMove(tx, moved);
-  } else if (postsToChat(moved)) {
+  } else if (audienceOf(moved).chat) {
     // Spec §8: an engine game announces nothing when the engine moves — no card, and no turn DM to
-    // the human. The whole branch is a no-op for it (`postsToChat`), and for a bot-vs-bot game. An
+    // the human. The whole branch is a no-op for it (`audienceOf(…).chat`), and for a bot-vs-bot game. An
     // owned bot to move in a game against a person gets the card edit but no DM.
     await enqueue(tx, {
       kind: 'edit_card',
       payload: { gameId: moved.id },
       dedupKey: `card:g:${moved.publicId}`,
     });
-    if (!isBot(opponent)) {
+    if (can(opponent, 'getDms')) {
       await enqueue(tx, {
         kind: 'send_dm',
         payload: {
@@ -646,7 +637,7 @@ export async function voidGame(
         dedupKey: `ratings:${group?.publicId}`,
       });
     }
-    if (postsToChat(game)) {
+    if (audienceOf(game).chat) {
       await enqueue(tx, {
         kind: 'edit_card',
         payload: { gameId: game.id },
