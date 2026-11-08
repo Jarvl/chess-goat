@@ -1,6 +1,4 @@
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { z } from 'zod';
-import { groupMembers, groups } from '../../db/schema';
 import {
   botViews,
   createBot,
@@ -10,7 +8,7 @@ import {
   updateBot,
   type BotView,
 } from '../../domain/bots';
-import { addBotToGroup, removeBotFromGroup } from '../../domain/botGroups';
+import { addBotToGroup, ownerGroups, removeBotFromGroup } from '../../domain/botGroups';
 import { requireGroupByPublicId } from '../../domain/groups';
 import type { McpServer } from '@modelcontextprotocol/server';
 import { BOT_DOCS_URL } from '../../links';
@@ -158,46 +156,7 @@ function registerListMyGroups(server: McpServer): void {
     }),
     annotations: READ_ONLY,
     run: async ({ deps, owner }) => ({
-      groups: await deps.db.transaction(async (tx) => {
-        const mine = await tx
-          .select({ id: groups.id, publicId: groups.publicId, title: groups.title })
-          .from(groupMembers)
-          .innerJoin(groups, eq(groups.id, groupMembers.groupId))
-          .where(
-            and(
-              eq(groupMembers.userId, owner.id),
-              eq(groupMembers.status, 'member'),
-              isNull(groupMembers.blockedAt),
-            ),
-          )
-          .orderBy(asc(groups.title), asc(groups.id));
-        if (mine.length === 0) return [];
-        const bots = await listBots(tx, owner.id);
-        const botIds = bots.map((bot) => bot.id);
-        const placed =
-          botIds.length === 0
-            ? []
-            : await tx
-                .select({ groupId: groupMembers.groupId, botId: groupMembers.userId })
-                .from(groupMembers)
-                .where(
-                  and(
-                    inArray(groupMembers.userId, botIds),
-                    inArray(
-                      groupMembers.groupId,
-                      mine.map((g) => g.id),
-                    ),
-                    eq(groupMembers.status, 'member'),
-                  ),
-                );
-        return mine.map((group) => ({
-          groupId: group.publicId,
-          title: group.title,
-          myBots: bots
-            .filter((bot) => placed.some((p) => p.groupId === group.id && p.botId === bot.id))
-            .map((bot) => bot.firstName),
-        }));
-      }),
+      groups: await deps.db.transaction((tx) => ownerGroups(tx, owner.id)),
     }),
     text: ({ groups: list }) =>
       list.length === 0

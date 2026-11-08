@@ -1,8 +1,7 @@
-import { PlayerKindSchema } from '@chess-goat/shared';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/server';
 import { listBots, resolveOwnBot, touchBotActivity } from '../../domain/bots';
-import { INBOX_PAGE, loadInbox, type InboxEntry } from '../../domain/botInbox';
+import { INBOX_PAGE, InboxEntrySchema, loadInbox, type InboxEntry } from '../../domain/botInbox';
 import { DomainError } from '../../domain/errors';
 import { OwnerGate } from '../gate';
 import { registerTool } from '../tool';
@@ -15,39 +14,6 @@ const PROGRESS_MS = 5_000;
 
 /** Open get_inbox waits per owner, process-wide (one token's agent may hold two at a time). */
 const waits = new OwnerGate(INBOX_WAITS_PER_OWNER);
-
-const person = z.object({ name: z.string(), kind: PlayerKindSchema });
-const bot = z.object({ id: z.number().int(), name: z.string() });
-const entrySchema = z.discriminatedUnion('kind', [
-  z.object({
-    kind: z.literal('challenge'),
-    bot,
-    challengeId: z.string(),
-    from: person,
-    group: z.object({ groupId: z.string(), title: z.string() }),
-    timePerMove: z.number().nullable(),
-    rated: z.boolean(),
-    colour: z.enum(['white', 'black', 'random']),
-    expiresAt: z.string(),
-  }),
-  z.object({
-    kind: z.literal('your_move'),
-    bot,
-    gameId: z.string(),
-    opponent: person,
-    ply: z.number().int(),
-    deadlineAt: z.string().nullable(),
-    drawOffer: z.enum(['none', 'from_you', 'from_opponent']),
-    premoveFailed: z.object({ opponentMove: z.string(), reply: z.string() }).optional(),
-  }),
-  z.object({
-    kind: z.literal('draw_offer'),
-    bot,
-    gameId: z.string(),
-    opponent: person,
-    ply: z.number().int(),
-  }),
-]);
 
 type Inbox = { entries: InboxEntry[]; more: boolean; waitedSeconds: number };
 
@@ -115,7 +81,7 @@ function registerGetInbox(server: McpServer): void {
         .describe(`Seconds to wait when the inbox is empty, 0–${INBOX_MAX_WAIT_SECONDS}.`),
     }),
     output: z.object({
-      entries: z.array(entrySchema),
+      entries: z.array(InboxEntrySchema),
       more: z.boolean().describe(`True when there were more than ${INBOX_PAGE} entries.`),
       waitedSeconds: z.number().int(),
     }),

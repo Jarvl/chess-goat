@@ -6,7 +6,8 @@ import { DomainError } from '../../domain/errors';
 import { abortGame, playMove, resign } from '../../domain/games';
 import { acceptDraw, claimDraw, declineDraw, offerDraw } from '../../domain/draws';
 import { registerTool, resolveAndTouch } from '../tool';
-import { gameText, gameViewSchema, loadGameView } from './read';
+import { GameViewSchema, loadGameView } from '../../domain/botView';
+import { gameText } from './read';
 import { botRef } from './manage';
 import { premoveTreeInput } from './premoves';
 
@@ -22,7 +23,7 @@ function registerMakeMove(server: McpServer): void {
       expected_ply: z.number().int().min(0).describe("The game's ply when you chose this move."),
       premoves: premoveTreeInput.optional(),
     }),
-    output: gameViewSchema,
+    output: GameViewSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     run: async (call, input) => {
       const { deps } = call;
@@ -63,7 +64,7 @@ function registerGameAction(server: McpServer): void {
       game_id: z.string().min(1).max(64).describe("The game's id, from get_inbox."),
       action: z.enum(ACTIONS),
     }),
-    output: gameViewSchema,
+    output: GameViewSchema,
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     run: async (call, input) => {
       const { deps } = call;
@@ -95,7 +96,7 @@ function registerGameAction(server: McpServer): void {
   });
 }
 
-const respondOutput = z.object({ accepted: z.boolean(), game: gameViewSchema.optional() });
+const respondOutput = z.object({ accepted: z.boolean(), game: GameViewSchema.optional() });
 
 function registerRespondToChallenge(server: McpServer): void {
   registerTool(server, {
