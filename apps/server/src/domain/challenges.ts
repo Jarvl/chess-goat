@@ -18,7 +18,8 @@ import { checkPairing } from './pairing';
 import { challengeStub, type ChallengeOutcome } from './dmText';
 import { retireChallengeDms } from './dms';
 import { nameWithFlair, requireUser, wantsDms } from './users';
-import { isBot } from './playerKind';
+import { can, isBot } from './playerKind';
+import { mixOf, storedBotPlayers } from './gameMix';
 
 export type CreateChallengeInput = {
   groupId: number;
@@ -127,7 +128,7 @@ export async function createChallenge(
     }
     let opponent: UserRow | null = null;
     if (input.opponentId !== null) opponent = await requireUser(tx, input.opponentId);
-    const { botPlayers, rated } = await checkPairing(
+    const { mix, rated } = await checkPairing(
       tx,
       group.id,
       { challenger, opponent, open: input.opponentId === null && opponentUsername === null },
@@ -151,14 +152,14 @@ export async function createChallenge(
         timePerMove: input.timePerMove,
         challengerColour: input.colour,
         rated,
-        botPlayers,
+        botPlayers: storedBotPlayers(mix),
         threadId: input.threadId,
         expiresAt: sql`now() + interval '24 hours'`,
       })
       .returning();
     if (!challenge) throw new Error('challenge insert returned no row');
     // Nothing about bot-vs-bot play reaches the chat; a bot gets no DMs.
-    if (botPlayers === 2) return challenge;
+    if (mix === 'bots') return challenge;
     await enqueue(tx, {
       kind: 'send_challenge_card',
       payload: { challengeId: challenge.id },
@@ -181,7 +182,7 @@ export async function settleInChat(
   challenge: Pick<ChallengeRow, 'id' | 'publicId' | 'challengerId' | 'botPlayers'>,
   outcome: Exclude<ChallengeOutcome, 'accepted'>,
 ): Promise<void> {
-  if (challenge.botPlayers === 2) return;
+  if (mixOf(challenge) === 'bots') return;
   await editCard(tx, challenge);
   await retireChallengeDm(tx, challenge, outcome);
 }
@@ -248,7 +249,7 @@ export async function acceptChallenge(
     const challenger = await requireUser(tx, challenge.challengerId);
     const timePerMove = challenge.timePerMove as TimePerMove;
     // Checked again: the owner may have left, or someone been blocked, since the challenge was made.
-    const { botPlayers, rated } = await checkPairing(
+    const { mix, rated } = await checkPairing(
       tx,
       group.id,
       { challenger, opponent: accepter, open: challenge.opponentId === null },
@@ -267,7 +268,7 @@ export async function acceptChallenge(
         blackId: black.id,
         timePerMove,
         rated,
-        botPlayers,
+        botPlayers: storedBotPlayers(mix),
         fen: INITIAL_FEN,
         deadlineAt: deadlineExpression(timePerMove),
         // A bot never wants DMs, so it is never reminded (nor is anyone in a bot-vs-bot game).
@@ -290,14 +291,14 @@ export async function acceptChallenge(
       .returning();
     await retireChallengeDm(tx, challenge, 'accepted');
     // A bot-vs-bot game has no card to edit; `editGameCard` needs one.
-    if (botPlayers !== 2) {
+    if (mix !== 'bots') {
       await enqueue(tx, {
         kind: 'edit_card',
         payload: { gameId: game.id },
         dedupKey: `card:g:${game.publicId}`,
       });
     }
-    if (!isBot(white)) {
+    if (can(white, 'getDms')) {
       await enqueue(tx, {
         kind: 'send_dm',
         payload: { userId: white.id, template: 'turn', gameId: game.id },

@@ -28,6 +28,7 @@ import { getLeaderboard } from './ratings';
 import { challengeDtoRows, challengeToDto, gameSummaryRows, toGameSummary } from './summaries';
 import { challenges } from '../db/schema';
 import { isBot } from './playerKind';
+import { mixFilter } from './gameMix';
 
 const PAGE_SIZE = 20;
 
@@ -46,7 +47,11 @@ function decodeCursor(cursor: string): { finishedAt: Date; id: number } | null {
 export async function activeGames(tx: DbOrTx, groupId: number, viewerId: number) {
   const rows = await gameSummaryRows(
     tx,
-    and(eq(games.groupId, groupId), eq(games.status, 'active'), ne(games.botPlayers, 2)),
+    and(
+      eq(games.groupId, groupId),
+      eq(games.status, 'active'),
+      mixFilter.notBotsOnly(games.botPlayers),
+    ),
     [desc(games.lastMoveAt), desc(games.startedAt)],
     200,
   );
@@ -66,7 +71,7 @@ export async function listFinished(
   const conditions = [
     eq(games.groupId, groupId),
     eq(games.status, 'finished'),
-    ne(games.botPlayers, 2),
+    mixFilter.notBotsOnly(games.botPlayers),
   ];
   if (after) {
     conditions.push(
@@ -103,7 +108,7 @@ export async function pendingChallenges(
     and(
       eq(challenges.groupId, groupId),
       eq(challenges.status, 'pending'),
-      ne(challenges.botPlayers, 2),
+      mixFilter.notBotsOnly(challenges.botPlayers),
     ),
     50,
   );

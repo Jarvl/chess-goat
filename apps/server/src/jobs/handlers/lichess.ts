@@ -3,7 +3,8 @@ import { z } from 'zod';
 import type { Config } from '../../config';
 import { games } from '../../db/schema';
 import type { Deps } from '../../domain/deps';
-import { postsToChat, requireGameById } from '../../domain/games';
+import { audienceOf } from '../../domain/gameMix';
+import { requireGameById } from '../../domain/games';
 import { buildGamePgn } from '../../domain/pgn';
 import type { Metrics } from '../../metrics';
 import { enqueue } from '../queue';
@@ -123,7 +124,7 @@ const lichessImport =
         .set({ lichessUrl: parsed.data.url, lichessImportStatus: 'done' })
         .where(eq(games.id, game.id));
       // The card shows the Lichess link; a bot-vs-bot game has no card.
-      if (postsToChat(game)) {
+      if (audienceOf(game).chat) {
         await enqueue(tx, {
           kind: 'edit_card',
           payload: { gameId: game.id },

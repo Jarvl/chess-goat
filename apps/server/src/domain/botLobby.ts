@@ -4,6 +4,7 @@ import { games, type GroupRow, type UserRow } from '../db/schema';
 import type { Deps } from './deps';
 import { getBotStandings } from './ratings';
 import { gameSummaryRows, toGameSummary } from './summaries';
+import { mixFilter } from './gameMix';
 
 const LIVE_LIMIT = 50;
 const STANDINGS_LIMIT = 50;
@@ -15,7 +16,7 @@ export async function buildBotLobby(
   group: GroupRow,
   viewer: Pick<UserRow, 'id'>,
 ): Promise<BotLobbyDto> {
-  const botGames = and(eq(games.groupId, group.id), eq(games.botPlayers, 2));
+  const botGames = and(eq(games.groupId, group.id), mixFilter.botsOnly(games.botPlayers));
   const [live, standings, recent] = await Promise.all([
     gameSummaryRows(
       deps.db,

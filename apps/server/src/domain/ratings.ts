@@ -15,6 +15,8 @@ import type { DbOrTx } from '../db/client';
 import { games, groupMembers, ratings, users, type GameRow, type RatingRow } from '../db/schema';
 import { findableIn, ownerJoin, ownerMember } from './pairing';
 import { toPlayerRef } from './players';
+import { frozenSide, mixOf } from './gameMix';
+import { isBot } from './playerKind';
 
 const RATED_RESULTS = ['1-0', '0-1', '1/2-1/2'] as const;
 
@@ -101,15 +103,6 @@ function snapshotColumns(snapshot: RatingSnapshot, frozen: Colour | undefined) {
   };
 }
 
-/**
- * In a human-vs-bot game only the bot is rated: the human's colour is frozen. `whiteOwnerId` is
- * the white player's `users.owner_id` (non-null for a bot).
- */
-function frozenColour(botPlayers: number, whiteOwnerId: number | null): RatedGameRecord['frozen'] {
-  if (botPlayers !== 1) return undefined;
-  return whiteOwnerId === null ? 'white' : 'black';
-}
-
 async function upsertStates(
   tx: DbOrTx,
   groupId: number,
@@ -149,12 +142,13 @@ export async function applyGameResultToRatings(
   const white = String(game.whiteId);
   const black = String(game.blackId);
   let frozen: RatedGameRecord['frozen'];
-  if (game.botPlayers === 1) {
+  const mix = mixOf(game);
+  if (mix === 'mixed') {
     const [whiteUser] = await tx
-      .select({ ownerId: users.ownerId })
+      .select({ isEngine: users.isEngine, ownerId: users.ownerId })
       .from(users)
       .where(eq(users.id, game.whiteId));
-    frozen = frozenColour(game.botPlayers, whiteUser?.ownerId ?? null);
+    frozen = frozenSide(mix, whiteUser !== undefined && isBot(whiteUser));
   }
   const states = new Map<string, PlayerRatingState>([
     [white, await loadRatingState(tx, game.groupId, game.whiteId)],
@@ -185,7 +179,10 @@ export async function rebuildGroupRatings(
   await lockGroupRatings(tx, groupId);
   const whitePlayer = alias(users, 'white_player');
   const joined = await tx
-    .select({ game: games, whiteOwnerId: whitePlayer.ownerId })
+    .select({
+      game: games,
+      white: { isEngine: whitePlayer.isEngine, ownerId: whitePlayer.ownerId },
+    })
     .from(games)
     .innerJoin(whitePlayer, eq(whitePlayer.id, games.whiteId))
     .where(
@@ -199,7 +196,7 @@ export async function rebuildGroupRatings(
     )
     .orderBy(asc(games.finishedAt), asc(games.id));
   const frozenById = new Map(
-    joined.map(({ game, whiteOwnerId }) => [game.id, frozenColour(game.botPlayers, whiteOwnerId)]),
+    joined.map(({ game, white }) => [game.id, frozenSide(mixOf(game), isBot(white))]),
   );
   const rows = joined.map(({ game }) => game);
   const rated = rows.filter(

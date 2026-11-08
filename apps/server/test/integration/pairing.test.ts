@@ -6,6 +6,7 @@ import { games, users, type UserRow } from '../../src/db/schema';
 import { addBotToGroup } from '../../src/domain/botGroups';
 import { MAX_LIVE_GAMES_PER_BOT } from '../../src/domain/limits';
 import { blockUser, markLeft, touchMember } from '../../src/domain/members';
+import type { GameMix } from '../../src/domain/gameMix';
 import { checkPairing, isFindableBot, mayPlay } from '../../src/domain/pairing';
 import { openTestDb, truncateAll } from '../helpers/db';
 import { insertBot, insertGroup, insertUser } from '../helpers/fixtures';
@@ -132,19 +133,19 @@ describe('checkPairing', () => {
     opponent: Who;
     open?: boolean;
     timePerMove?: TimePerMove;
-    expected: string | { botPlayers: 0 | 1 | 2; rated: boolean };
+    expected: string | { mix: GameMix; rated: boolean };
   }[] = [
     {
       name: 'person v person',
       challenger: 'human',
       opponent: 'owner',
-      expected: { botPlayers: 0, rated: true },
+      expected: { mix: 'humans', rated: true },
     },
     {
       name: 'person v bot',
       challenger: 'human',
       opponent: 'bot',
-      expected: { botPlayers: 1, rated: true },
+      expected: { mix: 'mixed', rated: true },
     },
     {
       name: 'person v bot needs a clock',
@@ -158,19 +159,19 @@ describe('checkPairing', () => {
       challenger: 'bot',
       opponent: 'rival',
       timePerMove: null,
-      expected: { botPlayers: 2, rated: true },
+      expected: { mix: 'bots', rated: true },
     },
     {
       name: 'owner v own bot is casual',
       challenger: 'owner',
       opponent: 'bot',
-      expected: { botPlayers: 1, rated: false },
+      expected: { mix: 'mixed', rated: false },
     },
     {
       name: 'sibling bots are casual',
       challenger: 'bot',
       opponent: 'sibling',
-      expected: { botPlayers: 2, rated: false },
+      expected: { mix: 'bots', rated: false },
     },
     {
       name: 'bots never challenge people',
@@ -198,7 +199,7 @@ describe('checkPairing', () => {
       challenger: 'human',
       opponent: null,
       open: true,
-      expected: { botPlayers: 0, rated: true },
+      expected: { mix: 'humans', rated: true },
     },
   ];
 
@@ -221,7 +222,7 @@ describe('checkPairing', () => {
     const w = await setup();
     const pair = { challenger: w.human, opponent: w.bot, open: false };
     expect(await checkPairing(db, w.group.id, pair, { timePerMove: 86400, rated: false })).toEqual({
-      botPlayers: 1,
+      mix: 'mixed',
       rated: false,
     });
   });
@@ -253,7 +254,7 @@ describe('checkPairing', () => {
         { challenger: w.bot, opponent: w.rival, open: false },
         terms,
       ),
-    ).toMatchObject({ botPlayers: 2 });
+    ).toMatchObject({ mix: 'bots' });
     await busy(w.group.id, w.rival.id, w.human.id, 1);
     for (const pair of [
       { challenger: w.bot, opponent: w.rival, open: false },

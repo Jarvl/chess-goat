@@ -21,6 +21,7 @@ import { retireDm, sendDm } from './dm';
 import { call, settle, type TelegramHandlerContext } from './telegramCall';
 import type { JobHandler, JobHandlers, JobResult } from '../types';
 import { isBot } from '../../domain/playerKind';
+import { mixOf } from '../../domain/gameMix';
 
 const gameCardPayload = z.object({ gameId: z.number().int() });
 const challengePayload = z.object({ challengeId: z.number().int() });
@@ -65,7 +66,7 @@ async function editMessage(
 async function editGameCard(ctx: TelegramHandlerContext, gameId: number): Promise<JobResult> {
   const game = await requireGameById(ctx.deps.db, gameId);
   // A bot-vs-bot game never has a card; nothing should ask, but a stray edit must not retry.
-  if (game.cardMissing || game.botPlayers === 2) return { outcome: 'done' };
+  if (game.cardMissing || mixOf(game) === 'bots') return { outcome: 'done' };
   if (game.cardMessageId === null) throw new Error(`game ${game.id} has no message id yet`);
   const group = await requireGroup(ctx.deps.db, game.groupId);
   if (group.botStatus === 'left') return { outcome: 'done' };
@@ -127,7 +128,7 @@ const editCard =
     if ('gameId' in payload) return editGameCard(ctx, payload.gameId);
     const challenge = await getChallengeById(ctx.deps.db, payload.challengeId);
     // A bot-vs-bot challenge never has a card either.
-    if (!challenge || challenge.botPlayers === 2) return { outcome: 'done' };
+    if (!challenge || mixOf(challenge) === 'bots') return { outcome: 'done' };
     if (challenge.gameId !== null) return editGameCard(ctx, challenge.gameId);
     if (challenge.messageId === null)
       throw new Error(`challenge ${challenge.id} has no message id yet`);

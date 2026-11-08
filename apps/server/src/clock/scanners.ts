@@ -8,6 +8,7 @@ import { applyTimeout, finishGame } from '../domain/games';
 import { STALE_BOT_GAME_DAYS } from '../domain/limits';
 import { enqueue } from '../jobs/queue';
 import { pollBackoffMs } from '../jobs/worker';
+import { mixFilter } from '../domain/gameMix';
 
 /** Spec §7.3 forfeit scanner: rows are the state; the transaction re-checks each deadline against now(). */
 export async function forfeitOverdueGames(deps: Deps, limit = 100): Promise<number> {
@@ -45,7 +46,7 @@ export async function abortStaleBotGames(deps: Deps, limit = 100): Promise<numbe
       .where(
         and(
           sql`${games.status} = 'active'`,
-          sql`${games.botPlayers} = 2`,
+          mixFilter.botsOnly(games.botPlayers),
           isNull(games.timePerMove),
           lt(lastActivity, sql`now() - make_interval(days => ${STALE_BOT_GAME_DAYS})`),
         ),
