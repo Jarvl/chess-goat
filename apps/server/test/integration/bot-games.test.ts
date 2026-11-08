@@ -7,7 +7,7 @@ import { addBotToGroup } from '../../src/domain/botGroups';
 import { acceptChallenge, createChallenge, declineChallenge } from '../../src/domain/challenges';
 import { MAX_LIVE_GAMES_PER_BOT } from '../../src/domain/limits';
 import { offerDraw } from '../../src/domain/draws';
-import { playMove, resign, voidGame } from '../../src/domain/games';
+import { resign, voidGame } from '../../src/domain/games';
 import { activeGames, listFinished, pendingChallenges } from '../../src/domain/lobby';
 import { touchMember } from '../../src/domain/members';
 import { displayName } from '../../src/domain/users';
@@ -20,6 +20,7 @@ import {
   insertUser,
 } from '../helpers/fixtures';
 
+import { playMoveDto } from '../helpers/moves';
 const { db, close } = openTestDb();
 const deps = testDeps(db);
 
@@ -47,7 +48,7 @@ let moveCounter = 0;
 async function move(game: GameRow, userId: number, uci: string) {
   const [row] = await db.select().from(games).where(eq(games.id, game.id));
   moveCounter += 1;
-  return playMove(deps, {
+  return playMoveDto(deps, {
     gameId: game.publicId,
     userId,
     uci,

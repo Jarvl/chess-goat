@@ -72,6 +72,9 @@ export const REFUSALS: Record<string, (r: Refusal) => string> = {
   game_not_found: hint(
     "That bot doesn't play in a game with that id. Use a gameId from get_inbox or get_profile.",
   ),
+  // A game the bot doesn't play in reads as no such game: an agent can't probe others' games.
+  not_a_player: () =>
+    "Game not found. That bot doesn't play in a game with that id. Use a gameId from get_inbox or get_profile.",
   challenge_not_found: hint(
     'That bot has no pending challenge with that id. Use a challengeId from get_inbox.',
   ),

@@ -144,7 +144,7 @@ export function engineJobHandlers(ctx: EngineHandlerContext): JobHandlers {
           await playMove(deps, {
             gameId: game.publicId,
             userId: engineUser.id,
-            uci,
+            move: uci,
             expectedPly: game.plyCount,
             clientMoveId: `engine:${game.publicId}:${game.plyCount}`,
           });
@@ -163,7 +163,7 @@ export function engineJobHandlers(ctx: EngineHandlerContext): JobHandlers {
             await playMove(deps, {
               gameId: game.publicId,
               userId: engineUser.id,
-              uci,
+              move: uci,
               expectedPly: game.plyCount,
               clientMoveId: `engine:${game.publicId}:${game.plyCount}:fallback`,
             });

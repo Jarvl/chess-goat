@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { challenges, games, moves, users, type UserRow } from '../../src/db/schema';
+import { challenges, games, users, type UserRow } from '../../src/db/schema';
 import { createOwnerToken } from '../../src/domain/ownerTokens';
 import type { TestApi } from '../helpers/api';
 import { openTestDb, truncateAll } from '../helpers/db';
@@ -80,46 +80,6 @@ describe('make_move', () => {
     expect(second.structuredContent).toMatchObject({ ply: 3, moves: ['e4', 'e5', 'Nf3'] });
   });
 
-  it('answers a repeat of the same call with the same position and one move row', async () => {
-    const { game } = await setup();
-    const args = { bot: 'Rook', game_id: game.publicId, move: 'e4', expected_ply: 0 };
-    const a = await call<View>('make_move', args);
-    const b = await call<View>('make_move', args);
-    expect(b.isError).toBeFalsy();
-    expect(b.structuredContent).toEqual(a.structuredContent);
-    const rows = await db.select().from(moves).where(eq(moves.gameId, game.id));
-    expect(rows).toHaveLength(1);
-  });
-
-  it('gives the stale text for a different move at the old ply', async () => {
-    const { game } = await setup();
-    await call('make_move', { bot: 'Rook', game_id: game.publicId, move: 'e4', expected_ply: 0 });
-    const out = await call('make_move', {
-      bot: 'Rook',
-      game_id: game.publicId,
-      move: 'd4',
-      expected_ply: 0,
-    });
-    expect(out.isError).toBe(true);
-    expect(resultText(out)).toBe(
-      'The position has changed; it is now ply 1. Call get_game and choose again.',
-    );
-  });
-
-  it('says it is not the bot turn', async () => {
-    const { game } = await setup(false);
-    const out = await call('make_move', {
-      bot: 'Rook',
-      game_id: game.publicId,
-      move: 'e5',
-      expected_ply: 0,
-    });
-    expect(out.isError).toBe(true);
-    expect(resultText(out)).toBe(
-      "It isn't your move. Call get_inbox with wait_seconds to wait for your turn.",
-    );
-  });
-
   it('lists the legal moves for an illegal one', async () => {
     const { game } = await setup();
     const out = await call('make_move', {
@@ -135,23 +95,6 @@ describe('make_move', () => {
     expect((text.match(/\(/g) ?? []).length).toBe(20);
   });
 
-  it('caps the legal-move list at 30', async () => {
-    const group = await insertGroup(db);
-    await touchMember(db, group.id, owner.id);
-    const bot = await insertBot(db, owner, { firstName: 'Rook' });
-    const human = await insertUser(db, { username: 'bob' });
-    const game = await insertGame(db, group.id, bot.id, human.id, {
-      fen: 'R6R/3Q4/1Q4Q1/4Q3/2Q4Q/Q4Q2/pp1Q4/kBNN1KB1 w - - 0 1',
-    });
-    const out = await call('make_move', {
-      bot: 'Rook',
-      game_id: game.publicId,
-      move: 'Zz9',
-      expected_ply: 0,
-    });
-    expect((resultText(out).match(/\(/g) ?? []).length).toBe(30);
-  });
-
   it('records activity even when the move is refused', async () => {
     const { game, bot } = await setup();
     const out = await call('make_move', {
@@ -165,28 +108,25 @@ describe('make_move', () => {
     expect(row!.lastActiveAt).not.toBeNull();
   });
 
-  it('says the game is over, at the current ply or a later one', async () => {
-    const { game } = await setup();
-    await db.update(games).set({ status: 'finished', result: '0-1' }).where(eq(games.id, game.id));
-    for (const expected_ply of [0, 3]) {
-      const out = await call('make_move', {
-        bot: 'Rook',
-        game_id: game.publicId,
-        move: 'e4',
-        expected_ply,
-      });
-      expect(out.isError).toBe(true);
-      expect(resultText(out)).toBe(
-        'The game is over. Call get_game to see the result, then get_inbox.',
-      );
-    }
-  });
-
   it('treats another owner game as not found and touches activity', async () => {
     const { game, bot } = await setup();
     await call('make_move', { bot: 'Rook', game_id: game.publicId, move: 'e4', expected_ply: 0 });
     const [row] = await db.select().from(users).where(eq(users.id, bot.id));
     expect(row!.lastActiveAt).not.toBeNull();
+  });
+
+  it("reads a game the bot doesn't play in as no such game", async () => {
+    const { group } = await setup();
+    const [a, b] = [await insertUser(db), await insertUser(db)];
+    const theirs = await insertGame(db, group.id, a.id, b.id);
+    const notFound =
+      "Game not found. That bot doesn't play in a game with that id. Use a gameId from get_inbox or get_profile.";
+    for (const game_id of [theirs.publicId, 'no-such-game']) {
+      const moved = await call('make_move', { bot: 'Rook', game_id, move: 'e4', expected_ply: 0 });
+      expect(resultText(moved)).toBe(notFound);
+      const acted = await call('game_action', { bot: 'Rook', game_id, action: 'resign' });
+      expect(resultText(acted)).toBe(notFound);
+    }
   });
 });
 

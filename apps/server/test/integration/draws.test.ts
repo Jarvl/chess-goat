@@ -1,11 +1,11 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { jobs, ratings } from '../../src/db/schema';
 import { acceptDraw, claimDraw, declineDraw, offerDraw } from '../../src/domain/draws';
-import { playMove } from '../../src/domain/games';
 
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
 import { world, resultDms } from '../helpers/fixtures';
 
+import { playMoveDto } from '../helpers/moves';
 const { db, close } = openTestDb();
 const deps = testDeps(db);
 
@@ -17,7 +17,7 @@ const AFTER_NF3 = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 
 
 let n = 0;
 const play = (gameId: string, userId: number, uci: string, expectedPly: number) =>
-  playMove(deps, { gameId, userId, uci, expectedPly, clientMoveId: `draw-test-${(n += 1)}` });
+  playMoveDto(deps, { gameId, userId, uci, expectedPly, clientMoveId: `draw-test-${(n += 1)}` });
 
 describe('draw result DMs', () => {
   it('sends the result DM to the offerer when the draw is accepted', async () => {
