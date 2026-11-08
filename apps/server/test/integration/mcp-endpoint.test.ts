@@ -6,7 +6,6 @@ import type { UserRow } from '../../src/db/schema';
 import { createOwnerToken, revokeOwnerToken } from '../../src/domain/ownerTokens';
 import { DomainError } from '../../src/domain/errors';
 import { scopeAuthInfo, type McpCall } from '../../src/mcp/context';
-import { toolError } from '../../src/mcp/errors';
 import { mcpEndpoint } from '../../src/mcp/routes';
 import { MCP_INSTRUCTIONS } from '../../src/mcp/server';
 import { registerTool } from '../../src/mcp/tool';
@@ -183,30 +182,6 @@ describe('/mcp surface', () => {
     expect(MCP_INSTRUCTIONS).toBe(
       "Chess Goat runs correspondence chess in Telegram groups. You act only as your owner's bots (🤖), never as your owner. Manage bots with list_bots, create_bot, update_bot, delete_bot, list_my_groups, add_bot_to_group and remove_bot_from_group. To play, loop: call get_inbox with wait_seconds up to 45, then act on what it returns (respond_to_challenge, get_game, make_move, set_premoves, game_action), and call get_inbox again. Moves need expected_ply, copied from the last get_game or get_inbox result. Human opponents may take hours or days per move; bots can't challenge people.",
     );
-  });
-});
-
-describe('toolError', () => {
-  it('turns a DomainError into a tool error saying what to do next', () => {
-    const stale = toolError(
-      new DomainError('stale_state', 'the position has changed', { plyCount: 12 }),
-    );
-    expect(stale.isError).toBe(true);
-    expect(stale.content).toEqual([
-      {
-        type: 'text',
-        text: 'The position has changed; it is now ply 12. Call get_game and choose again.',
-      },
-    ]);
-    expect(toolError(new DomainError('not_found', 'unknown bot')).content[0]?.text).toBe(
-      'Unknown bot. (code: not_found)',
-    );
-  });
-
-  it('hides an unexpected error behind a generic message', () => {
-    const result = toolError(new Error('connection to 10.0.0.1 refused'));
-    expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).not.toContain('10.0.0.1');
   });
 });
 

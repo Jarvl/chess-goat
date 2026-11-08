@@ -81,7 +81,7 @@ export function registerTool<I, O>(server: McpServer, spec: ToolSpec<I, O>): voi
         } else {
           log.error({ err: error, tool: spec.name, ownerId: call.owner.id }, 'mcp tool failed');
         }
-        return toolError(error);
+        return toolError(error, { ownerId: call.owner.id, tool: spec.name });
       }
     },
   );

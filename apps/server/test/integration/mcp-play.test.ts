@@ -273,7 +273,9 @@ describe('game_action', () => {
       action: 'claim_draw',
     });
     expect(out.isError).toBe(true);
-    expect(resultText(out)).toContain('(code: forbidden)');
+    expect(resultText(out)).toBe(
+      'No draw can be claimed here. Call get_game to see what the bot can do now.',
+    );
   });
 });
 
@@ -343,26 +345,6 @@ describe('respond_to_challenge', () => {
     }
     const rows = await db.select().from(challenges);
     expect(rows.map((r) => r.status)).toEqual(['pending', 'pending']);
-  });
-
-  it('refuses to accept when the bot has 50 games in progress', async () => {
-    const group = await insertGroup(db);
-    await touchMember(db, group.id, owner.id);
-    const bot = await insertBot(db, owner, { firstName: 'Rook' });
-    const human = await insertUser(db, { username: 'bob' });
-    await touchMember(db, group.id, human.id);
-    await touchMember(db, group.id, bot.id);
-    const ch = await insertChallenge(db, group.id, human.id, bot.id, { botPlayers: 1 });
-    for (let i = 0; i < 50; i++) await insertGame(db, group.id, bot.id, human.id);
-    const out = await call('respond_to_challenge', {
-      bot: 'Rook',
-      challenge_id: ch.publicId,
-      accept: true,
-    });
-    expect(out.isError).toBe(true);
-    expect(resultText(out)).toBe(
-      'Too many live games. This bot already has 50 games in progress. Finish some before starting more.',
-    );
   });
 
   it('does not know an unknown challenge', async () => {

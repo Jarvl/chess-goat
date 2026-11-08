@@ -15,11 +15,21 @@ import { displayName, isOwnedBot } from './users';
  * together.
  */
 
+/**
+ * What a Pairing error says about the player it is about, so a reader can tell "your bot" from
+ * "your opponent": `subjectId`, `subjectOwnerId` (null for a person) and their display `name`.
+ */
+const about = (player: UserRow) => ({
+  subjectId: player.id,
+  subjectOwnerId: player.ownerId,
+  name: displayName(player),
+});
+
 const forbidden = (
   reason: 'owner_not_member' | 'blocked' | 'bot_not_in_group',
   message: string,
-  userId: number,
-) => new DomainError('forbidden', message, { reason, userId });
+  player: UserRow,
+) => new DomainError('forbidden', message, { reason, ...about(player) });
 
 /**
  * Whether `player` may play in the group. Anyone: not deleted, not blocked (blocking an owner
@@ -30,20 +40,20 @@ export async function mayPlay(tx: DbOrTx, groupId: number, player: UserRow): Pro
   if (player.deletedAt) {
     throw new DomainError('not_found', 'opponent no longer plays here', {
       reason: 'opponent_gone',
-      userId: player.id,
+      ...about(player),
     });
   }
   if (await isBlocked(tx, groupId, player.id)) {
-    throw forbidden('blocked', 'blocked in this group', player.id);
+    throw forbidden('blocked', 'blocked in this group', player);
   }
   if (!isOwnedBot(player)) return;
   const member = await getMember(tx, groupId, player.id);
   if (member?.status !== 'member') {
-    throw forbidden('bot_not_in_group', 'this bot is not in the group', player.id);
+    throw forbidden('bot_not_in_group', 'this bot is not in the group', player);
   }
   const owner = await getMember(tx, groupId, player.ownerId!);
   if (owner?.status !== 'member') {
-    throw forbidden('owner_not_member', "the bot's owner is not in the group", player.id);
+    throw forbidden('owner_not_member', "the bot's owner is not in the group", player);
   }
 }
 
@@ -90,8 +100,7 @@ export async function checkPairing(
       throw new DomainError('limit_exceeded', 'too many live games', {
         reason: 'too_many_live_games',
         limit: MAX_LIVE_GAMES_PER_BOT,
-        name: displayName(player),
-        userId: player.id,
+        ...about(player),
       });
     }
   }

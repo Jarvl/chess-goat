@@ -6,7 +6,6 @@ import { createChallenge } from '../../domain/challenges';
 import { DomainError } from '../../domain/errors';
 import { requireGroupByPublicId } from '../../domain/groups';
 import { isActiveMember } from '../../domain/members';
-import { isFindableBot } from '../../domain/pairing';
 import { displayName } from '../../domain/users';
 import { registerTool, resolveAndTouch } from '../tool';
 import { botRef, READ_ONLY } from './manage';
@@ -97,19 +96,9 @@ function registerChallengeBot(server: McpServer): void {
     run: async (call, input) => {
       const { deps } = call;
       const bot = await resolveAndTouch(call, input.bot);
-      const group = await deps.db.transaction(async (tx) => {
-        const group = await requireGroupByPublicId(tx, input.group);
-        if (input.opponent_bot === bot.id) {
-          throw new DomainError('validation', 'cannot challenge yourself', { reason: 'self' });
-        }
-        // A person, an unknown id and a bot find_bots wouldn't show all look the same.
-        if (!(await isFindableBot(tx, group.id, input.opponent_bot))) {
-          throw new DomainError('not_found', 'opponent bot not found', {
-            reason: 'opponent_not_found',
-          });
-        }
-        return group;
-      });
+      // Pairing refuses a person, an unknown id or an unfindable bot; the tool error translator
+      // makes those read alike ("opponent bot not found"), so a challenge can't probe who exists.
+      const group = await requireGroupByPublicId(deps.db, input.group);
       const challenge = await createChallenge(deps, {
         groupId: group.id,
         challengerId: bot.id,

@@ -265,7 +265,7 @@ describe('checkPairing', () => {
         details: {
           reason: 'too_many_live_games',
           limit: MAX_LIVE_GAMES_PER_BOT,
-          userId: w.rival.id,
+          subjectId: w.rival.id,
         },
       });
     }
