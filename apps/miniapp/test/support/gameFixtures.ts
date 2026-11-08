@@ -46,7 +46,7 @@ const player = (id: string, name: string) => ({
   username: null,
   rating: 1500,
   provisional: true,
-  isBot: false,
+  kind: 'human' as const,
   photoUrl: null,
   flair: [],
   botActivity: null,

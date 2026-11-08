@@ -26,15 +26,15 @@ export function BotMark(props: { size: Size }) {
 
 /**
  * A person as Telegram draws one: their photo when the server has it, over the coloured initial
- * that shows while it loads and stays if it fails. The bot is the Chess Goat mark.
+ * that shows while it loads and stays if it fails. The engine is the Chess Goat mark.
  */
 export function Avatar(props: {
-  player: Pick<PlayerRef, 'id' | 'name' | 'isBot' | 'photoUrl'>;
+  player: Pick<PlayerRef, 'id' | 'name' | 'kind' | 'photoUrl'>;
   size: Size;
 }) {
   // Keyed by URL, so a later photo gets its own chance after an earlier one failed.
   const [failed, setFailed] = useState<string | null>(null);
-  if (props.player.isBot) return <BotMark size={props.size} />;
+  if (props.player.kind === 'engine') return <BotMark size={props.size} />;
   const { photoUrl } = props.player;
   return (
     <span

@@ -23,7 +23,7 @@ const activeGame = {
     username: 'alice',
     rating: 1520,
     provisional: false,
-    isBot: false,
+    kind: 'human',
     photoUrl: null,
     flair: [],
     botActivity: null,
@@ -36,7 +36,7 @@ const activeGame = {
     username: null,
     rating: 1498,
     provisional: true,
-    isBot: false,
+    kind: 'human',
     photoUrl: null,
     flair: [],
     botActivity: null,
@@ -143,7 +143,7 @@ describe('LeaderboardEntrySchema', () => {
       username: null,
       rating: 1500,
       provisional: true,
-      isBot: false,
+      kind: 'human',
       photoUrl: null,
       gamesPlayed: 0,
       record: { wins: -1, draws: 0, losses: 0 },
@@ -160,7 +160,7 @@ const summary = {
     username: 'alice',
     rating: 1520,
     provisional: false,
-    isBot: false,
+    kind: 'human',
     photoUrl: null,
     flair: [],
     botActivity: null,
@@ -171,7 +171,7 @@ const summary = {
     username: null,
     rating: 1500,
     provisional: true,
-    isBot: true,
+    kind: 'engine',
     photoUrl: null,
     flair: [],
     botActivity: null,
@@ -209,10 +209,12 @@ describe('GameSummarySchema', () => {
 });
 
 describe('PlayerRefSchema', () => {
-  it('requires the bot flag', () => {
-    const withoutFlag: Record<string, unknown> = { ...summary.white };
-    delete withoutFlag.isBot;
-    expect(PlayerRefSchema.safeParse(withoutFlag).success).toBe(false);
+  it('requires the player kind, and knows only three', () => {
+    const withoutKind: Record<string, unknown> = { ...summary.white };
+    delete withoutKind.kind;
+    expect(PlayerRefSchema.safeParse(withoutKind).success).toBe(false);
+    expect(PlayerRefSchema.safeParse({ ...summary.white, kind: 'bot' }).success).toBe(true);
+    expect(PlayerRefSchema.safeParse({ ...summary.white, kind: 'robot' }).success).toBe(false);
   });
 
   it('carries a photo url or null, and requires the key', () => {
@@ -230,7 +232,7 @@ describe('PlayerRefSchema', () => {
     username: null,
     rating: 1500,
     provisional: true,
-    isBot: false,
+    kind: 'human',
     photoUrl: null,
     botActivity: null,
   };
@@ -283,7 +285,7 @@ describe('ChallengeDtoSchema', () => {
     username: 'alice',
     rating: 1520,
     provisional: false,
-    isBot: false,
+    kind: 'human',
     photoUrl: null,
     flair: [],
     botActivity: null,

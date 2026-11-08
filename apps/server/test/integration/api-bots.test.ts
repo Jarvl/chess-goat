@@ -91,7 +91,7 @@ describe('GET /api/groups/:g/bots', () => {
     const [card] = (await list(token, group.publicId)).bots;
     expect(card).toMatchObject({
       id: String(bot.id),
-      isBot: false,
+      kind: 'bot',
       name: '🤖 Rook (@owner)',
       tagline: 'Loves endgames',
       owner: '@owner',

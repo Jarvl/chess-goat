@@ -29,7 +29,7 @@ type View = {
   gameId: string;
   group: { groupId: string; title: string };
   you: string;
-  opponent: { name: string; isBot: boolean };
+  opponent: { name: string; kind: string };
   status: string;
   ply: number;
   toMove: string;
@@ -63,7 +63,7 @@ describe('get_game', () => {
       gameId: game.publicId,
       group: { groupId: group.publicId, title: group.title },
       you: 'white',
-      opponent: { name: '@bob', isBot: false },
+      opponent: { name: '@bob', kind: 'human' },
       status: 'active',
       ply: 0,
       toMove: 'white',

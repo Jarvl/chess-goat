@@ -43,6 +43,7 @@ export async function insertBot(
     firstName: owner.firstName ?? '',
     username: owner.username ?? null,
     deletedAt: null,
+    isEngine: false,
     ownerId: null,
     ownerName: null,
   });

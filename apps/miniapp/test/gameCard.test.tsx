@@ -92,7 +92,7 @@ describe('GameCard', () => {
 
   it('shows the bot with its level instead of a rating', async () => {
     const { r } = mount(
-      gameSummary({ black: playerRef('9', 'Stockfish', { isBot: true }), engineLevel: 'club' }),
+      gameSummary({ black: playerRef('9', 'Stockfish', { kind: 'engine' }), engineLevel: 'club' }),
     );
     expect(r.root.querySelector('.rating')!.textContent).toBe('Club');
     expect(r.root.querySelector('img.avatar.bot')).not.toBeNull();

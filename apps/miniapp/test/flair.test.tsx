@@ -107,6 +107,7 @@ describe('flair beside names', () => {
     const dto = gameDto({
       black: {
         ...gameDto().black,
+        kind: 'bot',
         botActivity: { lastActiveAt: new Date(now.getTime() - 2 * 3_600_000).toISOString() },
       },
     });

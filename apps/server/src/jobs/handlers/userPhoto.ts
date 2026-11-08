@@ -7,6 +7,7 @@ import { getPhotoRow, storePhoto, touchPhoto } from '../../domain/photos';
 import { getUserById } from '../../domain/users';
 import type { JobHandler, JobHandlers } from '../types';
 import type { TelegramHandlerContext } from './telegramCall';
+import { can } from '../../domain/playerKind';
 
 const payloadSchema = z.object({ userId: z.number().int() });
 
@@ -55,7 +56,7 @@ const fetchUserPhoto =
   async ({ job }) => {
     const { userId } = payloadSchema.parse(job.payload);
     const user = await getUserById(ctx.deps.db, userId);
-    if (!user || user.deletedAt || user.isEngine || user.telegramUserId === null)
+    if (!user || user.deletedAt || !can(user, 'showPhoto') || user.telegramUserId === null)
       return { outcome: 'done' };
     let smallest;
     try {

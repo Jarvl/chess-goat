@@ -3,6 +3,7 @@ import { eq, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client';
 import { userPhotos, users, type UserPhotoRow, type UserRow } from '../db/schema';
 import { enqueue } from '../jobs/queue';
+import { can } from './playerKind';
 
 /** Profile photos spec: a user seen again after this long has their photo checked again. */
 export const PHOTO_REFRESH_SECONDS = 86_400;
@@ -24,9 +25,9 @@ export async function getPhotoRow(tx: DbOrTx, userId: number): Promise<UserPhoto
 /** Queues a photo check for a person the bot has not checked within a day (profile photos spec). */
 export async function queuePhotoRefresh(
   tx: DbOrTx,
-  user: Pick<UserRow, 'id' | 'isEngine' | 'deletedAt'>,
+  user: Pick<UserRow, 'id' | 'isEngine' | 'ownerId' | 'deletedAt'>,
 ): Promise<void> {
-  if (user.isEngine || user.deletedAt) return;
+  if (!can(user, 'showPhoto') || user.deletedAt) return;
   const [row] = await tx
     .select({
       fresh: sql<boolean>`${userPhotos.checkedAt} > now() - make_interval(secs => ${PHOTO_REFRESH_SECONDS})`,

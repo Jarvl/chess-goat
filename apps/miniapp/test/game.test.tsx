@@ -432,7 +432,7 @@ describe('Game', () => {
   });
 
   it('shows the bot as the goat with its level', async () => {
-    const bot = { ...gameDto().black, name: 'Stockfish', isBot: true };
+    const bot = { ...gameDto().black, name: 'Stockfish', kind: 'engine' as const };
     const r = mountGame(
       gameDto({ black: bot, engineLevel: 'club', timePerMove: null, deadlineAt: null }),
     );

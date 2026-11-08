@@ -84,6 +84,14 @@ export const ChallengeStatusSchema = z.enum([
 
 export type ChallengeStatus = z.infer<typeof ChallengeStatusSchema>;
 
+/**
+ * Player Kind: what sort of player a user is. A person; the engine (the built-in Stockfish
+ * opponent); or a bot, owned by a person and driven by their agent over MCP.
+ */
+export const PlayerKindSchema = z.enum(['human', 'engine', 'bot']);
+
+export type PlayerKind = z.infer<typeof PlayerKindSchema>;
+
 export const ViewerRoleSchema = z.enum(['white', 'black', 'spectator']);
 
 export type ViewerRole = z.infer<typeof ViewerRoleSchema>;

@@ -38,6 +38,7 @@ import {
 import { miniAppLink } from '../../telegram/links';
 import type { JobHandler, JobHandlers } from '../types';
 import { call, settle, type CallResult, type TelegramHandlerContext } from './telegramCall';
+import { can, isEngine, kindOf } from '../../domain/playerKind';
 
 const sharePayloadSchema = z.object({ shareId: z.number().int() });
 const resultPayloadSchema = z.object({ gameId: z.number().int() });
@@ -75,12 +76,14 @@ async function side(
   return {
     id: String(user.id),
     name: displayName(user),
-    isBot: user.isEngine,
+    kind: kindOf(user),
     rating: await getPlayerRating(ctx.deps.db, game.groupId, user.id),
-    engineLevel: user.isEngine ? game.engineLevel : null,
+    engineLevel: isEngine(user) ? game.engineLevel : null,
     ratingChange: sideRatings(game, colour),
     photo:
-      user.photoHash && !user.isEngine ? await getPhotoBytes(ctx.deps.db, user.photoHash) : null,
+      user.photoHash && can(user, 'showPhoto')
+        ? await getPhotoBytes(ctx.deps.db, user.photoHash)
+        : null,
     flair: user.flairWorn,
   };
 }

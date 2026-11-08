@@ -25,7 +25,7 @@ export function GameCard(props: {
   const yours = game.status === 'active' && game.yourTurn;
   const dim = props.dim === 'finished' ? game.status === 'finished' : !yours;
   const rating = opponent
-    ? opponent.isBot
+    ? opponent.kind === 'engine'
       ? game.engineLevel
         ? t(`app.level.${game.engineLevel}`)
         : ''

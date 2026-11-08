@@ -123,7 +123,7 @@ export function FlairScreen() {
       <div class="card flair-preview">
         <div class="flair-me">
           {/* The launch's user carries no photo URL, so the viewer shows as their initial here. */}
-          {me ? <Avatar player={{ ...me, isBot: false, photoUrl: null }} size={26} /> : null}
+          {me ? <Avatar player={{ ...me, kind: 'human', photoUrl: null }} size={26} /> : null}
           <span class="name">{me?.name}</span>
           <Flair ids={flair.worn} />
         </div>

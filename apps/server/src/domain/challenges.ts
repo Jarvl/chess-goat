@@ -17,7 +17,8 @@ import {
 import { checkPairing } from './pairing';
 import { challengeStub, type ChallengeOutcome } from './dmText';
 import { retireChallengeDms } from './dms';
-import { isOwnedBot, nameWithFlair, requireUser, wantsDms } from './users';
+import { nameWithFlair, requireUser, wantsDms } from './users';
+import { isBot } from './playerKind';
 
 export type CreateChallengeInput = {
   groupId: number;
@@ -163,7 +164,7 @@ export async function createChallenge(
       payload: { challengeId: challenge.id },
       dedupKey: `card:send:${challenge.publicId}`,
     });
-    if (opponent && !isOwnedBot(opponent)) {
+    if (opponent && !isBot(opponent)) {
       await enqueue(tx, {
         kind: 'send_dm',
         payload: { userId: opponent.id, template: 'challenge', challengeId: challenge.id },
@@ -296,7 +297,7 @@ export async function acceptChallenge(
         dedupKey: `card:g:${game.publicId}`,
       });
     }
-    if (!isOwnedBot(white)) {
+    if (!isBot(white)) {
       await enqueue(tx, {
         kind: 'send_dm',
         payload: { userId: white.id, template: 'turn', gameId: game.id },
@@ -327,7 +328,7 @@ export async function declineChallenge(
     if (
       challenge.opponentId !== null &&
       challenge.opponentId !== input.userId &&
-      isOwnedBot(await requireUser(tx, challenge.opponentId))
+      isBot(await requireUser(tx, challenge.opponentId))
     ) {
       throw new DomainError('forbidden', 'only the challenger can withdraw a challenge to a bot', {
         reason: 'not_the_challenger',

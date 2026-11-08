@@ -104,7 +104,7 @@ const samples: Record<string, Partial<SnapshotInput>> = {
     board: replay(['e4'], 'black'),
     ply: 1,
     plyCount: 1,
-    white: side('white', { name: 'Chess Goat', isBot: true, rating: null, engineLevel: 'club' }),
+    white: side('white', { name: 'Chess Goat', kind: 'engine', rating: null, engineLevel: 'club' }),
   },
   // Flair spec §5.1: worn flair after the name; with a long name, the name is cut short first.
   flair: {

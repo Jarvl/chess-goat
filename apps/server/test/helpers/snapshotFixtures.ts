@@ -11,7 +11,7 @@ export function snapshotInput(overrides: Partial<SnapshotInput> = {}): SnapshotI
     white: {
       id: '7',
       name: '@sam_k',
-      isBot: false,
+      kind: 'human',
       rating: { rating: 1512, rd: 50 },
       engineLevel: null,
       ratingChange: null,
@@ -21,7 +21,7 @@ export function snapshotInput(overrides: Partial<SnapshotInput> = {}): SnapshotI
     black: {
       id: '8',
       name: '@mayachess',
-      isBot: false,
+      kind: 'human',
       rating: { rating: 1587, rd: 50 },
       engineLevel: null,
       ratingChange: null,

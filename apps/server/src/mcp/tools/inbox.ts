@@ -1,3 +1,4 @@
+import { PlayerKindSchema } from '@chess-goat/shared';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/server';
 import { listBots, resolveOwnBot, touchBotActivity } from '../../domain/bots';
@@ -15,7 +16,7 @@ const PROGRESS_MS = 5_000;
 /** Open get_inbox waits per owner, process-wide (one token's agent may hold two at a time). */
 const waits = new OwnerGate(INBOX_WAITS_PER_OWNER);
 
-const person = z.object({ name: z.string(), isBot: z.boolean() });
+const person = z.object({ name: z.string(), kind: PlayerKindSchema });
 const bot = z.object({ id: z.number().int(), name: z.string() });
 const entrySchema = z.discriminatedUnion('kind', [
   z.object({

@@ -297,6 +297,7 @@ describe('NewGame', () => {
   describe('with bots', () => {
     const botCard = (overrides: Partial<BotCardDto> = {}): BotCardDto => ({
       ...playerRef('9', '🤖 Rook (@zed)'),
+      kind: 'bot',
       botActivity: { lastActiveAt: new Date().toISOString() },
       tagline: null,
       owner: '@zed',

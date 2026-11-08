@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { UserRow } from '../../src/db/schema';
-import { displayName, flairEmoji, isHuman, nameWithFlair, wornFlair } from '../../src/domain/users';
+import { displayName, flairEmoji, nameWithFlair, wornFlair } from '../../src/domain/users';
 
 const person = (overrides: Partial<UserRow>) =>
   ({
@@ -47,12 +47,6 @@ describe('bot identity', () => {
     expect(wornFlair(person({ ownerId: 1, ownerName: '@jo', flairWorn: ['rank_1500'] }))).toEqual(
       [],
     );
-  });
-
-  it('isHuman is false for the engine and for bots', () => {
-    expect(isHuman({ isEngine: true, ownerId: null })).toBe(false);
-    expect(isHuman({ isEngine: false, ownerId: 5 })).toBe(false);
-    expect(isHuman({ isEngine: false, ownerId: null })).toBe(true);
   });
 });
 

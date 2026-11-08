@@ -8,6 +8,7 @@ import type { DbOrTx } from '../db/client';
 import { adminActions, groupMembers, ratings, users, type GroupRow } from '../db/schema';
 import { requireGroup, settingsOf, updateGroupSettings } from './groups';
 import { toPlayerRef } from './players';
+import { isBot } from './playerKind';
 
 export async function groupSettingsDto(tx: DbOrTx, group: GroupRow): Promise<GroupSettingsDto> {
   const blocked = await tx
@@ -39,21 +40,19 @@ export async function groupSettingsDto(tx: DbOrTx, group: GroupRow): Promise<Gro
     members.map((bot) => [bot.id, { user: bot, rating: ratingOf.get(bot.id) ?? null }]),
   );
   for (const row of blocked) {
-    if (row.user.ownerId !== null && !row.user.deletedAt && !botRows.has(row.user.id)) {
+    if (isBot(row.user) && !row.user.deletedAt && !botRows.has(row.user.id)) {
       botRows.set(row.user.id, row);
     }
   }
-  const ownBlocked = new Set(
-    blocked.filter((row) => row.user.ownerId !== null).map((row) => row.user.id),
-  );
+  const ownBlocked = new Set(blocked.filter((row) => isBot(row.user)).map((row) => row.user.id));
   const blockedHumans = new Set(
-    blocked.filter((row) => row.user.ownerId === null).map((row) => row.user.id),
+    blocked.filter((row) => !isBot(row.user)).map((row) => row.user.id),
   );
   const bots = [...botRows.values()]
     .sort((a, b) => a.user.firstName.localeCompare(b.user.firstName) || a.user.id - b.user.id)
     .map(({ user, rating }) => {
       const own = ownBlocked.has(user.id);
-      const viaOwner = !own && user.ownerId !== null && blockedHumans.has(user.ownerId);
+      const viaOwner = !own && isBot(user) && blockedHumans.has(user.ownerId!);
       return { ...toPlayerRef(user, rating), blocked: own || viaOwner, blockedViaOwner: viaOwner };
     });
   return {
@@ -61,7 +60,7 @@ export async function groupSettingsDto(tx: DbOrTx, group: GroupRow): Promise<Gro
     settings: settingsOf(group),
     // Bots are listed, with their own block control, under `bots`.
     blocked: blocked
-      .filter((row) => row.user.ownerId === null)
+      .filter((row) => !isBot(row.user))
       .map((row) => toPlayerRef(row.user, row.rating)),
     bots,
     botIsAdmin: group.botIsAdmin,

@@ -3,7 +3,7 @@ import { eq, inArray } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client';
 import { userFlair, users, type GameRow, type UserRow } from '../db/schema';
 import { listMoves, requireGameById } from '../domain/games';
-import { isHuman } from '../domain/users';
+import { can } from '../domain/playerKind';
 import { isCountedGame, loadCountedGames } from './history';
 import type { StoredMove } from './patterns';
 import { ruleHolds } from './rules';
@@ -59,7 +59,7 @@ export async function awardFlairForGame(
     .orderBy(users.id)
     .for('no key update');
   // A game with a bot on either side awards nothing, not even to the person.
-  if (!locked.every(isHuman)) return;
+  if (!locked.every((player) => can(player, 'wearFlair'))) return;
   for (const side of ['white', 'black'] as const) {
     const userId = side === 'white' ? game.whiteId : game.blackId;
     const player = locked.find((row) => row.id === userId);
@@ -76,7 +76,7 @@ async function awardToPlayer(
   random: () => number,
 ): Promise<void> {
   // The bot and a player who deleted their data carry no flair.
-  if (!isHuman(player) || player.deletedAt !== null) return;
+  if (!can(player, 'wearFlair') || player.deletedAt !== null) return;
   const userId = player.id;
   const heldRows = await tx
     .select({ flairId: userFlair.flairId })

@@ -8,8 +8,14 @@ describe('Avatar', () => {
     const r = renderApp(
       () => (
         <>
-          <Avatar player={{ id: '7', name: '@maya', isBot: false, photoUrl: null }} size={40} />
-          <Avatar player={{ id: '9', name: 'Stockfish', isBot: true, photoUrl: null }} size={34} />
+          <Avatar
+            player={{ id: '7', name: '@maya', kind: 'human' as const, photoUrl: null }}
+            size={40}
+          />
+          <Avatar
+            player={{ id: '9', name: 'Stockfish', kind: 'engine' as const, photoUrl: null }}
+            size={34}
+          />
           <GroupAvatar group={{ id: 'GrOuPiDxYz', title: 'Friday Chess Club' }} size={56} />
         </>
       ),
@@ -26,7 +32,12 @@ describe('Avatar', () => {
     expect(group!.textContent).toBe('FC');
   });
 
-  const maya = (photoUrl: string | null) => ({ id: '7', name: '@maya', isBot: false, photoUrl });
+  const maya = (photoUrl: string | null) => ({
+    id: '7',
+    name: '@maya',
+    kind: 'human' as const,
+    photoUrl,
+  });
   const noFetch = () => ({ status: 200, body: {} });
 
   it('lays the photo over the initial', async () => {
@@ -61,7 +72,7 @@ describe('Avatar', () => {
     const r = renderApp(
       () => (
         <Avatar
-          player={{ id: '9', name: 'Stockfish', isBot: true, photoUrl: '/x.jpg' }}
+          player={{ id: '9', name: 'Stockfish', kind: 'engine' as const, photoUrl: '/x.jpg' }}
           size={34}
         />
       ),

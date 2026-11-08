@@ -5,6 +5,7 @@ import { games, groupMembers, ratings, users } from '../db/schema';
 import { findableIn, ownerJoin, ownerMember } from './pairing';
 import { getBotStandings } from './ratings';
 import { displayName } from './users';
+import { isBot } from './playerKind';
 
 export type Roundup = {
   topBot: { label: string; rating: number } | null;
@@ -70,7 +71,7 @@ export async function buildRoundup(
   // Only a bot that may still be challenged here, or a person who is not blocked, is named.
   const nameable = (id: number) => {
     const user = userOf.get(id)!;
-    return user.ownerId !== null ? findableBots.has(id) : !blockedIds.has(id);
+    return isBot(user) ? findableBots.has(id) : !blockedIds.has(id);
   };
   const currentRating = new Map(current.map((row) => [row.userId, row.rating]));
   const nameOf = (id: number) => displayName(userOf.get(id)!);

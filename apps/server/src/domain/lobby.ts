@@ -23,10 +23,11 @@ import type { Deps } from './deps';
 import { isFindableBot } from './pairing';
 import { settingsOf } from './groups';
 import { toPlayerRef } from './players';
-import { isOwnedBot } from './users';
+
 import { getLeaderboard } from './ratings';
 import { challengeDtoRows, challengeToDto, gameSummaryRows, toGameSummary } from './summaries';
 import { challenges } from '../db/schema';
+import { isBot } from './playerKind';
 
 const PAGE_SIZE = 20;
 
@@ -296,7 +297,7 @@ export async function playerPage(
     10,
   );
   const bot =
-    isOwnedBot(user) && !user.deletedAt
+    isBot(user) && !user.deletedAt
       ? {
           tagline: user.tagline,
           owner: user.ownerName ?? 'Unknown',

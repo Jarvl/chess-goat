@@ -61,7 +61,7 @@ describe('pillFor', () => {
 
   it('reads the bot’s side like anyone else’s', () => {
     const bot = gameSummary({
-      black: playerRef('9', 'Stockfish', { isBot: true }),
+      black: playerRef('9', 'Stockfish', { kind: 'engine' }),
       yourTurn: false,
       sideToMove: 'black',
       timePerMove: null,

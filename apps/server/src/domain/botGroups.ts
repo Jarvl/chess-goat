@@ -14,6 +14,7 @@ import { settleInChat } from './challenges';
 import { DomainError } from './errors';
 import { getMember, isBlocked, markLeft, touchMember } from './members';
 import { findableIn, ownerJoin, ownerMember } from './pairing';
+import { isBot } from './playerKind';
 
 const forbidden = (reason: 'owner_not_member' | 'blocked' | 'bot_not_in_group', message: string) =>
   new DomainError('forbidden', message, { reason });
@@ -152,10 +153,10 @@ export function decodeBotCursor(sort: BotSort, cursor: string): { key: number; i
 /** Blocking a bot affects that bot; blocking a person affects all their live bots. */
 export async function botIdsAffectedByBlock(tx: DbOrTx, userId: number): Promise<number[]> {
   const rows = await tx
-    .select({ id: users.id, ownerId: users.ownerId })
+    .select({ id: users.id, isEngine: users.isEngine, ownerId: users.ownerId })
     .from(users)
     .where(and(isNull(users.deletedAt), or(eq(users.id, userId), eq(users.ownerId, userId))));
-  return rows.filter((row) => row.ownerId !== null).map((row) => row.id);
+  return rows.filter(isBot).map((row) => row.id);
 }
 
 /**
