@@ -1,44 +1,14 @@
-import { INITIAL_FEN, type PremoveNode } from '@chess-goat/shared';
-import { Chess } from 'chess.js';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/server';
 import { acceptChallenge, declineChallenge, getChallengeByPublicId } from '../../domain/challenges';
 import { checkPremoveShape } from '../../domain/botPremoves';
 import { DomainError } from '../../domain/errors';
-import { abortGame, listMoves, playMove, resign } from '../../domain/games';
+import { abortGame, playMove, resign } from '../../domain/games';
 import { acceptDraw, claimDraw, declineDraw, offerDraw } from '../../domain/draws';
 import { registerTool, resolveAndTouch } from '../tool';
-import { gameText, gameViewSchema, findBotGame, loadGameView } from './read';
+import { gameText, gameViewSchema, loadGameView } from './read';
 import { botRef } from './manage';
 import { premoveTreeInput } from './premoves';
-
-const LEGAL_MOVES_SHOWN = 30;
-const UCI = /^([a-h][1-8])([a-h][1-8])([qrbn])?$/;
-
-type Resolved = { uci: string } | { uci: null; legal: string };
-
-/** `move` (SAN or UCI) on `fen`: its UCI, or the legal moves (up to 30) to choose from. */
-function resolveMove(fen: string, move: string): Resolved {
-  const chess = new Chess(fen);
-  const uci = UCI.exec(move.trim());
-  try {
-    const played = uci
-      ? chess.move({ from: uci[1]!, to: uci[2]!, promotion: uci[3] })
-      : chess.move(move.trim());
-    return { uci: `${played.from}${played.to}${played.promotion ?? ''}` };
-  } catch {
-    const legal = new Chess(fen)
-      .moves({ verbose: true })
-      .slice(0, LEGAL_MOVES_SHOWN)
-      .map((m) => `${m.san} (${m.from}${m.to}${m.promotion ?? ''})`)
-      .join(', ');
-    return { uci: null, legal };
-  }
-}
-
-const stale = (plyCount: number) =>
-  new DomainError('stale_state', 'the position has changed', { plyCount });
-const gameOver = () => new DomainError('stale_state', 'the game is over', { reason: 'game_over' });
 
 function registerMakeMove(server: McpServer): void {
   registerTool(server, {
@@ -56,52 +26,18 @@ function registerMakeMove(server: McpServer): void {
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     run: async (call, input) => {
       const { deps } = call;
-      let premoveNodes: PremoveNode[] = [];
       const bot = await resolveAndTouch(call, input.bot);
-      const move = await deps.db.transaction(async (tx) => {
-        // Checked before anything is played, so a malformed tree never leaves a move without it.
-        if (input.premoves) premoveNodes = checkPremoveShape(input.premoves);
-        const row = await findBotGame(tx, bot, input.game_id);
-        if (input.expected_ply > row.plyCount) {
-          throw row.status === 'active' ? stale(row.plyCount) : gameOver();
-        }
-        const history = await listMoves(tx, row.id);
-        const fen =
-          input.expected_ply === row.plyCount
-            ? row.fen
-            : input.expected_ply === 0
-              ? INITIAL_FEN
-              : history[input.expected_ply - 1]!.fenAfter;
-        const resolved = resolveMove(fen, input.move);
-        const clientMoveId = (u: string) => `mcp:${bot.id}:${row.id}:${input.expected_ply}:${u}`;
-        // A retry of a move already made returns the game as it is now, whatever has happened since.
-        if (resolved.uci && history.some((m) => m.clientMoveId === clientMoveId(resolved.uci))) {
-          return null;
-        }
-        if (row.status !== 'active') throw gameOver();
-        if (input.expected_ply !== row.plyCount) throw stale(row.plyCount);
-        const botIsWhite = row.whiteId === bot.id;
-        if ((fen.split(' ')[1] === 'w') !== botIsWhite) {
-          throw new DomainError('not_your_turn', 'not your turn');
-        }
-        if (resolved.uci === null) {
-          throw new DomainError('illegal_move', 'illegal move', {
-            move: input.move.trim(),
-            legal: resolved.legal,
-          });
-        }
-        return { uci: resolved.uci, clientMoveId: clientMoveId(resolved.uci) };
+      // Checked before anything is played, so a malformed tree never leaves a move without it.
+      const premoves = input.premoves
+        ? { tree: checkPremoveShape(input.premoves), ifIllegal: 'record' as const }
+        : undefined;
+      await playMove(deps, {
+        gameId: input.game_id,
+        userId: bot.id,
+        move: input.move,
+        expectedPly: input.expected_ply,
+        premoves,
       });
-      if (move !== null) {
-        await playMove(deps, {
-          gameId: input.game_id,
-          userId: bot.id,
-          expectedPly: input.expected_ply,
-          ...move,
-          premoveNodes,
-          premoveCheck: 'shape',
-        });
-      }
       return deps.db.transaction((tx) => loadGameView(tx, bot, input.game_id));
     },
     text: gameText,
@@ -132,7 +68,6 @@ function registerGameAction(server: McpServer): void {
     run: async (call, input) => {
       const { deps } = call;
       const bot = await resolveAndTouch(call, input.bot);
-      await deps.db.transaction((tx) => findBotGame(tx, bot, input.game_id));
       const act = { gameId: input.game_id, userId: bot.id };
       switch (input.action) {
         case 'offer_draw':

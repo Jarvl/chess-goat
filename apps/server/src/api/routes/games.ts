@@ -45,11 +45,16 @@ export function gamesRoutes(api: Hono<ApiEnv>, ctx: ApiContext): void {
 
   api.post('/games/:id/moves', validate('json', MoveRequestSchema), async (c) => {
     const started = performance.now();
-    const dto = await playMove(ctx.deps, {
+    const { uci, expectedPly, clientMoveId, premoveTree } = c.req.valid('json');
+    const { game } = await playMove(ctx.deps, {
       gameId: gameId(c),
       userId: userId(c),
-      ...c.req.valid('json'),
+      move: uci,
+      expectedPly,
+      clientMoveId,
+      premoves: { tree: premoveTree, ifIllegal: 'reject' },
     });
+    const dto = await loadGameDto(db, game, userId(c));
     ctx.metrics.movesTotal.inc();
     ctx.metrics.moveLatency.observe((performance.now() - started) / 1000);
     if (dto.status === 'finished' && dto.endReason)

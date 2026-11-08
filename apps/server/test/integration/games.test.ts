@@ -1,12 +1,13 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { adminActions, dmMessages, games, jobs, moves, ratings, users } from '../../src/db/schema';
-import { abortGame, getGameDto, playMove, resign, voidGame } from '../../src/domain/games';
+import { abortGame, getGameDto, resign, voidGame } from '../../src/domain/games';
 
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
 import { insertGame, liveDm, resultDms, secondsUntil, world, played } from '../helpers/fixtures';
 import { AFTER_E4, AFTER_E4_E5, BEFORE_SCHOLARS_MATE } from '../helpers/chess';
 
+import { playMoveDto } from '../helpers/moves';
 const { db, close } = openTestDb();
 const deps = testDeps(db);
 
@@ -21,7 +22,7 @@ const move = (
   expectedPly: number,
   clientMoveId?: string,
 ) =>
-  playMove(deps, {
+  playMoveDto(deps, {
     gameId,
     userId,
     uci,

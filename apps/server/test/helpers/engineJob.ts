@@ -5,9 +5,9 @@ import type { Deps } from '../../src/domain/deps';
 import type { EngineLevel } from '@chess-goat/shared';
 import type { Engine } from '../../src/engine/engine';
 import { createEngineGame } from '../../src/domain/engineGames';
-import { playMove } from '../../src/domain/games';
 import { engineJobHandlers } from '../../src/jobs/handlers/engine';
 import type { Metrics } from '../../src/metrics';
+import { playMoveDto } from './moves';
 
 function buildJob(gameId: number, overrides: Partial<JobRow> = {}): JobRow {
   return {
@@ -57,7 +57,7 @@ export async function gameAwaitingEngine(
     level: opts.level ?? 'club',
     colour: 'white',
   });
-  await playMove(deps, {
+  await playMoveDto(deps, {
     gameId: game.publicId,
     userId: opts.userId,
     uci: 'e2e4',

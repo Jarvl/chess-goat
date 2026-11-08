@@ -3,6 +3,7 @@ import {
   branchFor,
   decodePremoveBytes,
   encodePremoveBytes,
+  INITIAL_FEN,
   opposite,
   sideToMove,
   timeoutOutcome,
@@ -36,6 +37,7 @@ import { deadlineExpression, reminderExpression } from './limits';
 import { gameEndedStub, moveLabel, waitingText } from './dmText';
 import { resultRecipients } from './dmRules';
 import { markWaiting, retireGameDms } from './dms';
+import { resolveMove } from './moveText';
 import { parseTree, requireLegalTree } from './premoveCheck';
 import { applyGameResultToRatings, getPlayerRating } from './ratings';
 import { nameWithFlair, requireUser, wantsDms } from './users';
@@ -51,7 +53,7 @@ export async function requireGameByPublicId(
 ): Promise<GameRow> {
   const query = tx.select().from(games).where(eq(games.publicId, publicId)).limit(1);
   const [row] = options.forUpdate ? await query.for('update') : await query;
-  if (!row) throw new DomainError('not_found', 'game not found');
+  if (!row) throw new DomainError('not_found', 'game not found', { reason: 'game_not_found' });
   return row;
 }
 
@@ -262,9 +264,26 @@ export async function lockActiveGame(
   publicId: string,
   userId: number,
 ): Promise<LockedGame> {
+  const { game, colour } = await lockPlayersGame(tx, publicId, userId);
+  return activeOrTimedOut(tx, game, colour);
+}
+
+/** The game, row-locked, and the colour `userId` plays in it; refused when they don't play in it. */
+async function lockPlayersGame(
+  tx: DbOrTx,
+  publicId: string,
+  userId: number,
+): Promise<{ game: GameRow; colour: Colour }> {
   const game = await requireGameByPublicId(tx, publicId, { forUpdate: true });
   const colour = colourOf(game, userId);
-  if (!colour) throw new DomainError('forbidden', 'only the players can do that');
+  if (!colour) {
+    throw new DomainError('forbidden', 'only the players can do that', { reason: 'not_a_player' });
+  }
+  return { game, colour };
+}
+
+/** `lockActiveGame` once the row is locked: refuses a finished game, applies a passed deadline. */
+async function activeOrTimedOut(tx: DbOrTx, game: GameRow, colour: Colour): Promise<LockedGame> {
   if (game.status !== 'active') {
     throw new DomainError('stale_state', 'the game is over', { reason: 'game_over' });
   }
@@ -278,22 +297,26 @@ export async function lockActiveGame(
 export type PlayMoveInput = {
   gameId: string;
   userId: number;
-  uci: string;
+  /** SAN or UCI, read against the position at `expectedPly`. */
+  move: string;
   expectedPly: number;
-  clientMoveId: string;
   /**
-   * The mover's premove tree for the position after `uci`, base64url (conditional premoves spec,
-   * API). Absent or `''`, as for an engine move, means none.
+   * Optional: a retry is recognised without it, as the same player's same move at the same ply.
+   * Sent by the Mini App (spec §7.4) and the engine, and kept on the move row.
    */
-  premoveTree?: string;
+  clientMoveId?: string;
   /**
-   * For a bot (bots spec §3): its tree for the position after `uci`, already checked by
-   * `checkPremoveShape` and never for legality, which is checked as each reply fires. Read only
-   * with `premoveCheck: 'shape'`, in place of `premoveTree`.
+   * The mover's premove tree for the position after the move: as the Mini App sends it (base64url,
+   * `''` for none; a malformed one is refused after the game, ply and turn checks), or as nodes
+   * already checked for shape. `ifIllegal` is the mover's rule: `'reject'` (people) refuses the
+   * move when a line in the tree is illegal, checked before the lock; `'record'` (bots, bots spec
+   * §3) stores it as it is, and a reply that turns out illegal is recorded as it fires.
    */
-  premoveNodes?: readonly PremoveNode[];
-  premoveCheck?: 'shape';
+  premoves?: { tree: string | readonly PremoveNode[]; ifIllegal: 'reject' | 'record' };
 };
+
+/** What `playMove` did: played it, saw a retry of a move already played, or found the clock ran out. */
+export type PlayedMove = { game: GameRow; outcome: 'played' | 'retry' | 'ended' };
 
 type LegalMove = Extract<ApplyMoveResult, { legal: true }>;
 
@@ -301,7 +324,7 @@ type CommitInput = {
   game: GameRow;
   colour: Colour;
   uci: string;
-  clientMoveId: string;
+  clientMoveId: string | null;
   now: Date;
   history: MoveRow[];
   /** The mover's new tree, for the position after `uci`; empty when the request carried none. */
@@ -330,7 +353,7 @@ async function commitOne(
     game: GameRow;
     colour: Colour;
     move: LegalMove;
-    clientMoveId: string;
+    clientMoveId: string | null;
     now: Date;
     history: MoveRow[];
   },
@@ -508,68 +531,94 @@ async function commitMove(tx: DbOrTx, input: CommitInput): Promise<GameRow> {
  * before the lock, from the position after the move read without it (conditional premoves spec,
  * API); anything the locked checks refuse is left to them, so their error is the one reported.
  */
-export async function playMove(deps: Deps, input: PlayMoveInput): Promise<GameDto> {
-  const shapeOnly = input.premoveCheck === 'shape';
-  const parsed = shapeOnly
-    ? { tree: input.premoveNodes ?? [] }
-    : input.premoveTree
-      ? parseTree(input.premoveTree)
-      : { tree: [] };
+/** The position before the move at `ply`: null when the game has not reached that ply. */
+function positionAt(game: GameRow, history: readonly MoveRow[], ply: number): string | null {
+  if (ply > game.plyCount) return null;
+  if (ply === game.plyCount) return game.fen;
+  return ply === 0 ? INITIAL_FEN : history[ply - 1]!.fenAfter;
+}
+
+/**
+ * Plays `move` for a player: a person from the Mini App, the engine, or a bot over MCP. In order:
+ * a retry of a move already played returns the game as it is now, whatever has happened since; a
+ * finished game is refused, and one whose clock just ran out ends here; then a stale ply, the
+ * wrong side to move and an illegal move are refused, the last with the legal moves to choose
+ * from. The caller renders the returned game as it shows games.
+ */
+export async function playMove(deps: Deps, input: PlayMoveInput): Promise<PlayedMove> {
+  const premoves = input.premoves ?? { tree: [], ifIllegal: 'reject' as const };
+  const parsed =
+    typeof premoves.tree !== 'string'
+      ? { tree: premoves.tree }
+      : premoves.tree
+        ? parseTree(premoves.tree)
+        : { tree: [] };
+  const checkTree = premoves.ifIllegal === 'reject' && parsed !== null && parsed.tree.length > 0;
   let checkedAtPly: number | null = null;
-  if (!shapeOnly && parsed && parsed.tree.length > 0) {
+  if (checkTree) {
+    // Checked before the lock, which it would otherwise hold for as long as the tree takes.
     const seen = await requireGameByPublicId(deps.db, input.gameId);
+    const resolved = seen.plyCount === input.expectedPly ? resolveMove(seen.fen, input.move) : null;
     if (
       seen.status === 'active' &&
-      seen.plyCount === input.expectedPly &&
+      resolved?.uci &&
       sideToMove(seen.fen) === colourOf(seen, input.userId)
     ) {
       // The position after the move does not depend on the history the arbiter is given.
-      const trial = applyMove(seen.fen, [], input.uci);
+      const trial = applyMove(seen.fen, [], resolved.uci);
       if (trial.legal) {
-        await requireLegalTree(trial.fenAfter, parsed.tree, []);
+        await requireLegalTree(trial.fenAfter, parsed!.tree, []);
         checkedAtPly = seen.plyCount;
       }
     }
   }
 
-  const dto = await deps.db.transaction(async (tx) => {
-    const { game, colour, now, ended } = await lockActiveGame(tx, input.gameId, input.userId);
-    if (ended) return loadGameDto(tx, game, input.userId);
-    // A retried request must return the current state even though it is now the opponent's turn,
-    // and a stale client learns that before it learns whose turn it is. Its tree is neither
-    // checked nor stored.
-    const history = await listMoves(tx, game.id);
-    if (history.some((move) => move.clientMoveId === input.clientMoveId)) {
-      return loadGameDto(tx, game, input.userId);
-    }
+  const played = await deps.db.transaction(async (tx): Promise<PlayedMove> => {
+    const locked = await lockPlayersGame(tx, input.gameId, input.userId);
+    const history = await listMoves(tx, locked.game.id);
+    const before = positionAt(locked.game, history, input.expectedPly);
+    const resolved = before === null ? null : resolveMove(before, input.move);
+    const retried =
+      (input.clientMoveId !== undefined &&
+        history.some((move) => move.clientMoveId === input.clientMoveId)) ||
+      (resolved?.uci != null &&
+        before !== null &&
+        sideToMove(before) === locked.colour &&
+        history[input.expectedPly]?.uci === resolved.uci);
+    // Its tree is neither checked nor stored.
+    if (retried) return { game: locked.game, outcome: 'retry' };
+    const { game, colour, now, ended } = await activeOrTimedOut(tx, locked.game, locked.colour);
+    if (ended) return { game, outcome: 'ended' };
     if (input.expectedPly !== game.plyCount) {
       throw new DomainError('stale_state', 'the position has changed', { plyCount: game.plyCount });
     }
     if (sideToMove(game.fen) !== colour) throw new DomainError('not_your_turn', 'not your turn');
     if (!parsed) throw new DomainError('validation', 'malformed premove tree');
+    if (!resolved?.uci) {
+      throw new DomainError('illegal_move', 'illegal move', {
+        move: input.move.trim(),
+        legal: resolved && resolved.uci === null ? resolved.legal : '',
+      });
+    }
     // The same ply means the same position as the check above. Only a race (the row reached the
-    // expected state between the two reads) or an illegal move left it unchecked. The tree is never
-    // checked under the lock, which it would hold for as long as the tree takes: an illegal move is
-    // refused as such, and a race is refused as stale, so the device reloads and sends again.
-    if (!shapeOnly && parsed.tree.length > 0 && checkedAtPly !== game.plyCount) {
-      if (!applyMove(game.fen, [], input.uci).legal) {
-        throw new DomainError('illegal_move', 'illegal move');
-      }
+    // expected state between the two reads) left it unchecked: refused as stale, so the device
+    // reloads and sends again. The tree is never checked under the lock.
+    if (checkTree && checkedAtPly !== game.plyCount) {
       throw new DomainError('stale_state', 'the position has changed', { plyCount: game.plyCount });
     }
     const final = await commitMove(tx, {
       game,
       colour,
-      uci: input.uci,
-      clientMoveId: input.clientMoveId,
+      uci: resolved.uci,
+      clientMoveId: input.clientMoveId ?? null,
       now,
       history,
       premoveTree: parsed.tree,
     });
-    return loadGameDto(tx, final, input.userId);
+    return { game: final, outcome: 'played' };
   });
   deps.bus.publish(input.gameId);
-  return dto;
+  return played;
 }
 
 export async function resign(

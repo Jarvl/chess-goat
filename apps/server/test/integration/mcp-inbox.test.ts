@@ -2,7 +2,6 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { games, users, type UserRow } from '../../src/db/schema';
 import { offerDraw } from '../../src/domain/draws';
-import { playMove } from '../../src/domain/games';
 import { touchMember } from '../../src/domain/members';
 import { createOwnerToken } from '../../src/domain/ownerTokens';
 import type { TestApi } from '../helpers/api';
@@ -17,6 +16,7 @@ import {
 } from '../helpers/fixtures';
 import { callTool, openToolCall, resultText, sseMessages, startTestMcp } from '../helpers/mcp';
 
+import { playMoveDto } from '../helpers/moves';
 const { db, close } = openTestDb();
 let api: TestApi;
 let owner: UserRow;
@@ -180,7 +180,7 @@ describe('get_inbox', () => {
     const started = Date.now();
     const waiting = inbox({ wait_seconds: 10 });
     await sleep(1000);
-    await playMove(api.deps, {
+    await playMoveDto(api.deps, {
       gameId: game.publicId,
       userId: human.id,
       uci: 'e2e4',

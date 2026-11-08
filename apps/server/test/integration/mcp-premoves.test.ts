@@ -1,7 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { games, type UserRow } from '../../src/db/schema';
-import { playMove } from '../../src/domain/games';
 import { touchMember } from '../../src/domain/members';
 import { createOwnerToken } from '../../src/domain/ownerTokens';
 import type { TestApi } from '../helpers/api';
@@ -9,6 +8,7 @@ import { openTestDb, truncateAll } from '../helpers/db';
 import { insertBot, insertGame, insertGroup, insertUser } from '../helpers/fixtures';
 import { callTool, resultText, startTestMcp } from '../helpers/mcp';
 
+import { playMoveDto } from '../helpers/moves';
 const { db, close } = openTestDb();
 let api: TestApi;
 let owner: UserRow;
@@ -51,7 +51,7 @@ async function setup() {
   });
   expect(opened.isError).toBeFalsy();
   const humanMove = (uci: string, expectedPly: number) =>
-    playMove(api.deps, {
+    playMoveDto(api.deps, {
       gameId: game.publicId,
       userId: human.id,
       uci,
@@ -290,7 +290,7 @@ describe('make_move with premoves', () => {
     });
     expect(out.isError).toBeFalsy();
     expect(out.structuredContent).toMatchObject({ ply: 1, premoveTree: TREE });
-    await playMove(api.deps, {
+    await playMoveDto(api.deps, {
       gameId: game.publicId,
       userId: human.id,
       uci: 'e7e5',

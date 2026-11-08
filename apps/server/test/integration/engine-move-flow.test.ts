@@ -2,7 +2,7 @@ import { encodePremoveTree, t, type EngineLevel } from '@chess-goat/shared';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { jobs, ratings } from '../../src/db/schema';
 import { createEngineGame, getEngineUser } from '../../src/domain/engineGames';
-import { playMove, requireGameByPublicId, resign, voidGame } from '../../src/domain/games';
+import { requireGameByPublicId, resign, voidGame } from '../../src/domain/games';
 import { buildGamePgn } from '../../src/domain/pgn';
 import { forfeitOverdueGames } from '../../src/clock/scanners';
 
@@ -14,6 +14,7 @@ import { createEngineJobRunner, gameAwaitingEngine } from '../helpers/engineJob'
 import { fakeEngine } from '../helpers/fakeEngine';
 import { insertGame, insertGroup, insertUser } from '../helpers/fixtures';
 
+import { playMoveDto } from '../helpers/moves';
 const { db, close } = openTestDb();
 const deps = testDeps(db);
 
@@ -47,7 +48,7 @@ describe('playMove and finishGame with an engine opponent', () => {
     const { group, alice } = await setup({ dmAllowed: true });
     const game = await gameAwaitingEngine(deps, { groupId: group.id, userId: alice.id });
     const engine = await getEngineUser(db);
-    await playMove(deps, {
+    await playMoveDto(deps, {
       gameId: game.publicId,
       userId: engine.id,
       uci: 'e7e5',
@@ -103,7 +104,7 @@ describe('playMove and finishGame with an engine opponent', () => {
     });
     // A move first, so plyCount > 0 and only the game being an engine game stops the import.
     // Resigning at once (plyCount 0) would make this vacuous.
-    await playMove(deps, {
+    await playMoveDto(deps, {
       gameId: game.publicId,
       userId: alice.id,
       uci: 'e2e4',
@@ -156,7 +157,7 @@ describe('a premove tree in an engine game', () => {
       level: 'club',
       colour: 'white',
     });
-    await playMove(deps, {
+    await playMoveDto(deps, {
       gameId: game.publicId,
       userId: alice.id,
       uci: 'e2e4',
@@ -187,7 +188,7 @@ describe('the PGN of an engine game', () => {
       level,
       colour: 'white',
     });
-    await playMove(deps, {
+    await playMoveDto(deps, {
       gameId: game.publicId,
       userId: alice.id,
       uci: 'e2e4',

@@ -9,7 +9,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { dmMessages, games, jobs, moves } from '../../src/db/schema';
 import { createEngineGame, getEngineUser } from '../../src/domain/engineGames';
-import { getGameDto, playMove, requireGameById, resign } from '../../src/domain/games';
+import { getGameDto, requireGameById, resign } from '../../src/domain/games';
 import { DomainError } from '../../src/domain/errors';
 import { touchMember } from '../../src/domain/members';
 import { setPremoveTree } from '../../src/domain/premoves';
@@ -17,6 +17,7 @@ import { deepLine, AFTER_E4_E5 } from '../helpers/chess';
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
 import { insertGroup, insertUser, world, liveDm } from '../helpers/fixtures';
 
+import { playMoveDto } from '../helpers/moves';
 const { db, close } = openTestDb();
 const deps = testDeps(db);
 
@@ -31,7 +32,7 @@ const move = (
   expectedPly: number,
   tree?: PremoveNode[],
 ) =>
-  playMove(deps, {
+  playMoveDto(deps, {
     gameId,
     userId,
     uci,
@@ -291,7 +292,7 @@ describe('firing premoves', () => {
     const { game, alice, bob, carol } = await world(db);
     const send = (userId: number, expectedPly: number, premoveTree: string) =>
       refusal(
-        playMove(deps, {
+        playMoveDto(deps, {
           gameId: game.publicId,
           userId,
           uci: 'e2e4',
@@ -318,15 +319,15 @@ describe('firing premoves', () => {
       expectedPly: 0,
       clientMoveId: 'retry-me',
     };
-    await playMove(deps, { ...input, premoveTree: encodePremoveTree(alicesTree) });
-    const retried = await playMove(deps, {
+    await playMoveDto(deps, { ...input, premoveTree: encodePremoveTree(alicesTree) });
+    const retried = await playMoveDto(deps, {
       ...input,
       premoveTree: encodePremoveTree([{ move: 'd7d5', reply: 'e4d5', children: [] }]),
     });
     expect(retried).toMatchObject({ plyCount: 1, premoveTree: encodePremoveTree(alicesTree) });
     expect(await storedTree(game.id)).toEqual(alicesTree);
     // Neither checked nor stored: a retry is answered before the tree is looked at.
-    expect((await playMove(deps, { ...input, premoveTree: 'AA' })).plyCount).toBe(1);
+    expect((await playMoveDto(deps, { ...input, premoveTree: 'AA' })).plyCount).toBe(1);
     expect(await storedTree(game.id)).toEqual(alicesTree);
   });
 
@@ -340,8 +341,8 @@ describe('firing premoves', () => {
       expectedPly: 0,
       clientMoveId: 'retry-me',
     };
-    await playMove(deps, input);
-    expect((await playMove(deps, input)).plyCount).toBe(2);
+    await playMoveDto(deps, input);
+    expect((await playMoveDto(deps, input)).plyCount).toBe(2);
   });
 
   it('cancels a bot game tree with no send_dm job, since bot games announce nothing', async () => {
@@ -490,7 +491,7 @@ describe('a row that changes between the unlocked read and the lock', () => {
     const { game, alice, bob } = await world(db);
     // Bob answers 1.e4, which lands only after his request's unlocked read saw ply 0.
     const raced = racing(() => move(game.publicId, alice.id, 'e2e4', 0));
-    const sent = playMove(raced, {
+    const sent = playMoveDto(raced, {
       gameId: game.publicId,
       userId: bob.id,
       uci: 'e7e5',
