@@ -635,7 +635,7 @@ export async function resign(
   return dto;
 }
 
-/** PRD §7.3: abort is available before both players have moved; no rating change. */
+/** abort is available before both players have moved; no rating change. */
 export async function abortGame(
   deps: Deps,
   input: { gameId: string; userId: number },

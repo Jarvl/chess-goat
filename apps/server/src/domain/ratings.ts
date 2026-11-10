@@ -241,7 +241,7 @@ export async function rebuildGroupRatings(
 }
 
 /**
- * PRD §7.9: everyone with a rated game here, not deleted, not blocked; rating then games played.
+ * everyone with a rated game here, not deleted, not blocked; rating then games played.
  * Provisional players rank alongside settled ones (their rating carries the `?`).
  */
 export async function getLeaderboard(tx: DbOrTx, groupId: number): Promise<LeaderboardEntry[]> {

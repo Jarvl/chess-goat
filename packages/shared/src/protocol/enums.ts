@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-/** Time per move in seconds (PRD §7.2). `null` means the game has no clock. */
+/** Time per move in seconds. `null` means the game has no clock. */
 export const TIME_PER_MOVE_OPTIONS = [3600, 28800, 86400, 259200, 604800] as const;
 
 export type TimePerMoveSeconds = (typeof TIME_PER_MOVE_OPTIONS)[number];

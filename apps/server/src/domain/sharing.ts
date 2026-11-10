@@ -11,7 +11,7 @@ import { enqueue } from '../jobs/queue';
  */
 export const MAX_SHARES_PER_MINUTE = 20;
 
-/** PRD §7.6 / spec §7.8: shared positions are limited per user per minute; the photo itself is a job. */
+/** shared positions are limited per user per minute; the photo itself is a job. */
 export async function sharePosition(
   deps: Deps,
   input: { gameId: string; userId: number; ply: number },

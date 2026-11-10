@@ -7,7 +7,7 @@ export function plays(game: GameSummary, viewerId: string | null): boolean {
   return viewerId !== null && (game.white.id === viewerId || game.black.id === viewerId);
 }
 
-/** The lists for a scope; active games waiting on the viewer come first (PRD §8.2). */
+/** The lists for a scope; active games waiting on the viewer come first. */
 export function scopedGames(
   data: Pick<LobbyDto, 'active' | 'finished'>,
   scope: LobbyScope,

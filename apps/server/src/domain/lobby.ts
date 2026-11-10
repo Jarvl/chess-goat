@@ -43,7 +43,7 @@ function decodeCursor(cursor: string): { finishedAt: Date; id: number } | null {
   return { finishedAt, id: Number(id) };
 }
 
-/** Active games of a group, the viewer's own turn first, then most recently moved (PRD §8.2). */
+/** Active games of a group, the viewer's own turn first, then most recently moved. */
 export async function activeGames(tx: DbOrTx, groupId: number, viewerId: number) {
   const rows = await gameSummaryRows(
     tx,
@@ -223,7 +223,7 @@ export async function yourMoveTotal(deps: Deps, userId: number): Promise<number>
 
 /**
  * The viewer's active games across every group they can still see, their own turn first and
- * then most recently moved — the Active tab's ordering (PRD §8.2) widened to all groups.
+ * then most recently moved — the Active tab's ordering widened to all groups.
  * This is the Mini App's home screen (spec §9 `GET /me/games`).
  */
 export async function meGames(deps: Deps, userId: number): Promise<MeGamesDto> {

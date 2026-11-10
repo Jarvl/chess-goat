@@ -87,7 +87,7 @@ export function prefsOf(user: Pick<UserRow, 'prefs'>): Prefs {
 }
 
 /**
- * PRD §7.7: DMs go only to users who allowed them in Telegram and keep notifications on. A bot
+ * DMs go only to users who allowed them in Telegram and keep notifications on. A bot
  * never gets one, whatever its row says, so it is never reminded either.
  */
 export function wantsDms(

@@ -395,7 +395,7 @@ export async function expireChallenges(deps: Deps, limit = 100): Promise<number>
   });
 }
 
-/** PRD §7.2: a reversed-colour challenge with the same terms, as a new card. */
+/** a reversed-colour challenge with the same terms, as a new card. */
 export async function createRematch(
   deps: Deps,
   input: { gameId: number; userId: number },

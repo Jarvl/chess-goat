@@ -1,8 +1,7 @@
 # Testing
 
 How this project is tested, what each layer owns, and the work that still has to happen before the
-alpha can exit. The layers and their required cases come from the technical design §15; the alpha
-exit criteria come from PRD §13.
+alpha can exit. The alpha exit criteria are the table below.
 
 ## What runs where
 
@@ -196,7 +195,7 @@ missed drop on any device is a release blocker, not a known issue.
 
 ## Alpha exit criteria and how each is measured
 
-| Criterion (PRD §13) | Measured by |
+| Criterion | Measured by |
 |---|---|
 | 50 completed games | `games_finished_total` on the metrics endpoint |
 | No rule bugs | The arbiter suite, plus every finished game importing cleanly into Lichess. Lichess rejects illegal PGNs, so a successful import is an independent legality check on every real game played |

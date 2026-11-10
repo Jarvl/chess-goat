@@ -101,7 +101,7 @@ export async function unblockUser(tx: DbOrTx, groupId: number, userId: number): 
     .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)));
 }
 
-/** The opponent picker: members the bot has seen here, newest first (spec §5.6, PRD §7.2). */
+/** The opponent picker: members the bot has seen here, newest first. */
 export async function listKnownPlayers(
   tx: DbOrTx,
   groupId: number,

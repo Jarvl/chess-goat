@@ -6,7 +6,7 @@ export function remainingMs(deadlineAt: string | null, now: Date): number | null
   return Math.max(0, Date.parse(deadlineAt) - now.getTime());
 }
 
-/** The side to move counts down; the waiting side shows the full budget it will get (PRD §7.4). */
+/** The side to move counts down; the waiting side shows the full budget it will get. */
 export function clockLabel(
   remaining: number | null,
   timePerMove: TimePerMove,
