@@ -124,6 +124,47 @@ describe('pendingTurns', () => {
     expect(turns[0]!.deadlineAt).toEqual(before.expiresAt);
   });
 
+  it('puts the oldest first among equal deadlines', async () => {
+    const { group, bot, human } = await setup();
+    const t = (m: number) => new Date(Date.UTC(2026, 0, 1, 0, m));
+    const newer = await insertGame(db, group.id, bot.id, human.id, {
+      timePerMove: null,
+      startedAt: t(20),
+    });
+    const older = await insertGame(db, group.id, bot.id, human.id, {
+      timePerMove: null,
+      startedAt: t(10),
+    });
+    const turns = await pendingTurns(db, [bot.id]);
+    expect(turns.map((x) => x.gameId)).toEqual([older.id, newer.id]);
+  });
+
+  it('breaks full ties by kind, then id, then bot, whatever the read order', async () => {
+    const { group, bot, human } = await setup();
+    const other = await insertBot(db, human, { firstName: 'Knight' });
+    const at = new Date(Date.UTC(2026, 0, 1));
+    // White (the higher-id bot, read first) is to move; black answers white's draw offer.
+    const game = await insertGame(db, group.id, other.id, bot.id, {
+      timePerMove: null,
+      startedAt: at,
+      drawOfferBy: 'white',
+    });
+    const mk = (botId: number) =>
+      insertChallenge(db, group.id, human.id, botId, {
+        createdAt: at,
+        expiresAt: new Date(Date.UTC(2027, 0, 1)),
+      });
+    const c2 = await mk(other.id);
+    const c1 = await mk(bot.id);
+    const turns = await pendingTurns(db, [bot.id, other.id]);
+    expect(turns.map((x) => [x.kind, x.gameId ?? x.challengeId, x.botId])).toEqual([
+      ['challenge', c2.id, other.id],
+      ['challenge', c1.id, bot.id],
+      ['draw_offer', game.id, bot.id],
+      ['move', game.id, other.id],
+    ]);
+  });
+
   it('covers several bots in one read and ignores others', async () => {
     const { group, bot, human } = await setup();
     const owner = await insertUser(db);

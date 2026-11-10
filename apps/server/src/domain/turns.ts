@@ -31,14 +31,19 @@ export function sameTurn(a: TurnKey, b: TurnKey): boolean {
   );
 }
 
-/** Soonest deadline first, none last; then oldest first. */
+/** Soonest deadline first, none last; then oldest first; then by kind, id and bot. */
 function byUrgency(a: PendingTurn, b: PendingTurn): number {
   if (a.deadlineAt?.getTime() !== b.deadlineAt?.getTime()) {
     if (a.deadlineAt === null) return 1;
     if (b.deadlineAt === null) return -1;
     return a.deadlineAt.getTime() - b.deadlineAt.getTime();
   }
-  return a.since.getTime() - b.since.getTime();
+  if (a.since.getTime() !== b.since.getTime()) return a.since.getTime() - b.since.getTime();
+  // Fully tied: a fixed order, so that repeated reads agree on which turn is first.
+  if (a.kind !== b.kind) return a.kind < b.kind ? -1 : 1;
+  const idA = a.challengeId ?? a.gameId!;
+  const idB = b.challengeId ?? b.gameId!;
+  return idA !== idB ? idA - idB : a.botId - b.botId;
 }
 
 /**
