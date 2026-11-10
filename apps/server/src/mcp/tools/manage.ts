@@ -12,6 +12,7 @@ import {
 import { addBotToGroup, ownerGroups, removeBotFromGroup } from '../../domain/botGroups';
 import { PERSONA_MAX } from '../../domain/botNotes';
 import { requireGroupByPublicId } from '../../domain/groups';
+import { quoted, quoteNote } from '../../domain/quoting';
 import { listRunners, onlineBotIds } from '../../domain/runners';
 import { pendingTurns } from '../../domain/turns';
 import { failingTurns } from '../../domain/turnLeases';
@@ -87,6 +88,9 @@ const botLine = (bot: BotOut): string => {
   return `${bot.label}${tagline}, ${where}, ${games}, ${status.join(', ')}`;
 };
 
+/** Follows text that quotes a runner's label or harness: whoever ran the link command chose them. */
+export const RUNNER_NOTE = quoteNote('Runner labels and harness names');
+
 const NO_RUNNER =
   'No runner is connected, so your bots are not playing. If one is linked, start it on its machine with `goat-runner start`; otherwise call link_runner.';
 
@@ -135,7 +139,7 @@ export function createdLines(
         : 'It is in no group yet: your owner is in no group with Chess Goat. They must add Chess Goat to a Telegram group first.';
   const who =
     runner.kind === 'connected'
-      ? `Served by runner ${runner.label}, connected. Next: call test_runner.`
+      ? `Served by runner ${quoted(runner.label)}, connected. Next: call test_runner.\n${RUNNER_NOTE}`
       : runner.kind === 'offline'
         ? 'A runner is linked but not connected. Start it on its machine with `goat-runner start`, then call test_runner; or call link_runner to link another.'
         : 'No runner serves this bot yet. Next: call link_runner.';

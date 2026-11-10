@@ -15,8 +15,9 @@ import {
   startPractice,
   type PracticeStatus,
 } from '../../domain/turnLeases';
+import { quoted } from '../../domain/quoting';
 import { registerTool } from '../tool';
-import { botRef, READ_ONLY } from './manage';
+import { botRef, READ_ONLY, RUNNER_NOTE } from './manage';
 
 const linkOutput = z.object({
   alreadyServed: z.boolean(),
@@ -109,7 +110,7 @@ function registerListRunners(server: McpServer): void {
         ? 'No runners yet. Call link_runner.'
         : runners
             .map((r) => {
-              const head = `#${r.id} "${r.label}"${r.harness ? ` (${r.harness})` : ''}`;
+              const head = `#${r.id} ${quoted(r.label)}${r.harness ? ` (${quoted(r.harness)})` : ''}`;
               const serves = r.bots === 'all' ? 'all bots' : r.bots.join(', ');
               const state = r.connected
                 ? 'connected'
@@ -120,6 +121,7 @@ function registerListRunners(server: McpServer): void {
                 ? `${head}: ${state}, serves ${serves}`
                 : `${head}: ${state}`;
             })
+            .concat(RUNNER_NOTE)
             .join('\n'),
   });
 }

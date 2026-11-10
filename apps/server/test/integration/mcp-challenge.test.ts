@@ -135,7 +135,7 @@ describe('find_bots', () => {
       ['Mid', false],
     ]);
     expect(resultText(out)).toMatch(
-      /^Low \(id \d+, 1200\) by @bob \(online\)\nHigh .* \(offline\)/,
+      /^"Low" \(id \d+, 1200\) by "@bob" \(online\)\n"High" .* \(offline\)/,
     );
   });
 

@@ -14,7 +14,7 @@ import { displayName, lockLiveHumanOwner } from './users';
 
 const NAME_PATTERN = /^[\p{L}\p{N}][\p{L}\p{M}\p{N} ._-]{0,31}$/u;
 const RESERVED_NAMES = new Set(['stockfish', 'deleted player', 'deleted bot']);
-const TAGLINE_MAX = 80;
+export const TAGLINE_MAX = 80;
 
 export function normaliseBotName(raw: string): string {
   return raw.trim().replace(/ {2,}/g, ' ');

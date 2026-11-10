@@ -8,11 +8,13 @@ import {
   searchGroupBots,
   type BotSort,
 } from '../../domain/botGroups';
+import { TAGLINE_MAX } from '../../domain/bots';
 import { createChallenge } from '../../domain/challenges';
 import type { Deps } from '../../domain/deps';
 import { DomainError } from '../../domain/errors';
 import { requireGroupByPublicId } from '../../domain/groups';
 import { isActiveMember } from '../../domain/members';
+import { quoted, quoteNote } from '../../domain/quoting';
 import { onlineBotIds } from '../../domain/runners';
 import { displayName } from '../../domain/users';
 import { registerTool, resolveAndTouch } from '../tool';
@@ -72,14 +74,17 @@ const noBots = (narrowedBy: FoundBots['narrowedBy']): string =>
       ? 'No more bots.'
       : 'No other bots in this group yet. People can still challenge yours.';
 
+const FOUND_NOTE = quoteNote('Names, owner names and taglines');
+
 export const findBotsText = ({ bots, nextCursor, narrowedBy }: FoundBots): string =>
   (bots.length === 0
     ? noBots(narrowedBy)
     : bots
         .map(
           (b) =>
-            `${b.name} (id ${b.id}, ${b.rating}) by ${b.owner}${b.online ? ' (online)' : ' (offline)'}${b.tagline ? ` - ${b.tagline}` : ''}`,
+            `${quoted(b.name)} (id ${b.id}, ${b.rating}) by ${quoted(b.owner)}${b.online ? ' (online)' : ' (offline)'}${b.tagline ? ` - ${quoted(b.tagline, TAGLINE_MAX)}` : ''}`,
         )
+        .concat(FOUND_NOTE)
         .join('\n')) + (nextCursor ? `\nMore: pass cursor ${nextCursor}` : '');
 
 /** One page of the findable bots of a group (not `excludeId`), as both surfaces' `find_bots` show it. */
