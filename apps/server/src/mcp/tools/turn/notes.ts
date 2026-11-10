@@ -27,7 +27,7 @@ function registerSetNotes(server: McpServer): void {
   registerTurnTool(server, {
     name: 'set_notes',
     description:
-      'Saves notes for your future turns. bot_notes are about you across all your games; match_notes are about this match only (not on a challenge turn). Each replaces the whole text, so merge in what you want to keep. Works after your move, until the session ends.',
+      'Saves notes for your future turns. bot_notes are about you across all your games; match_notes are about this match only (not on a challenge turn). Each replaces the whole text, so merge in what you want to keep. When you send both, match_notes are saved first. Works after your move, until the session ends.',
     input: z.object({
       bot_notes: notesInput(
         BOT_NOTES_MAX,

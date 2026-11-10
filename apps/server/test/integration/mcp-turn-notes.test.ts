@@ -147,6 +147,25 @@ describe('set_notes', () => {
     expect(ok.isError).toBeFalsy();
   });
 
+  it('writes match notes to the game of the token’s own lease', async () => {
+    const { group, bot, game } = await moveTurn();
+    const second = await insertUser(db, { username: 'carol' });
+    await touchMember(db, group.id, second.id);
+    const secondGame = await insertGame(db, group.id, bot.id, second.id);
+    const first = await claimFor(api, bot);
+    const later = await claimFor(api, bot);
+    expect(first.lease.gameId).not.toBe(later.lease.gameId);
+    await callTool(api.app, first.token, 'set_notes', { match_notes: 'first' });
+    await callTool(api.app, later.token, 'set_notes', { match_notes: 'second' });
+    const byGame = new Map(
+      (await db.select().from(matchNotes)).map((r) => [r.gameId, r.body] as const),
+    );
+    expect(byGame.size).toBe(2);
+    expect(byGame.get(first.lease.gameId!)).toBe('first');
+    expect(byGame.get(later.lease.gameId!)).toBe('second');
+    expect([...byGame.keys()].sort()).toEqual([game.id, secondGame.id].sort());
+  });
+
   it('after another game changed bot notes returns them, and the retry succeeds', async () => {
     const { group, bot } = await moveTurn();
     const second = await insertUser(db, { username: 'carol' });

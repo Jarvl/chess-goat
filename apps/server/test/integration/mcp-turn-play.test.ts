@@ -216,7 +216,7 @@ describe('game_action on a move turn', () => {
     const { out } = await act(true, 'claim_draw');
     expect(out.isError).toBe(true);
     expect(resultText(out)).toBe(
-      'No draw can be claimed here. Call get_game to see what the bot can do now.',
+      'No draw can be claimed here. Call get_position to see what the bot can do now.',
     );
   });
 });
@@ -240,17 +240,23 @@ describe('draw-offer turn', () => {
     expect(out.structuredContent).toMatchObject({ status: 'active', drawOffer: 'none' });
   });
 
-  it('refuses resign, and the game goes on', async () => {
+  it('refuses resign as invalid input naming action, and the game goes on', async () => {
     const { bot, game } = await drawOfferTurn();
     const { token } = await claimFor(api, bot);
     const reply = await mcpCall(api.app, token, 'tools/call', {
       name: 'game_action',
       arguments: { action: 'resign' },
     });
-    const result = reply.response?.result as { isError?: boolean } | undefined;
-    expect(reply.response?.error !== undefined || result?.isError === true).toBe(true);
+    const result = reply.response?.result as
+      { isError?: boolean; content?: { text?: string }[] } | undefined;
+    expect(reply.response?.error).toBeUndefined();
+    expect(result?.isError).toBe(true);
+    expect(result?.content?.[0]?.text).toBe(
+      'Input validation error: Invalid arguments for tool game_action: action: Invalid option: expected one of "accept_draw"|"decline_draw"',
+    );
     const [row] = await db.select().from(games).where(eq(games.id, game.id));
-    expect(row!.status).toBe('active');
+    expect(row).toMatchObject({ status: 'active', result: null });
+    expect(row!.endReason).toBeNull();
   });
 
   it('sets premoves for the position after the offer', async () => {

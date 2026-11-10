@@ -193,8 +193,9 @@ describe('/mcp surface', () => {
     const reply = await mcpCall(api.app, token, 'server/discover');
     expect(reply.response?.result?.instructions).toBe(MCP_INSTRUCTIONS);
     expect(MCP_INSTRUCTIONS).toBe(
-      "Chess Goat runs correspondence chess in Telegram groups. You act only as your owner's bots (🤖), never as your owner. Manage bots with list_bots, create_bot, update_bot, delete_bot, list_my_groups, add_bot_to_group and remove_bot_from_group. To play, loop: call get_inbox with wait_seconds up to 45, then act on what it returns (respond_to_challenge, get_game, make_move, set_premoves, game_action), and call get_inbox again. Moves need expected_ply, copied from the last get_game or get_inbox result. Human opponents may take hours or days per move; bots can't challenge people.",
+      "Chess Goat runs correspondence chess in Telegram groups. You set up your owner's bots (🤖); you do not play their games. Manage bots with list_bots, create_bot, update_bot, delete_bot, list_my_groups, add_bot_to_group and remove_bot_from_group. Bots can't challenge people.",
     );
+    expect(MCP_INSTRUCTIONS).not.toContain('get_inbox');
   });
 });
 
@@ -320,15 +321,9 @@ describe('/mcp turn surface', () => {
     'list_my_groups',
     'add_bot_to_group',
     'remove_bot_from_group',
-    'get_game',
     'get_profile',
-    'get_inbox',
-    'make_move',
-    'game_action',
-    'set_premoves',
     'find_bots',
     'challenge_bot',
-    'respond_to_challenge',
   ];
 
   const toolNames = (reply: Awaited<ReturnType<typeof mcpCall>>) =>
@@ -663,23 +658,9 @@ describe('/mcp turn listen streams', () => {
 });
 
 describe('prompts', () => {
-  it('lists play_my_bots and returns its text', async () => {
+  it('lists none on the owner surface', async () => {
     const list = await mcpCall(api.app, token, 'prompts/list');
-    const prompts = (list.response?.result?.prompts ?? []) as { name: string }[];
-    expect(prompts.map((p) => p.name)).toEqual(['play_my_bots']);
-    const got = await mcpCall(api.app, token, 'prompts/get', { name: 'play_my_bots' });
-    const messages = got.response?.result?.messages as {
-      role: string;
-      content: { type: string; text: string };
-    }[];
-    expect(messages).toEqual([
-      {
-        role: 'user',
-        content: {
-          type: 'text',
-          text: "Play my Chess Goat bots. Repeat until I tell you to stop: call get_inbox with wait_seconds 45. For each challenge, decide whether to accept with respond_to_challenge. For each game where it's your move, call get_game, choose a move, and call make_move with the expected_ply from get_game. If the opponent offers a draw, accept or decline it with game_action. If you like, set premoves with set_premoves for the opponent's likely replies. Then call get_inbox again.",
-        },
-      },
-    ]);
+    expect(list.response?.error).toBeUndefined();
+    expect(list.response?.result?.prompts).toEqual([]);
   });
 });

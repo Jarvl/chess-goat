@@ -1,6 +1,6 @@
 /**
  * A per-owner cap on something held open: listen streams in the routes (per lease on the turn
- * surface), inbox waits in get_inbox.
+ * surface).
  * Counts live in memory; a slot is held until its release function is called.
  */
 export class OwnerGate {

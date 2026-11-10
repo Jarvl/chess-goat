@@ -90,13 +90,13 @@ export const REFUSALS: Record<string, (r: Refusal) => string> = {
   opponent_gone: (r) => `${r.name} has been deleted.`,
   group_not_found: hint('Use a groupId from list_my_groups.'),
   game_not_found: hint(
-    "That bot doesn't play in a game with that id. Use a gameId from get_inbox or get_profile.",
+    "That bot doesn't play in a game with that id. Use a gameId from get_profile.",
   ),
   // A game the bot doesn't play in reads as no such game: an agent can't probe others' games.
   not_a_player: () =>
-    "Game not found. That bot doesn't play in a game with that id. Use a gameId from get_inbox or get_profile.",
+    "Game not found. That bot doesn't play in a game with that id. Use a gameId from get_profile.",
   challenge_not_found: hint(
-    'That bot has no pending challenge with that id. Use a challengeId from get_inbox.',
+    'That bot has no pending challenge with that id. Check the challenge id.',
   ),
   bots_challenge_bots_only: hint('Bots can only challenge other bots. Find one with find_bots.'),
   open_challenges_are_for_people: () => "Bots can't take open challenges.",
@@ -105,7 +105,7 @@ export const REFUSALS: Record<string, (r: Refusal) => string> = {
   ),
   opponent_not_found: hint('Use a bot id from find_bots for that group.'),
   self: hint("A bot can't challenge itself. Pick a different bot from find_bots."),
-  game_over: hint('Call get_game to see the result, then get_inbox.'),
+  game_over: hint('The game has ended; stop playing it.'),
   pending_limit: hint(
     `This bot already has ${MAX_PENDING_CHALLENGES} pending challenges in this group. Wait for one to be answered or to expire.`,
   ),
@@ -119,32 +119,25 @@ export const REFUSALS: Record<string, (r: Refusal) => string> = {
       ? `${r.name} already has ${limit} games in progress. Try another bot from find_bots.`
       : `This bot already has ${limit} games in progress. Finish some before starting more.`;
   }),
-  too_many_inbox_waits: hint((r) => {
-    const limit = typeof r.details.limit === 'number' ? r.details.limit : 2;
-    return `You already have ${limit} inbox waits open. Wait for them to return before starting another.`;
-  }),
   bot_games_need_clock: hint('Pass a time_per_move.'),
   stale_state: (r) =>
     typeof r.details.plyCount === 'number'
-      ? `The position has changed; it is now ply ${r.details.plyCount}. Call get_game and choose again.`
-      : `${sentence(r.message)} Call get_game and choose again.`,
-  not_your_turn: () =>
-    "It isn't your move. Call get_inbox with wait_seconds to wait for your turn.",
+      ? `The position has changed; it is now ply ${r.details.plyCount}. Call get_position and choose again.`
+      : `${sentence(r.message)} Call get_position and choose again.`,
+  not_your_turn: () => "It isn't your move. Stop; you are called again when it is.",
   illegal_move: (r) => {
-    if (typeof r.details.move !== 'string') return `${sentence(r.message)} Call get_game.`;
+    if (typeof r.details.move !== 'string') return `${sentence(r.message)} Call get_position.`;
     const legal = typeof r.details.legal === 'string' ? ` Legal moves: ${r.details.legal}.` : '';
     return `${r.details.move} isn't legal here.${legal}`;
   },
-  not_your_challenge: hint(
-    'That challenge is for a different bot. Use a challengeId from get_inbox.',
-  ),
+  not_your_challenge: hint('That challenge is for a different bot. Check the challenge id.'),
   not_the_challenger: hint('Only the bot that made a challenge can withdraw it.'),
   own_challenge: hint("A bot can't accept its own challenge."),
-  challenge_gone: hint('Call get_inbox for the challenges still open.'),
-  accepted_first: hint('Call get_inbox for the challenges still open.'),
-  draw_offer_unavailable: hint('Call get_game to see what the bot can do now.'),
-  no_offer: hint('Call get_game to see what the bot can do now.'),
-  no_claim: hint('Call get_game to see what the bot can do now.'),
+  challenge_gone: hint('That challenge is no longer open.'),
+  accepted_first: hint('That challenge is no longer open.'),
+  draw_offer_unavailable: hint('Call get_position to see what the bot can do now.'),
+  no_offer: hint('Call get_position to see what the bot can do now.'),
+  no_claim: hint('Call get_position to see what the bot can do now.'),
   abort_unavailable: hint('Play on, or resign with game_action.'),
   rate_limited: hint('Wait a minute, then try again.'),
   no_match_yet: () => 'There is no match yet, so there are no match notes. Use bot_notes.',

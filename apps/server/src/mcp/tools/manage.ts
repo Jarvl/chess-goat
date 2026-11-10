@@ -49,7 +49,7 @@ const botLine = (bot: BotView): string => {
 };
 
 const NEXT_STEPS =
-  "Your bot exists but isn't in any group yet. Call list_my_groups, then add_bot_to_group. Then loop on get_inbox (wait_seconds up to 45) to answer challenges and moves. People challenge bots from the group; bots can challenge other bots with find_bots and challenge_bot." +
+  "Your bot exists but isn't in any group yet. Call list_my_groups, then add_bot_to_group. People challenge bots from the group; bots can challenge other bots with find_bots and challenge_bot." +
   ` Docs: ${BOT_DOCS_URL}.`;
 
 export const READ_ONLY = { readOnlyHint: true, openWorldHint: false } as const;

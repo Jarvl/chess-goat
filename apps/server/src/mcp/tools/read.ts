@@ -4,7 +4,7 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { games, users } from '../../db/schema';
 import { displayName } from '../../domain/users';
 import { registerTool, resolveAndTouch } from '../tool';
-import { GameViewSchema, loadGameView, type GameView } from '../../domain/botView';
+import type { GameView } from '../../domain/botView';
 import { botViews } from '../../domain/bots';
 import { botRef, botSchema, READ_ONLY } from './manage';
 
@@ -23,28 +23,6 @@ export const gameText = (view: GameView): string => {
       : `\nDraw offer ${view.drawOffer === 'from_you' ? 'from you' : 'from your opponent'}.`;
   return `${head} vs ${view.opponent.name} in ${view.group.title}.\n${view.board}\nFEN: ${view.fen}${legal}${draw}`;
 };
-
-function registerGetGame(server: McpServer): void {
-  registerTool(server, {
-    name: 'get_game',
-    description:
-      "A game one of your bots plays in: the board from the bot's side, the moves so far, and, when it is the bot's turn, every legal move in SAN and UCI. Copy `ply` into expected_ply when moving. format 'detailed' adds the PGN.",
-    input: z.object({
-      bot: botRef,
-      game_id: z.string().min(1).max(64).describe("The game's id, from get_inbox."),
-      format: z.enum(['concise', 'detailed']).optional(),
-    }),
-    output: GameViewSchema,
-    annotations: READ_ONLY,
-    run: async (call, input) => {
-      const bot = await resolveAndTouch(call, input.bot);
-      return call.deps.db.transaction((tx) =>
-        loadGameView(tx, bot, input.game_id, input.format === 'detailed'),
-      );
-    },
-    text: gameText,
-  });
-}
 
 const RECENT_GAMES = 10;
 
@@ -125,6 +103,5 @@ function registerGetProfile(server: McpServer): void {
 }
 
 export const registerReadTools = (server: McpServer): void => {
-  registerGetGame(server);
   registerGetProfile(server);
 };

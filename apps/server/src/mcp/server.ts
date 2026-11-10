@@ -1,35 +1,26 @@
 import type { TurnKind } from '@chess-goat/shared';
 import { McpServer } from '@modelcontextprotocol/server';
 import { registerChallengeTools } from './tools/challenge';
-import { registerInboxTools } from './tools/inbox';
 import { registerManageTools } from './tools/manage';
-import { registerPlayTools } from './tools/play';
-import { registerPremoveTools } from './tools/premoves';
 import { registerReadTools } from './tools/read';
 import { registerChallengeTurnTools } from './tools/turn/challenge';
 import { registerDrawOfferTurnTools } from './tools/turn/drawOffer';
+import { registerGameOverTurnTools } from './tools/turn/gameOver';
 import { registerMoveTurnTools } from './tools/turn/move';
 import { registerNotesTurnTool } from './tools/turn/notes';
 
 /** Sent in the server's identity; clients show it to the agent before any tool call. */
 export const MCP_INSTRUCTIONS =
-  "Chess Goat runs correspondence chess in Telegram groups. You act only as your owner's bots (🤖), never as your owner. Manage bots with list_bots, create_bot, update_bot, delete_bot, list_my_groups, add_bot_to_group and remove_bot_from_group. To play, loop: call get_inbox with wait_seconds up to 45, then act on what it returns (respond_to_challenge, get_game, make_move, set_premoves, game_action), and call get_inbox again. Moves need expected_ply, copied from the last get_game or get_inbox result. Human opponents may take hours or days per move; bots can't challenge people.";
+  "Chess Goat runs correspondence chess in Telegram groups. You set up your owner's bots (🤖); you do not play their games. Manage bots with list_bots, create_bot, update_bot, delete_bot, list_my_groups, add_bot_to_group and remove_bot_from_group. Bots can't challenge people.";
 
 /** The turn surface's identity: the turn's own instructions come in the runner's message. */
 export const TURN_INSTRUCTIONS =
   'You are playing one turn for a Chess Goat bot. Your instructions are in the message you were given. Use only the tools listed, then stop.';
 
-/** What `play_my_bots` tells the agent to do; the one prompt this server offers. */
-export const PLAY_MY_BOTS_PROMPT =
-  "Play my Chess Goat bots. Repeat until I tell you to stop: call get_inbox with wait_seconds 45. For each challenge, decide whether to accept with respond_to_challenge. For each game where it's your move, call get_game, choose a move, and call make_move with the expected_ply from get_game. If the opponent offers a draw, accept or decline it with game_action. If you like, set premoves with set_premoves for the opponent's likely replies. Then call get_inbox again.";
-
 /** Every tool, in the order `tools/list` gives them. */
 const TOOLS: readonly ((server: McpServer) => void)[] = [
   registerManageTools,
   registerReadTools,
-  registerInboxTools,
-  registerPlayTools,
-  registerPremoveTools,
   registerChallengeTools,
 ];
 
@@ -37,19 +28,9 @@ const TOOLS: readonly ((server: McpServer) => void)[] = [
 export function createOwnerServer(): McpServer {
   const server = new McpServer(
     { name: 'chess-goat', version: '1.0.0' },
-    { instructions: MCP_INSTRUCTIONS },
+    { instructions: MCP_INSTRUCTIONS, capabilities: { tools: {}, prompts: {} } },
   );
   for (const register of TOOLS) register(server);
-  server.registerPrompt(
-    'play_my_bots',
-    {
-      title: 'Play my bots',
-      description: 'Run your bots: wait for challenges and moves, and play until told to stop.',
-    },
-    () => ({
-      messages: [{ role: 'user', content: { type: 'text', text: PLAY_MY_BOTS_PROMPT } }],
-    }),
-  );
   return server;
 }
 
@@ -76,6 +57,9 @@ export function createTurnServer(kind: TurnKind): McpServer {
       registerNotesTurnTool(server);
       break;
     case 'game_over':
+      registerGameOverTurnTools(server);
+      registerNotesTurnTool(server);
+      break;
     case 'practice':
       break;
   }

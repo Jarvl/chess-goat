@@ -26,7 +26,7 @@ describe('toolError', () => {
       content: [
         {
           type: 'text',
-          text: 'The position has changed; it is now ply 12. Call get_game and choose again.',
+          text: 'The position has changed; it is now ply 12. Call get_position and choose again.',
         },
       ],
     });

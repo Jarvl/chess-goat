@@ -4,10 +4,9 @@ import { setBotPremoves } from '../../../domain/botPremoves';
 import { GameViewSchema } from '../../../domain/botView';
 import { touchBotActivity } from '../../../domain/bots';
 import { registerTurnTool } from '../../tool';
-import { premoveTreeInput } from '../premoves';
 import { gameText } from '../read';
 import { runGameAction, turnView } from './move';
-import { turnGame } from './shared';
+import { premoveTreeInput, turnGame } from './shared';
 
 function registerAnswerDraw(server: McpServer): void {
   registerTurnTool(server, {

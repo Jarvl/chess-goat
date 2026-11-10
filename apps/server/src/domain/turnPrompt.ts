@@ -12,7 +12,7 @@ import { displayName } from './users';
  * local models read it, so the copy is short, fixed and in the order they must act.
  */
 
-/** A challenge as the bot it is addressed to sees it (the fields `get_inbox` shows for one). */
+/** A challenge as the bot it is addressed to sees it. */
 export type ChallengeTurnInfo = {
   from: string;
   group: string;

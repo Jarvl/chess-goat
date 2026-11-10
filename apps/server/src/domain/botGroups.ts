@@ -1,5 +1,5 @@
 import { freshPlayerState } from '@chess-goat/shared';
-import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client';
 import {
   challenges,
@@ -73,6 +73,8 @@ export type BotSearchOptions = {
   query?: string;
   /** Only this bot (still subject to the findable rules). */
   botId?: number;
+  /** Leave this bot out (the searcher itself). */
+  excludeId?: number;
   sort: BotSort;
   limit: number;
   /** The previous page's last `key` and `id`, from `nextCursor`. */
@@ -103,6 +105,7 @@ export async function searchGroupBots(
     conditions.push(sql`${users.firstName} ilike ${`%${escaped}%`} escape '\\'`);
   }
   if (opts.botId !== undefined) conditions.push(eq(users.id, opts.botId));
+  if (opts.excludeId !== undefined) conditions.push(ne(users.id, opts.excludeId));
   if (opts.cursor) {
     conditions.push(sql`(${key}, ${users.id}) < (${opts.cursor.key}::float8, ${opts.cursor.id})`);
   }

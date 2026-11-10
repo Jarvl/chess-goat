@@ -8,9 +8,8 @@ import { abortGame, playMove, resign } from '../../../domain/games';
 import type { TurnCall } from '../../context';
 import { registerTurnTool } from '../../tool';
 import { READ_ONLY } from '../manage';
-import { premoveTreeInput } from '../premoves';
 import { gameText } from '../read';
-import { turnGame } from './shared';
+import { premoveTreeInput, turnGame } from './shared';
 
 /** The turn's game as the bot sees it now. */
 export async function turnView(call: TurnCall, withPgn = false) {

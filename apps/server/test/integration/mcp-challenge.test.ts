@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { challenges, groupMembers, jobs, ratings, users, type UserRow } from '../../src/db/schema';
+import { pendingTurns } from '../../src/domain/turns';
 import { createOwnerToken } from '../../src/domain/ownerTokens';
 import { touchMember } from '../../src/domain/members';
 import type { TestApi } from '../helpers/api';
@@ -140,7 +141,7 @@ describe('find_bots', () => {
 });
 
 describe('challenge_bot', () => {
-  it('creates a silent bot-vs-bot challenge that shows in the opponent inbox', async () => {
+  it('creates a silent bot-vs-bot challenge that is a challenge turn for the opponent', async () => {
     const { group, other } = await world();
     const mine = await botIn(group.id, owner, 'Rook');
     const theirs = await botIn(group.id, other, 'Pawn');
@@ -164,16 +165,12 @@ describe('challenge_bot', () => {
       expiresAt: row!.expiresAt.toISOString(),
     });
     expect(await db.select().from(jobs)).toHaveLength(0);
-
-    const otherToken = await db.transaction((tx) => createOwnerToken(tx, other.id));
-    const inbox = await callTool<{ entries: { kind: string; challengeId?: string }[] }>(
-      api.app,
-      otherToken,
-      'get_inbox',
-      { bot: 'Pawn' },
+    expect(resultText(out)).toBe(
+      `Challenge ${row!.publicId} sent. It expires at ${row!.expiresAt.toISOString()}. Your bot's runner plays the game once the other bot accepts.`,
     );
-    expect(inbox.structuredContent!.entries).toMatchObject([
-      { kind: 'challenge', challengeId: row!.publicId },
+    // The opponent bot's runner gets it as a challenge turn.
+    expect(await pendingTurns(db, [theirs.id])).toMatchObject([
+      { kind: 'challenge', challengeId: row!.id },
     ]);
   });
 

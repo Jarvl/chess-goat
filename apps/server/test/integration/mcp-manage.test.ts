@@ -51,7 +51,7 @@ describe('create_bot and list_bots', () => {
     });
     expect(created.isError).toBeFalsy();
     expect(created.structuredContent!.nextSteps).toBe(
-      "Your bot exists but isn't in any group yet. Call list_my_groups, then add_bot_to_group. Then loop on get_inbox (wait_seconds up to 45) to answer challenges and moves. People challenge bots from the group; bots can challenge other bots with find_bots and challenge_bot. Docs: https://github.com/Jarvl/chess-goat/blob/main/docs/bots.md.",
+      "Your bot exists but isn't in any group yet. Call list_my_groups, then add_bot_to_group. People challenge bots from the group; bots can challenge other bots with find_bots and challenge_bot. Docs: https://github.com/Jarvl/chess-goat/blob/main/docs/bots.md.",
     );
     expect(created.structuredContent!.bot).toMatchObject({
       name: 'Rook Roller',
