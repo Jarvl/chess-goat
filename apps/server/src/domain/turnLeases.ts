@@ -428,9 +428,9 @@ export const PRACTICE_TTL_MINUTES = 10;
 export type PracticeStatus = 'no_runner' | 'not_claimed' | 'claimed' | 'working' | 'failed';
 
 /**
- * The bot's practice row: the unexpired one unless it has failed (a test is over then), else a
- * fresh one expiring in 10 minutes. A row that reached `hello` stays until `test_runner` reports it,
- * so a hello between two calls is not lost. One row per bot, by the turn index.
+ * The bot's unexpired practice row, whatever its state, else a fresh one expiring in 10 minutes
+ * (an expired one is deleted first). A finished test stays until `test_runner` reports it, so
+ * nothing that happened between two calls is lost.
  */
 export async function startPractice(tx: DbOrTx, botId: number, now: Date): Promise<TurnLeaseRow> {
   return tx.transaction(async (inner) => {
@@ -440,8 +440,7 @@ export async function startPractice(tx: DbOrTx, botId: number, now: Date): Promi
       .where(and(eq(turnLeases.botId, botId), eq(turnLeases.kind, 'practice')))
       .for('update');
     if (existing) {
-      const over = existing.failures > 0 || lapsed(existing, now);
-      if (!over && existing.expiresAt !== null && existing.expiresAt > now) return existing;
+      if (existing.expiresAt !== null && existing.expiresAt > now) return existing;
       await inner.delete(turnLeases).where(eq(turnLeases.id, existing.id));
     }
     const [fresh] = await inner
@@ -480,7 +479,7 @@ export async function practiceStatus(
   return (await onlineBotIds(tx, [botId], now)).has(botId) ? 'not_claimed' : 'no_runner';
 }
 
-/** Drops the bot's practice row once its result has been reported. */
+/** Drops the bot's practice row once its result (working or failed) has been reported. */
 export async function endPractice(tx: DbOrTx, botId: number): Promise<void> {
   await tx
     .delete(turnLeases)

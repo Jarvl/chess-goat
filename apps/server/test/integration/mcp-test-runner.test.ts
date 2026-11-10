@@ -40,6 +40,16 @@ async function connectedRunner() {
 const practiceRow = async () =>
   (await db.select().from(turnLeases).where(eq(turnLeases.kind, 'practice')))[0];
 
+/** Claims until the in-flight test_runner call has made the practice turn (it is slow under load). */
+async function claimWhenReady(credential: string) {
+  for (let i = 0; i < 100; i += 1) {
+    const { turn } = (await claim(api, credential)).body;
+    if (turn) return turn;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error('no practice turn appeared');
+}
+
 const say = {
   no_runner:
     'No connected runner serves Rook. Call link_runner and run its command, then call test_runner again.',
@@ -98,11 +108,10 @@ describe('test_runner', () => {
   });
 
   describe('failed', () => {
-    // A new test_runner call replaces a failed test, so failure shows to a call that is waiting.
+    // In flight: the call that is waiting sees the failure as it happens.
     const waitForClaim = async (credential: string) => {
       const waiting = test({ wait_seconds: 10 });
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      const turn = (await claim(api, credential)).body.turn!;
+      const turn = await claimWhenReady(credential);
       return { waiting, turn };
     };
 
@@ -117,11 +126,10 @@ describe('test_runner', () => {
       const out = await waiting;
       expect(out.structuredContent!.status).toBe('failed');
       expect(resultText(out)).toBe(say.failed);
+      // Reported once, then cleared: nothing left to claim, and a new test starts fresh.
+      expect(await practiceRow()).toBeUndefined();
       expect((await claim(api, credential)).body.turn).toBeNull();
-      // A new test starts a fresh row, which is claimable.
-      const failedId = (await practiceRow())!.id;
       expect((await test()).structuredContent!.status).toBe('not_claimed');
-      expect((await practiceRow())!.id).not.toBe(failedId);
       expect((await claim(api, credential)).body.turn).toMatchObject({ kind: 'practice' });
     });
 
@@ -134,9 +142,60 @@ describe('test_runner', () => {
         .where(eq(turnLeases.id, turn.id));
       expect((await waiting).structuredContent!.status).toBe('failed');
       expect((await claim(api, credential)).body.turn).toBeNull();
-      expect((await practiceRow())!.failures).toBe(1);
+      expect(await practiceRow()).toBeUndefined();
       expect((await test()).structuredContent!.status).toBe('not_claimed');
       expect((await claim(api, credential)).body.turn).toMatchObject({ kind: 'practice' });
+    });
+  });
+
+  describe('a test that finished between calls', () => {
+    const claimed = async () => {
+      const { credential } = await connectedRunner();
+      await test();
+      const turn = (await claim(api, credential)).body.turn!;
+      return { credential, turn };
+    };
+    const freshAfter = async (credential: string, oldId: number) => {
+      const out = await test();
+      expect(out.structuredContent!.status).toBe('not_claimed');
+      expect((await practiceRow())!.id).not.toBe(oldId);
+      expect((await claim(api, credential)).body.turn).toMatchObject({ kind: 'practice' });
+    };
+
+    it('is reported failed once after a release, then cleared', async () => {
+      const { credential, turn } = await claimed();
+      await api.request('POST', '/runner/release', {
+        token: credential,
+        body: { turn_id: turn.id, claim_seq: turn.claim_seq, reason: 'exited' },
+      });
+      const out = await test();
+      expect(out.structuredContent!.status).toBe('failed');
+      expect(resultText(out)).toBe(say.failed);
+      expect(await practiceRow()).toBeUndefined();
+      await freshAfter(credential, turn.id);
+    });
+
+    it('is reported failed once after the lease expired, then cleared', async () => {
+      const { credential, turn } = await claimed();
+      await db
+        .update(turnLeases)
+        .set({ leasedUntil: new Date(Date.now() - 1000) })
+        .where(eq(turnLeases.id, turn.id));
+      const out = await test();
+      expect(out.structuredContent!.status).toBe('failed');
+      expect(resultText(out)).toBe(say.failed);
+      expect(await practiceRow()).toBeUndefined();
+      expect((await claim(api, credential)).body.turn).toBeNull();
+      await freshAfter(credential, turn.id);
+    });
+
+    it('is reported working once after hello, then cleared', async () => {
+      const { credential, turn } = await claimed();
+      await callTool(api.app, turn.token, 'hello');
+      const out = await test();
+      expect(out.structuredContent!.status).toBe('working');
+      expect(await practiceRow()).toBeUndefined();
+      await freshAfter(credential, turn.id);
     });
   });
 
@@ -188,8 +247,7 @@ describe('test_runner', () => {
   it('returns as soon as hello arrives while it waits', async () => {
     const { credential } = await connectedRunner();
     const waiting = test({ wait_seconds: 20 });
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    const turn = (await claim(api, credential)).body.turn!;
+    const turn = await claimWhenReady(credential);
     await callTool(api.app, turn.token, 'hello');
     const out = await waiting;
     expect(out.structuredContent).toMatchObject({ status: 'working' });

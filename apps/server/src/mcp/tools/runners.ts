@@ -215,7 +215,8 @@ function registerTestRunner(server: McpServer): void {
           ).catch(() => {});
         }
       }
-      if (status === 'working') await db.transaction((tx) => endPractice(tx, bot.id));
+      if (status === 'working' || status === 'failed')
+        await db.transaction((tx) => endPractice(tx, bot.id));
       const spent = elapsed();
       const timedOut =
         status !== 'working' && status !== 'failed' && !signal.aborted && spent >= waitMs;
