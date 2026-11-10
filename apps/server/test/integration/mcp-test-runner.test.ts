@@ -254,6 +254,34 @@ describe('test_runner', () => {
     expect(out.structuredContent!.waitedSeconds).toBeLessThan(10);
   });
 
+  it('lets at most one of two concurrent calls report a finished test, and keeps a fresh one', async () => {
+    const { credential } = await connectedRunner();
+    await test();
+    const turn = (await claim(api, credential)).body.turn!;
+    await callTool(api.app, turn.token, 'hello');
+    const outs = await Promise.all([test(), test(), test()]);
+    const statuses = outs.map((o) => o.structuredContent!.status);
+    expect(statuses.filter((s) => s === 'working').length).toBe(1);
+    const row = await practiceRow();
+    if (row) expect(row.helloAt).toBeNull();
+  });
+
+  it('refuses hello once the lease has expired', async () => {
+    const { credential } = await connectedRunner();
+    await test();
+    const turn = (await claim(api, credential)).body.turn!;
+    await db
+      .update(turnLeases)
+      .set({ leasedUntil: new Date(Date.now() - 1000) })
+      .where(eq(turnLeases.id, turn.id));
+    const reply = await mcpCall(api.app, turn.token, 'tools/call', {
+      name: 'hello',
+      arguments: {},
+    });
+    expect(reply.status).toBe(401);
+    expect((await practiceRow())!.helloAt).toBeNull();
+  });
+
   it("refuses another owner's bot", async () => {
     const other = await insertUser(db, { username: 'mallory' });
     const theirs = await insertBot(db, other, { firstName: 'Bishop' });

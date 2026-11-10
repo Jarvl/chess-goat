@@ -10,7 +10,7 @@ import {
   revokeRunner,
 } from '../../domain/runners';
 import {
-  endPractice,
+  reportPractice,
   practiceStatus,
   startPractice,
   type PracticeStatus,
@@ -215,8 +215,8 @@ function registerTestRunner(server: McpServer): void {
           ).catch(() => {});
         }
       }
-      if (status === 'working' || status === 'failed')
-        await db.transaction((tx) => endPractice(tx, bot.id));
+      // The reported status is the locked read that also clears a finished test.
+      status = (await db.transaction((tx) => reportPractice(tx, bot.id, new Date()))).status;
       const spent = elapsed();
       const timedOut =
         status !== 'working' && status !== 'failed' && !signal.aborted && spent >= waitMs;

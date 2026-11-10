@@ -12,6 +12,8 @@ function registerHello(server: McpServer): void {
     output: z.object({ ok: z.literal(true) }),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     run: async ({ deps, lease }) => {
+      // No claimSeq condition: the wrapper's requireLiveLease checked this claim, and a practice
+      // row's lease is never issued again (one attempt).
       await deps.db
         .update(turnLeases)
         .set({ helloAt: new Date() })

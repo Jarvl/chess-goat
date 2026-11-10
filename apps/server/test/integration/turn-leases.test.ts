@@ -18,6 +18,8 @@ import {
   failingTurns,
   offerGameOverTurns,
   releaseTurn,
+  reportPractice,
+  startPractice,
   requireLiveLease,
   spendCall,
   unclaimTurn,
@@ -412,5 +414,43 @@ describe('unclaimTurn', () => {
     await abortGame(deps, { gameId: game.publicId, userId: human.id });
     await unclaimTurn(db, runner.id, lease.id, lease.claimSeq);
     expect((await leaseRows()).filter((r) => r.kind === 'move')).toHaveLength(0);
+  });
+});
+
+describe('practice reporting', () => {
+  const practiceRows = () => db.select().from(turnLeases).where(eq(turnLeases.kind, 'practice'));
+
+  it('clears exactly the finished row it reported, never a fresh test started since', async () => {
+    const { bot, runner } = await setup();
+    await db.update(runners).set({ lastSeenAt: T0 }).where(eq(runners.id, runner.id));
+    const first = await startPractice(db, bot.id, T0);
+    await db.update(turnLeases).set({ failures: 1 }).where(eq(turnLeases.id, first.id));
+    expect(await reportPractice(db, bot.id, T0)).toEqual({ status: 'failed', rowId: first.id });
+    expect(await practiceRows()).toEqual([]);
+    const second = await startPractice(db, bot.id, T0);
+    expect(second.id).not.toBe(first.id);
+    // A second call that also saw the first test finished reports what is there now.
+    expect(await reportPractice(db, bot.id, T0)).toEqual({
+      status: 'not_claimed',
+      rowId: second.id,
+    });
+    expect((await practiceRows()).map((r) => r.id)).toEqual([second.id]);
+  });
+
+  it('replaces a test with under 60 s left, reuses one with more', async () => {
+    const { bot } = await setup();
+    const first = await startPractice(db, bot.id, T0);
+    await db
+      .update(turnLeases)
+      .set({ expiresAt: at(120) })
+      .where(eq(turnLeases.id, first.id));
+    expect((await startPractice(db, bot.id, T0)).id).toBe(first.id);
+    await db
+      .update(turnLeases)
+      .set({ expiresAt: at(30) })
+      .where(eq(turnLeases.id, first.id));
+    const fresh = await startPractice(db, bot.id, T0);
+    expect(fresh.id).not.toBe(first.id);
+    expect(fresh.expiresAt).toEqual(at(600));
   });
 });

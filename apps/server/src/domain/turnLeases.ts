@@ -424,12 +424,13 @@ export async function failingTurns(
 }
 
 export const PRACTICE_TTL_MINUTES = 10;
+const PRACTICE_MIN_LEFT_SECONDS = 60;
 
 export type PracticeStatus = 'no_runner' | 'not_claimed' | 'claimed' | 'working' | 'failed';
 
 /**
  * The bot's unexpired practice row, whatever its state, else a fresh one expiring in 10 minutes
- * (an expired one is deleted first). A finished test stays until `test_runner` reports it, so
+ * (one with under a minute left is deleted first). A finished test stays until `test_runner` reports it, so
  * nothing that happened between two calls is lost.
  */
 export async function startPractice(tx: DbOrTx, botId: number, now: Date): Promise<TurnLeaseRow> {
@@ -440,7 +441,12 @@ export async function startPractice(tx: DbOrTx, botId: number, now: Date): Promi
       .where(and(eq(turnLeases.botId, botId), eq(turnLeases.kind, 'practice')))
       .for('update');
     if (existing) {
-      if (existing.expiresAt !== null && existing.expiresAt > now) return existing;
+      // One with under a minute left would expire in the middle of a wait.
+      if (
+        existing.expiresAt !== null &&
+        addSeconds(existing.expiresAt, -PRACTICE_MIN_LEFT_SECONDS) > now
+      )
+        return existing;
       await inner.delete(turnLeases).where(eq(turnLeases.id, existing.id));
     }
     const [fresh] = await inner
@@ -463,6 +469,19 @@ export async function startPractice(tx: DbOrTx, botId: number, now: Date): Promi
   });
 }
 
+/** The status of a practice row (null: none) as of `now`. */
+async function statusOf(
+  tx: DbOrTx,
+  botId: number,
+  row: TurnLeaseRow | undefined,
+  now: Date,
+): Promise<PracticeStatus> {
+  if (row?.helloAt) return 'working';
+  if (row && (row.failures > 0 || lapsed(row, now))) return 'failed';
+  if (row && isLeased(row, now)) return 'claimed';
+  return (await onlineBotIds(tx, [botId], now)).has(botId) ? 'not_claimed' : 'no_runner';
+}
+
 /** How the bot's test stands: see `PracticeStatus`. Reading settles nothing; a claim does. */
 export async function practiceStatus(
   tx: DbOrTx,
@@ -473,15 +492,29 @@ export async function practiceStatus(
     .select()
     .from(turnLeases)
     .where(and(eq(turnLeases.botId, botId), eq(turnLeases.kind, 'practice')));
-  if (row?.helloAt) return 'working';
-  if (row && (row.failures > 0 || lapsed(row, now))) return 'failed';
-  if (row && isLeased(row, now)) return 'claimed';
-  return (await onlineBotIds(tx, [botId], now)).has(botId) ? 'not_claimed' : 'no_runner';
+  return statusOf(tx, botId, row, now);
 }
 
-/** Drops the bot's practice row once its result (working or failed) has been reported. */
-export async function endPractice(tx: DbOrTx, botId: number): Promise<void> {
-  await tx
-    .delete(turnLeases)
-    .where(and(eq(turnLeases.botId, botId), eq(turnLeases.kind, 'practice')));
+/**
+ * The status to report, read from the locked row; a finished test (working or failed) is deleted,
+ * by its id, in the same transaction, so concurrent reports share one result and never touch a
+ * fresh test. `rowId` is the row the status came from (null: none).
+ */
+export async function reportPractice(
+  tx: DbOrTx,
+  botId: number,
+  now: Date,
+): Promise<{ status: PracticeStatus; rowId: number | null }> {
+  return tx.transaction(async (inner) => {
+    const [row] = await inner
+      .select()
+      .from(turnLeases)
+      .where(and(eq(turnLeases.botId, botId), eq(turnLeases.kind, 'practice')))
+      .for('update');
+    const status = await statusOf(inner, botId, row, now);
+    if (row && (status === 'working' || status === 'failed')) {
+      await inner.delete(turnLeases).where(eq(turnLeases.id, row.id));
+    }
+    return { status, rowId: row?.id ?? null };
+  });
 }
