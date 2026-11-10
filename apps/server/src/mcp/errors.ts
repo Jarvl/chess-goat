@@ -1,6 +1,11 @@
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import { DomainError, isDomainError } from '../domain/errors';
 import {
+  LINK_CODE_TTL_SECONDS,
+  MAX_LINK_CODES_PER_OWNER,
+  MAX_RUNNERS_PER_OWNER,
+} from '../domain/runners';
+import {
   MAX_BOTS_PER_OWNER,
   MAX_LIVE_GAMES_PER_BOT,
   MAX_PENDING_CHALLENGES,
@@ -49,6 +54,13 @@ export const REFUSALS: Record<string, (r: Refusal) => string> = {
   bot_not_found: hint(
     "Call list_bots for your bots' names and ids. A string is always a name; pass an id as a number.",
   ),
+  too_many_link_codes: () =>
+    `You have ${MAX_LINK_CODES_PER_OWNER} unused link codes. Use one, or wait for them to expire (${LINK_CODE_TTL_SECONDS / 60} minutes).`,
+  too_many_runners: () =>
+    `You have the maximum of ${MAX_RUNNERS_PER_OWNER} runners. Call list_runners and revoke one with revoke_runner first.`,
+  link_code_invalid: () =>
+    'That link code is wrong, already used, or expired. Call link_runner for a new one.',
+  runner_not_found: () => 'No such runner. Call list_runners for your runners and their ids.',
   bot_name_taken: hint('Choose a different name.'),
   invalid_bot_name: hint(
     "Names are 1–32 characters: letters, digits, spaces, '.', '_' or '-', starting with a letter or digit.",

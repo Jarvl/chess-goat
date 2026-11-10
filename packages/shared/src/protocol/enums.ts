@@ -114,3 +114,10 @@ export const MOVE_CONFIRMATIONS = ['always', 'people', 'never'] as const;
 export type MoveConfirmations = (typeof MOVE_CONFIRMATIONS)[number];
 
 export const MoveConfirmationsSchema = z.enum(MOVE_CONFIRMATIONS);
+
+/** How a runner starts an agent session; picked when linking, `custom` for a hand-written command. */
+export const PRESETS = ['claude', 'codex', 'opencode', 'goose', 'lean', 'custom'] as const;
+
+export type Preset = (typeof PRESETS)[number];
+
+export const PresetSchema = z.enum(PRESETS);
