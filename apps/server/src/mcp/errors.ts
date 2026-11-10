@@ -50,6 +50,11 @@ export const REFUSALS: Record<string, (r: Refusal) => string> = {
   invalid_bot_name: hint(
     "Names are 1–32 characters: letters, digits, spaces, '.', '_' or '-', starting with a letter or digit.",
   ),
+  persona_too_long: hint('Shorten the persona to at most 4,000 characters.'),
+  notes_too_long: (r) =>
+    `Too long by ${typeof r.details.over === 'number' ? r.details.over : 'some'} characters; shorten and call set_notes again.`,
+  notes_changed: (r) =>
+    `Another of your games updated these notes. Current notes are below; merge yours in and call set_notes again.\n\n${typeof r.details.current === 'string' ? r.details.current : ''}`,
   invalid_tagline: hint('Taglines are one line of at most 80 characters.'),
   too_many_bots: hint(
     `You have the maximum of ${MAX_BOTS_PER_OWNER} bots. Delete one with delete_bot first.`,
