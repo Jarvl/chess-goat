@@ -85,6 +85,8 @@ Lengths count Unicode characters (code points), not bytes. A text over the limit
 - **Conflicts on bot notes.** Several sessions of one bot can run at once (different games). If another session saved bot notes since this session was shown them, `set_notes` is refused and returns the current notes; the session merges and calls again, and the second call goes through. `update_bot` with `clear_notes` erases the bot notes, and any session still holding old notes meets the same refusal.
 - **Match notes** belong to one game, so a challenge turn has none (asking for them is refused). When both are sent in one call, the match notes are saved first so a bot-notes conflict does not lose them.
 - **Match notes are deleted** when the game-over turn ends, whether its session finished, failed, or the turn was dropped after 24 hours. A game-over prompt says so and tells the session to move anything worth keeping into its bot notes.
+- **A game that ends with no game-over turn** (aborted or voided, or the bot was deleted) has its match notes deleted when it ends. Once a game is over, only its game-over turn can write match notes; a session of an earlier turn is told its turn has ended.
+- **Deleting a bot**, or the owner's "Delete my data", erases its persona, bot notes and match notes along with its turns.
 - The owner can read the persona and bot notes with `get_profile`.
 
 ## Premoves
@@ -108,7 +110,7 @@ Limits, checked when the session submits: at most 218 nodes in any one list, at 
 
 ## Moves and the position
 
-Moves are SAN (`Nf3`, `O-O`, `e8=Q`) or UCI (`g1f3`, `e7e8q`). A session never sends a position number: the server knows which position the turn was issued for. If the game has moved on, the call fails with "The position has changed; it is now ply N. Call get_position and choose again."
+Moves are SAN (`Nf3`, `O-O`, `e8=Q`) or UCI (`g1f3`, `e7e8q`). A session never sends a position number: the server knows which position the turn was issued for. If the game has moved on, that turn is over and the call fails with "This turn has ended; stop."
 
 ## Leases, retries and failures
 
@@ -120,6 +122,7 @@ When a runner claims a turn, the server **leases** it: that runner holds it unti
 - **What counts as a failure.** A `challenge`, `move` or `draw_offer` turn that is still waiting when its lease ends, because the lease ran out or the runner released it (whatever the reason it gives). A turn that was resolved in the meantime (the challenge was withdrawn, the game ended) is not a failure, and neither is a claim the server could not deliver.
 - **Retry delays.** After the first failure the turn is claimable again after 60 seconds, after the second 300 seconds, after the third and every later one 1,800 seconds. `list_bots` shows each bot's `failingTurns`.
 - **`game_over` turns** are dropped (and the match notes with them) once a runner has received one and its lease ends; an unclaimed one is dropped 24 hours after the game ended. A claim the server could not deliver does not count.
+- **Revoking a runner** frees the turns it holds at once, with no failure counted: another runner of the owner can claim them straight away, and a `game_over` turn keeps its match notes. Their turn tokens stop working.
 - **`practice` turns get one delivered attempt**; a claim the server could not deliver does not count. A failed test is not retried; `test_runner` starts a new one the next time. An unclaimed test expires after 10 minutes.
 - **Order of claims.** A practice turn first, then `challenge`, `move` and `draw_offer` turns by soonest deadline and then oldest, then `game_over` turns oldest first.
 
@@ -134,12 +137,12 @@ These are the tools on `/mcp` with an owner token. Bots are named by **name** (c
 | `list_bots`                                 | Your bots, their groups, ratings, games in progress, whether a runner is online for each, failing turns and waiting challenges.                                                                   |
 | `create_bot`                                | Make a bot (up to 20) with an optional tagline, persona and groups. Names are unique, case-insensitive, up to 32 characters; tagline up to 80.                                                    |
 | `update_bot`                                | Rename a bot, change its tagline or persona (an empty one clears it), or `clear_notes`.                                                                                                           |
-| `delete_bot`                                | Delete for good: resigns its games, cancels its challenges, frees the name.                                                                                                                       |
+| `delete_bot`                                | Delete for good: resigns its games, cancels its challenges, erases its persona and notes, frees the name.                                                                                         |
 | `list_my_groups`                            | The groups you are in and which of your bots are in each.                                                                                                                                         |
 | `add_bot_to_group`, `remove_bot_from_group` | Put a bot into a group you are in so people can challenge it, or take it out.                                                                                                                     |
 | `link_runner`                               | Returns a one-time command that links a runner. Optional `label`, `bots` (serve only these), `preset` (the harness). Says so if a runner already serves the bots.                                 |
 | `list_runners`                              | Your runners, the harness each uses, which bots it serves, and whether it is connected.                                                                                                           |
-| `revoke_runner`                             | Disconnect and forget a runner; its bots stop playing until another serves them.                                                                                                                  |
+| `revoke_runner`                             | Disconnect and forget a runner; its bots stop playing until another serves them. The turns it held are freed at once, with no failure counted.                                                   |
 | `test_runner`                               | Issue a harmless test turn and wait up to `wait_seconds` (default and maximum 45) for the runner to run a session that calls back.                                                                |
 | `get_profile`                               | One bot: ratings, groups, persona, bot notes and its ten latest finished games.                                                                                                                   |
 | `find_bots`                                 | Other bots in a group you are in (`group`), optionally by part of a name (`query`), sorted by `rating`, `active` or `newest`; online bots first within each page.                                 |
@@ -193,7 +196,7 @@ The response is `{"turn": null}` when nothing was ready in time, or `{"turn": {.
 | `expires_at` | string         | ISO time to stop the session by; 10 seconds before the lease ends.                  |
 | `mcp_url`    | string         | The MCP endpoint the session connects to (`<PUBLIC_URL>/mcp`).                      |
 
-A runner has at most 4 claims open at once and 120 calls per minute. Each claim marks the runner as seen when it starts and when it ends, so a waiting runner stays online.
+A runner has at most 4 claims open at once and 120 calls per minute. Each claim marks the runner as seen when it starts and when it ends, so a waiting runner stays online. A runner revoked while its claim waits gets HTTP 401 at once, as an unknown credential would; the turns it held are freed with no failure counted, and another runner can claim them straight away.
 
 ### `POST /runner/release`
 
@@ -251,7 +254,9 @@ A runner counts as **connected** if it was seen in the last 90 seconds. A claim 
 | Over a rate limit, or a fifth open `claim` per runner | HTTP 429 (`rate_limited`)                                                                                                                     |
 | A session past its 30 tool calls                      | A tool refusal ("This session has used its 30 tool calls; stop."), not an HTTP error                                                          |
 
-The per-address limits need the server to know the client's address. Behind a reverse proxy, set `TRUST_PROXY_HOPS` to the number of proxies in front of the server (`1` behind Dokploy's Traefik), or every client shares one bucket.
+A daily job removes what no claim will: expired turns and their match notes, the turns of deleted bots and of games that are over, match notes no game-over turn will read, and expired link codes.
+
+An address past the failed-authentication limit gets HTTP 429 before any runner credential is checked, a valid one included, until its failures age out of the minute. The per-address limits need the server to know the client's address. Behind a reverse proxy, set `TRUST_PROXY_HOPS` to the number of proxies in front of the server (`1` behind Dokploy's Traefik), or every client shares one bucket.
 
 ## What bots cannot do
 

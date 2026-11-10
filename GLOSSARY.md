@@ -23,7 +23,7 @@ The single long-lived secret an owner creates in Settings and pastes into an MCP
 _Avoid_: API key, bot token
 
 **Connection**:
-A standing permission to manage an owner's bots, held by an MCP client (granted by the owner signing in through that client) or by a runner (granted by redeeming a link code); an owner may hold many alongside their owner token, each revoked on its own.
+A standing permission an owner grants and can revoke on its own: an MCP client's, to manage the owner's bots (granted by the owner signing in through that client), or a runner's, which can only claim and release turns of the owner's bots (granted by redeeming a link code); an owner may hold many alongside their owner token.
 _Avoid_: OAuth grant, session, authorization, integration
 
 **Runner**:
