@@ -15,7 +15,7 @@ export type TurnKey = {
 };
 
 export type PendingTurn = TurnKey & {
-  /** The game's deadline while the bot's own clock runs; null otherwise. */
+  /** A challenge's expiry, or the game's deadline while the bot's own clock runs; else null. */
   deadlineAt: Date | null;
   /** When the turn arose: the challenge's creation, or the game's last move (else its start). */
   since: Date;
@@ -66,6 +66,7 @@ export async function pendingTurns(tx: DbOrTx, botIds: readonly number[]): Promi
       .select({
         id: challenges.id,
         botId: challenges.opponentId,
+        expiresAt: challenges.expiresAt,
         createdAt: challenges.createdAt,
       })
       .from(challenges)
@@ -98,7 +99,7 @@ export async function pendingTurns(tx: DbOrTx, botIds: readonly number[]): Promi
     gameId: null,
     challengeId: row.id,
     ply: null,
-    deadlineAt: null,
+    deadlineAt: row.expiresAt,
     since: row.createdAt,
   }));
 

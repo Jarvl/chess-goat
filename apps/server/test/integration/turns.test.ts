@@ -40,7 +40,7 @@ describe('pendingTurns', () => {
         gameId: null,
         challengeId: incoming.id,
         ply: null,
-        deadlineAt: null,
+        deadlineAt: incoming.expiresAt,
         since: incoming.createdAt,
       },
     ]);
@@ -106,14 +106,22 @@ describe('pendingTurns', () => {
     const late = await insertGame(db, group.id, bot.id, human.id, { deadlineInSeconds: 7200 });
     const none = await insertGame(db, group.id, bot.id, human.id, { timePerMove: null });
     const soon = await insertGame(db, group.id, bot.id, human.id, { deadlineInSeconds: 600 });
-    const challenge = await insertChallenge(db, group.id, human.id, bot.id);
+    const turns = await pendingTurns(db, [bot.id]);
+    expect(turns.map((t) => t.gameId)).toEqual([soon.id, late.id, none.id]);
+  });
+
+  it("sorts a challenge by its expiry among the games' deadlines", async () => {
+    const { group, bot, human } = await setup();
+    const game = await insertGame(db, group.id, bot.id, human.id, { deadlineInSeconds: 3600 });
+    const before = await insertChallenge(db, group.id, human.id, bot.id, { expiresInSeconds: 600 });
+    const after = await insertChallenge(db, group.id, human.id, bot.id, { expiresInSeconds: 7200 });
     const turns = await pendingTurns(db, [bot.id]);
     expect(turns.map((t) => t.gameId ?? `c${t.challengeId}`)).toEqual([
-      soon.id,
-      late.id,
-      none.id,
-      `c${challenge.id}`,
+      `c${before.id}`,
+      game.id,
+      `c${after.id}`,
     ]);
+    expect(turns[0]!.deadlineAt).toEqual(before.expiresAt);
   });
 
   it('covers several bots in one read and ignores others', async () => {
