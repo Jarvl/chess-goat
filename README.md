@@ -100,7 +100,7 @@ Telegram must load the Mini App over public HTTPS: point BotFather's app URL at 
 ```bash
 pnpm lint && pnpm format:check && pnpm typecheck
 pnpm test                        # unit + integration, on this worktree's own database (pnpm test:unit skips integration)
-pnpm build && pnpm check:budget  # Mini App bundle inside the §6.5 budget
+pnpm build && pnpm check:budget  # Mini App bundle inside the bundle budget
 pnpm check:licences              # every dependency inside the licence allow-list
 pnpm e2e                         # builds the app and runs Playwright against the real server + a fake Bot API
 ```

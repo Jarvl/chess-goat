@@ -47,7 +47,7 @@ export const ephemeralIdOf = (message: object): number | null =>
 export const threadOf = (message: Pick<Message, 'is_topic_message' | 'message_thread_id'>) =>
   message.is_topic_message ? (message.message_thread_id ?? null) : null;
 
-/** Cards go to the topic the challenge was made in, or to the configured fixed topic (spec §5.8). */
+/** Cards go to the topic the challenge was made in, or to the configured fixed topic. */
 export function cardThread(settings: GroupSettings, originThread: number | null): number | null {
   return settings.cardTopicMode === 'fixed' ? settings.fixedTopicId : originThread;
 }

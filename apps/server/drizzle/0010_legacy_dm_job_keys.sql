@@ -1,4 +1,4 @@
--- DM notifications spec §2.1: send_dm jobs are keyed per player and game (`dm:{user}:g:{game}`),
+-- `send_dm` jobs are keyed per player and game (`dm:{user}:g:{game}`),
 -- where they used to be keyed per ply (`…:turn:{ply}`, `…:reminder:{ply}`). Pending jobs queued
 -- before the deploy are moved to the new key so they merge with new ones instead of sending twice;
 -- where one player and game has several, the newest is kept, since DMs are built from current state.

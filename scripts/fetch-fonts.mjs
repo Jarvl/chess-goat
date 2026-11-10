@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Share-position snapshot spec §2.2: the snapshot card's fonts are downloaded, never committed.
+// The snapshot card's fonts are downloaded, never committed.
 // Every file is pinned by URL and sha256, so a changed upstream file fails here instead of shipping.
 // Idempotent: a file already present with the right hash is not downloaded again, and a file with
 // the wrong bytes (an interrupted download, say) is replaced. Writes go through `<file>.part` and a
@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 const NOTO =
   'https://raw.githubusercontent.com/notofonts/notofonts.github.io/e0ad9f160a2942bcdd249bb1958e8336742edef3/fonts';
 
-/** Satori's fallback order (spec §2.1); `apps/server/src/images/fonts.ts` loads them in this order. */
+/** Satori's fallback order; `apps/server/src/images/fonts.ts` loads them in this order. */
 export const FONT_MANIFEST = [
   {
     file: 'NotoSans-Regular.ttf',
@@ -31,7 +31,7 @@ export const FONT_MANIFEST = [
   },
   {
     // The static weight-400 instance Google Fonts serves. The upstream file is a variable font
-    // whose `fvar` table Satori's parser throws on (spec §2.1).
+    // whose `fvar` table Satori's parser throws on.
     file: 'NotoEmoji-Regular.ttf',
     url: 'https://fonts.gstatic.com/s/notoemoji/v65/bMrnmSyK7YY-MEu6aWjPDs-ar6uWaGWuob-r0jwv.ttf',
     sha256: '988621dc5c9a75eb6144f28faae30317a8e3421b68b28740747b3d739e2326b8',

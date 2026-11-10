@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Spec §12: every dependency must carry a licence from the allow-list (all compatible with the
+// Every dependency must carry a licence from the allow-list (all compatible with the
 // repository's GPL-3.0-or-later). Reads `pnpm licenses list --json`; exits 1 on any other licence.
 // Limits: the listing covers the packages installed on this platform (other platforms' optional
 // binaries in the lockfile are not inspected), and `permitted` reads flat SPDX expressions only —

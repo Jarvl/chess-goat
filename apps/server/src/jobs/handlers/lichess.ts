@@ -23,10 +23,10 @@ export type LichessHandlerContext = {
 
 const DEFAULT_SPACING_MS = 2_000;
 const DEFAULT_PAUSE_MS = 60_000;
-/** Spec §7.6: up to 8 attempts over 24 h, so three hours between attempts. */
+/** Up to 8 attempts over 24 h, so three hours between attempts. */
 const RETRY_SPACING_MS = 3 * 3_600_000;
 
-/** "Only make one request at a time", spaced out, with a pause after a 429 (spec §7.6). Per process. */
+/** "Only make one request at a time", spaced out, with a pause after a 429. Per process. */
 export class LichessPacer {
   private inFlight = false;
   private notBefore = 0;
@@ -57,7 +57,7 @@ const payloadSchema = z.object({ gameId: z.number().int() });
 const importResponse = z.object({ url: z.url() });
 
 /**
- * Counts an attempt three hours apart (spec §7.6: eight over 24 h); on the last one the game is
+ * Counts an attempt three hours apart (eight over 24 h); on the last one the game is
  * marked failed so the card keeps the fallback link.
  */
 async function failed(

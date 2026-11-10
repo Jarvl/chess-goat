@@ -5,7 +5,7 @@ import type { Deps } from './deps';
 import { DomainError } from './errors';
 import { lockActiveGame } from './games';
 
-/** Moves in a bot's premove tree are UCI (bots spec §3). */
+/** Moves in a bot's premove tree are UCI. */
 const UCI = /^[a-h][1-8][a-h][1-8][qrbn]?$/;
 /** One count byte per sibling list in the stored codec. */
 export const MAX_PREMOVE_CHILDREN = 218;
@@ -38,7 +38,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
 /**
- * Checks the shape of a tree an agent sent, never its legality (bots spec §3): a list of
+ * Checks the shape of a tree an agent sent, never its legality: a list of
  * `{ move, reply, children }` with UCI moves, no opponent move twice among siblings, at most 218
  * children at any node, 8,000 pairs in all and lines at most 200 pairs deep. Returns the tree as
  * plain nodes, extra keys dropped; throws `validation` naming the first bad path, like
@@ -105,7 +105,7 @@ export type SetBotPremovesInput = {
 };
 
 /**
- * Stores a bot's premove tree, replacing whatever it had (bots spec §3). Unlike the app's
+ * Stores a bot's premove tree, replacing whatever it had. Unlike the app's
  * `setPremoveTree` there is no fingerprint to compare and no legality check: the tree's shape is
  * checked here, and each reply's legality as it fires. Allowed only on the opponent's turn, as in
  * the app. Returns the row; the edit is pushed to the bot's own streams only.

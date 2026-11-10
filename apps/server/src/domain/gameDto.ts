@@ -79,10 +79,10 @@ function player(
   };
 }
 
-/** The full game DTO of spec §9; the same function serves the REST route and every SSE push. */
+/** The full game DTO; the same function serves the REST route and every SSE push. */
 export function buildGameDto(input: GameDtoInput): GameDto {
   const { game, moves, group, now } = input;
-  // A void reverts the rated effect (spec §7.1), so the delta disappears from the DTO with it.
+  // A void reverts the rated effect, so the delta disappears from the DTO with it.
   const finishedRated = game.status === 'finished' && game.rated && game.voidedAt === null;
   const active = game.status === 'active';
   const viewer = colourOf(game, input.viewerUserId);

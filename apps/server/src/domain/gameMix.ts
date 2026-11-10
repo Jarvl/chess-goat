@@ -42,8 +42,8 @@ export type GameAudience = {
 };
 
 /**
- * Who hears about a game or challenge. Bots-only play is silent; an engine game (spec §8) and any
- * game with a bot in it (bot accounts spec §3, the shared Lichess quota) are never imported.
+ * Who hears about a game or challenge. Bots-only play is silent; an engine game and any
+ * game with a bot in it (the shared Lichess quota) are never imported.
  * Whether a particular player gets DMs is Player Kind's question (`can(user, 'getDms')`).
  */
 export function audienceOf(row: Counted & { engineLevel?: string | null }): GameAudience {

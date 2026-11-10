@@ -20,9 +20,9 @@ type Scoring = {
 type LockedPlayer = Pick<UserRow, 'id' | 'isEngine' | 'ownerId' | 'deletedAt' | 'flairWorn'>;
 
 /**
- * Flair spec §3.2: scores both players of a finished game against every flair they do not hold yet,
+ * Scores both players of a finished game against every flair they do not hold yet,
  * stores what they earned and fills their free worn slots. Run it in one transaction, so a rerun
- * or a duplicate job finds the awards already made and changes nothing (spec §6).
+ * or a duplicate job finds the awards already made and changes nothing.
  */
 export async function awardFlairForGame(
   tx: DbOrTx,
@@ -30,7 +30,7 @@ export async function awardFlairForGame(
   random: () => number = Math.random,
 ): Promise<void> {
   const game = await requireGameById(tx, gameId);
-  // A game voided before its job ran no longer counts, and earns nothing (spec §6).
+  // A game voided before its job ran no longer counts, and earns nothing.
   if (!isCountedGame(game)) return;
   if (game.finishedAt === null) throw new Error(`game ${game.id} has no finish time`);
   const scoring: Scoring = {
@@ -39,11 +39,11 @@ export async function awardFlairForGame(
     moves: await listMoves(tx, game.id),
   };
   // Both players' rows are locked before anything is read about either, in one statement and in
-  // ascending id order whatever their colours (spec §3.2 step 2): two awards for the same pair of
+  // ascending id order whatever their colours: two awards for the same pair of
   // players with the colours reversed would otherwise each hold one row while waiting for the
   // other's. A `PUT` of the worn list, Delete my data and another award for either player lock
   // these rows too, so they take turns with this, and everything read below is read after the
-  // locks, so it sees what they committed (spec §6). `for no key update` is enough for that, and
+  // locks, so it sees what they committed. `for no key update` is enough for that, and
   // unlike `for update` it lets through the `for key share` locks of foreign-key checks: games,
   // ratings and other rows that refer to either player can still be written while this runs.
   const locked = await tx
@@ -67,7 +67,7 @@ export async function awardFlairForGame(
   }
 }
 
-/** Flair spec §3.2 step 3: scores one player of the game, stores what they earned and wears it. */
+/** Scores one player of the game, stores what they earned and wears it. */
 async function awardToPlayer(
   tx: DbOrTx,
   { game, finishedAt, moves }: Scoring,
@@ -83,13 +83,13 @@ async function awardToPlayer(
     .from(userFlair)
     .where(eq(userFlair.userId, userId));
   const held = new Set(heldRows.map((row) => row.flairId));
-  // Every flair not yet held is a candidate, scored on the player's whole history (backfill spec §5).
+  // Every flair not yet held is a candidate, scored on the player's whole history.
   const candidates = FLAIR.filter((flair) => !held.has(flair.id));
   if (candidates.length === 0) return;
 
   const counted = await loadCountedGames(tx, userId, { through: game });
   const current = counted.at(-1);
-  // The rules need this game last (spec §1.6). It is missing if it was voided since it was read.
+  // The rules need this game last. It is missing if it was voided since it was read.
   if (current === undefined || current.id !== game.id) return;
 
   const earned = candidates
@@ -102,7 +102,7 @@ async function awardToPlayer(
     .values(earned.map((flairId) => ({ userId, flairId, gameId: game.id, earnedAt: finishedAt })))
     .onConflictDoNothing()
     .returning({ flairId: userFlair.flairId });
-  // Only rows actually inserted are new, and `earned` is in catalog order (spec §3.3).
+  // Only rows actually inserted are new, and `earned` is in catalog order.
   const insertedIds = new Set(inserted.map((row) => row.flairId));
   const fresh = earned.filter((id) => insertedIds.has(id));
   if (fresh.length === 0) return;

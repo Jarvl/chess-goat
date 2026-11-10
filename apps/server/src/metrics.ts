@@ -4,7 +4,7 @@ import type { Db } from './db/client';
 
 type Row = Record<string, unknown>;
 
-/** Spec §14: counters and histograms from the code paths, gauges computed from the tables on scrape. */
+/** Counters and histograms from the code paths, gauges computed from the tables on scrape. */
 export class Metrics {
   readonly registry = new Registry();
   readonly contentType = this.registry.contentType;
@@ -77,7 +77,7 @@ export class Metrics {
     return new Counter({ name, help, labelNames, registers: [this.registry] });
   }
 
-  /** Gauges the §11 alerts need; each runs one query when /metrics is scraped. */
+  /** Gauges the alerts need; each runs one query when /metrics is scraped. */
   private registerTableGauges(db: Db): void {
     const query = async (text: ReturnType<typeof sql>): Promise<Row[]> =>
       (await db.execute(text)) as unknown as Row[];

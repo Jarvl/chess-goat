@@ -9,7 +9,7 @@ import type { TelegramApi } from '../telegram/client';
 import { tipCheckoutAccepted } from '../telegram/tips';
 import { userInfo } from './userInfo';
 
-/** Tip jar spec §2.2–2.3: Stars tips from the Mini App's Support card. */
+/** Stars tips from the Mini App's Support card. */
 export function registerPayments(bot: Bot, deps: Deps, checkoutApi: TelegramApi): void {
   // Answered inline, not queued: Telegram gives the bot 10 seconds. Answered through a client
   // without the message throttler, since bot.api's queue is shared with the job worker's sends
@@ -67,7 +67,7 @@ export function registerPayments(bot: Bot, deps: Deps, checkoutApi: TelegramApi)
     }
   });
 
-  // Telegram expects every bot that takes payments to answer /paysupport (tip jar spec §2.3).
+  // Telegram expects every bot that takes payments to answer /paysupport.
   bot.chatType('private').command('paysupport', async (ctx) => {
     await enqueue(deps.db, {
       kind: 'send_message',

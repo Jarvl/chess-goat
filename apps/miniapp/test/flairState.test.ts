@@ -105,7 +105,7 @@ describe('saveWornFlair', () => {
     expect(myFlair.value?.worn).toEqual([]);
   });
   it('keeps what the server answers even when it differs from what was asked', async () => {
-    // An award can fill a free slot while the save is in flight (spec §6).
+    // An award can fill a free slot while the save is in flight.
     const awarded = [
       ...EARNED,
       { id: 'draws_10', earnedAt: '2026-05-01T12:00:00.000Z', opponent: '@maya' },

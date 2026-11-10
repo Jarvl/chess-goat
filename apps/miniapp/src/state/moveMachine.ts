@@ -23,7 +23,7 @@ export type MoveEvent =
   | { type: 'replace'; uci: string }
   | { type: 'cancel' }
   | { type: 'sent' }
-  /** 409 or 422: reload the state and snap back without a message (spec §6.3). */
+  /** 409 or 422: reload the state and snap back without a message. */
   | { type: 'rejected' }
   /** 413: the tree made the request too big. The move waits again, nothing reloads. */
   | { type: 'tooBig' }
@@ -39,7 +39,7 @@ export type MoveEffect =
 
 const RETRY_MAX_MS = 30_000;
 
-/** 1 s, 2 s, 4 s … capped at 30 s (spec §6.3). */
+/** 1 s, 2 s, 4 s … capped at 30 s. */
 export function retryDelayMs(attempt: number): number {
   return Math.min(1_000 * 2 ** Math.max(0, attempt - 1), RETRY_MAX_MS);
 }
@@ -69,7 +69,7 @@ export function needsConfirmation(
   }
 }
 
-/** The move state machine of spec §6.3 as a pure reducer; the screen runs the effects. */
+/** The move state machine as a pure reducer; the screen runs the effects. */
 export function reduceMove(
   state: MoveState,
   event: MoveEvent,

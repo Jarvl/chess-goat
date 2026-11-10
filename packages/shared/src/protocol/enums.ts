@@ -56,7 +56,7 @@ export const EndReasonSchema = z.enum([
 
 export type EndReason = z.infer<typeof EndReasonSchema>;
 
-/** End reasons that change ratings (spec §7.1). Aborts and voids never do. */
+/** End reasons that change ratings. Aborts and voids never do. */
 const RATED_END_REASONS: ReadonlySet<EndReason> = new Set<EndReason>([
   'checkmate',
   'stalemate',
@@ -96,7 +96,7 @@ export const ViewerRoleSchema = z.enum(['white', 'black', 'spectator']);
 
 export type ViewerRole = z.infer<typeof ViewerRoleSchema>;
 
-/** Engine opponent strength, weakest first (spec §6.2). No rating numbers here — see the engine config. */
+/** Engine opponent strength, weakest first. No rating numbers here — see the engine config. */
 export const ENGINE_LEVELS = ['beginner', 'casual', 'club', 'strong'] as const;
 
 export type EngineLevel = (typeof ENGINE_LEVELS)[number];

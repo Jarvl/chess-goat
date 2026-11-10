@@ -1,7 +1,7 @@
 /** Who a publish is meant for; without one, everyone watching the game (conditional premoves spec, Privacy and several devices). */
 export type Audience = { userId: number };
 
-/** In-process publish/subscribe of game changes to SSE streams (spec §4.2). Keys are public game ids. */
+/** In-process publish/subscribe of game changes to SSE streams. Keys are public game ids. */
 export interface Bus {
   publish(gameId: string, audience?: Audience): void;
   subscribe(gameId: string, listener: (audience?: Audience) => void): () => void;

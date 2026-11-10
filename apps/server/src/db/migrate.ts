@@ -18,7 +18,7 @@ export type MigrationOptions = {
 
 /**
  * Applies pending migrations under a session advisory lock so concurrent replicas serialise
- * (spec §4.4). A dedicated single connection keeps the lock and the migrator in one session.
+ *. A dedicated single connection keeps the lock and the migrator in one session.
  *
  * Drizzle's migrator only compares timestamps with the newest applied migration, so on a database
  * that another branch has migrated it skips older migrations and stacks newer ones on a schema no

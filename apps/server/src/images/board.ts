@@ -80,7 +80,7 @@ function isLightSquare(file: number, rank: number): boolean {
   return (file + rank) % 2 === 1;
 }
 
-/** Snapshot spec §1.1: green squares, last-move and check highlights, cburnett glyphs; no text. */
+/** Green squares, last-move and check highlights, cburnett glyphs; no text. */
 export function renderBoardSvg(input: BoardRenderInput): string {
   const pieces = parsePlacement(input.fen);
   const parts: string[] = [

@@ -5,7 +5,7 @@ export type PromotionPiece = 'q' | 'r' | 'b' | 'n';
 
 const FILES = 'abcdefgh';
 
-/** A pawn moving to the last rank must name its piece (spec §7.2: promotion is mandatory). */
+/** A pawn moving to the last rank must name its piece (promotion is mandatory). */
 export function isPromotion(fen: string, orig: string, dest: string): boolean {
   let piece: { type: string; color: string } | undefined;
   try {

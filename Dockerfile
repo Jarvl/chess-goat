@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-# Spec §4.4: multi-stage — build the Mini App, then a runtime image with the server and the bundle.
+# Multi-stage — build the Mini App, then a runtime image with the server and the bundle.
 FROM node:26-bookworm-slim AS base
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
@@ -23,14 +23,14 @@ COPY apps ./apps
 COPY scripts ./scripts
 RUN pnpm --filter @chess-goat/miniapp build && node scripts/check-bundle-size.mjs
 
-# Snapshot spec §2.2: the card's fonts are downloaded by pinned URL and sha256, never committed.
+# The card's fonts are downloaded by pinned URL and sha256, never committed.
 FROM base AS fonts
 COPY scripts/fetch-fonts.mjs ./scripts/
 RUN node scripts/fetch-fonts.mjs
 
 FROM base AS runtime
 ENV NODE_ENV=production
-# Spec §12: the engine opponent needs a UCI binary. Pin the version, and prove at build time that it
+# The engine opponent needs a UCI binary. Pin the version, and prove at build time that it
 # answers our adapter with a legal move — a broken or netless binary must fail here, not in
 # production. Stockfish is GPL-3.0, compatible with this repository's GPL-3.0-or-later (see
 # scripts/check-licences.mjs, which cannot see this non-npm dependency itself). Debian installs the

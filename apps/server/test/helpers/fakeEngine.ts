@@ -12,7 +12,7 @@ export type FakeEngineOptions = {
   /**
    * Runs before the reply is returned, so a test can change the world while the engine is
    * "thinking" — the game ending between the job being enqueued and the reply arriving is exactly
-   * the race spec §9's `(none)` row describes.
+   * the race the `(none)` case describes.
    */
   onCall?: (call: EngineCall) => Promise<void> | void;
 };

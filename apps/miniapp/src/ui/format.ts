@@ -12,7 +12,7 @@ import {
   type TimePerMove,
 } from '@chess-goat/shared';
 
-// en-US on purpose (flair spec §5.5): month first, and "Sep" where en-GB writes "Sept".
+// en-US on purpose: month first, and "Sep" where en-GB writes "Sept".
 const MONTH_YEAR = new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' });
 const MONTH_DAY = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' });
 const MONTH_DAY_YEAR = new Intl.DateTimeFormat('en-US', {
@@ -42,7 +42,7 @@ export function summaryTitle(summary: GameSummary): string {
 }
 
 /**
- * The line under an earned flair (flair spec §5.3): a rung of the rank ladder by the month it was
+ * The line under an earned flair: a rung of the rank ladder by the month it was
  * reached, anything else by the game that earned it. The year is added when it is not `now`'s, in
  * the viewer's local time.
  */

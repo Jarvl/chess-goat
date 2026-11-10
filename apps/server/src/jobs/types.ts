@@ -2,7 +2,7 @@ import type { Db } from '../db/client';
 import type { JobRow } from '../db/schema';
 import type { Logger } from '../logger';
 
-/** Every side effect is one of these (spec §10). */
+/** Every side effect is one of these. */
 export const JOB_KINDS = [
   'send_challenge_card',
   'edit_card',

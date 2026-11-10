@@ -6,7 +6,7 @@ export type LaunchOutcome =
   | { kind: 'expired' }
   | { kind: 'failed'; error: ApiError };
 
-/** Spec §6.1 step 3: one request from launch to a painted screen; a 401 here means "reopen". */
+/** One request from launch to a painted screen; a 401 here means "reopen". */
 export async function launch(
   client: ApiClient,
   initData: string,

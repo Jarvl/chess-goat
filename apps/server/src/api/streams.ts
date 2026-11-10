@@ -1,4 +1,4 @@
-/** Spec §7.8: at most four open SSE streams per user. */
+/** At most four open SSE streams per user. */
 export class StreamGate {
   private readonly open = new Map<number, number>();
 

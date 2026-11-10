@@ -17,7 +17,7 @@ export function customStars(raw: string): number | null {
 
 const Spinner = () => <span class="tip-spinner" aria-hidden="true" />;
 
-/** Tip jar spec §3.2: presets, a custom amount, and Telegram's own payment sheet. */
+/** Presets, a custom amount, and Telegram's own payment sheet. */
 export function SupportCard() {
   const { client, tg } = useApp();
   const [selected, setSelected] = useState<Source | null>(null);

@@ -34,7 +34,7 @@ export function createApiApp(ctx: ApiContext, extra: RegisterRoutes[] = []): Hon
       return c.json(apiErrorBody(code, error.message || 'request rejected'));
     }
     ctx.deps.log.error({ err: error, path: c.req.path }, 'unhandled request error');
-    // Spec §14 wants launch failures counted; the client has no session to report one with, so
+    // Launch failures are counted; the client has no session to report one with, so
     // the API-side half is counted here.
     if (c.req.path === '/api/launch') ctx.metrics.miniappLoadErrors.inc();
     c.status(500);

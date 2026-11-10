@@ -73,7 +73,7 @@ export function registerTool<I, O>(server: McpServer, spec: ToolSpec<I, O>): voi
         };
       } catch (error) {
         if (isDomainError(error)) {
-          // Spec §12: code and ids only; a DomainError's details may carry display names.
+          // Code and ids only; a DomainError's details may carry display names.
           log.info(
             { tool: spec.name, ownerId: call.owner.id, code: error.code },
             'mcp tool refused',

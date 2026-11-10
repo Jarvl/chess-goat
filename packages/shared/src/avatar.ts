@@ -1,4 +1,4 @@
-/** Telegram's own avatar colours, in its order (redesign spec §3.1). */
+/** Telegram's own avatar colours, in its order. */
 export const AVATAR_PALETTE = [
   '#e17076',
   '#faa774',

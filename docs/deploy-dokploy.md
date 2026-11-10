@@ -99,7 +99,7 @@ Migrations run automatically at boot under an advisory lock.
 **Keep the replica count at 1.** The live board updates go through an in-process event bus, and the
 per-user rate limiter is in-process too. A second replica would mean a move made by a player
 connected to one instance never reaches a spectator connected to the other. Scaling out needs the
-PostgreSQL `LISTEN`/`NOTIFY` bus named in the technical design (§4.3); it is not built yet.
+PostgreSQL `LISTEN`/`NOTIFY` bus planned for multi-replica deployments; it is not built yet.
 
 If the webhook failed to register because the domain was not ready on the first attempt, the server
 logs it and carries on serving rather than crash-looping. Redeploy once the domain works and it

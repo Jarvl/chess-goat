@@ -33,7 +33,7 @@ function ageSeconds(update: Update, type: string): number | null {
 }
 
 /**
- * Spec §5.2: secret header, update_id idempotency, 500 on failure so Telegram retries. The marker
+ * Secret header, update_id idempotency, 500 on failure so Telegram retries. The marker
  * is written before the handler and completed after it; a marker that stays incomplete for a
  * minute (a process that died in between) is claimed again by the retry instead of acknowledged.
  */

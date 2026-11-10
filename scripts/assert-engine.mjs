@@ -2,7 +2,7 @@
 // Fails the image build when the packaged Stockfish is missing, netless or unparseable by our
 // adapter. Asserts only that a legal move comes back — never a specific move, an evaluation, a
 // mate score or a strength claim, because those are Stockfish's behaviour, not ours, and they
-// change between versions (spec §11). Legality is judged by this project's own arbiter, the same
+// change between versions. Legality is judged by this project's own arbiter, the same
 // one that governs real games, not by asserting anything about the engine's choice.
 // Imported by relative path, not the `@chess-goat/shared` package name: this script lives in
 // `scripts/`, outside every workspace package, so the bare specifier has nothing to resolve

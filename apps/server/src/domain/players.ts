@@ -4,7 +4,7 @@ import { avatarUrl } from './photos';
 import { can, isBot, kindOf } from './playerKind';
 import { displayName, wornFlair } from './users';
 
-/** The player shape the API sends everywhere; ratings default to 1500 provisional (spec §7.9). */
+/** The player shape the API sends everywhere; ratings default to 1500 provisional. */
 export function toPlayerRef(
   user: Pick<
     UserRow,

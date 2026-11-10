@@ -6,7 +6,7 @@ import type { JobKind, JobPayload } from './types';
 export type EnqueueInput = {
   kind: JobKind;
   payload?: JobPayload;
-  /** A pending job with the same key is moved to the new run_at instead of duplicated (spec §10). */
+  /** A pending job with the same key is moved to the new run_at instead of duplicated. */
   dedupKey?: string;
   /**
    * With a dedup key: false leaves a pending job exactly as it is (its run_at, attempts and error)

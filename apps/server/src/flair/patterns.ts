@@ -5,7 +5,7 @@ import type { MoveRow } from '../db/schema';
 export type StoredMove = Pick<MoveRow, 'ply' | 'uci' | 'san' | 'fenAfter'>;
 
 /**
- * Flair spec §1.8: whether `side` made a pattern. A pure function of the game's stored moves, in
+ * Whether `side` made a pattern. A pure function of the game's stored moves, in
  * ply order; it needs no chess.js replay.
  */
 type Detector = (moves: readonly StoredMove[], side: Colour) => boolean;

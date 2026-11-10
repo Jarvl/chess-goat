@@ -6,7 +6,7 @@ import { requireGameByPublicId } from './games';
 import { enqueue } from '../jobs/queue';
 
 /**
- * Spec §7.8: enough for a user to share a run of positions at once, while one user still cannot
+ * Enough for a user to share a run of positions at once, while one user still cannot
  * post more than a minute's worth of the group's ~20 messages per minute.
  */
 export const MAX_SHARES_PER_MINUTE = 20;

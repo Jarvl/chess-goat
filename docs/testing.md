@@ -56,7 +56,7 @@ image. **No test may assert a specific engine move, an evaluation, a mate score,
 plays at its labelled strength** — those are Stockfish's behaviour, not this project's, and they
 change between versions. What is ours to test, and what every layer above does test, is the UCI
 options this project sends for each level, engine games staying unrated and off the leaderboard,
-the illegal-move fallback, and the rest of spec §9's failure modes — all against the fake. The
+the illegal-move fallback, and the rest of the engine failure modes — all against the fake. The
 end-to-end suite plays one whole bot game through the composed stack (picker, endpoint, job row,
 worker, handler, `playMove`, SSE) because `startServer` takes the engine as an optional argument and
 the harness passes `fakeEngine`; it asserts that the bot answered, never what it answered.
@@ -69,7 +69,7 @@ option in the same session came back as `No such option: …`, which is what mak
 line for the real three meaningful. This is not a test and must not become one — it is Stockfish's
 behaviour, not ours, and it changes between versions. What guards it in production instead is a
 warning: `uciEngine` watches the session output for `No such option` and logs the option's name, so a
-renamed option degrades loudly rather than silently making two levels play alike (spec §13).
+renamed option degrades loudly rather than silently making two levels play alike.
 
 ## What each layer owns
 

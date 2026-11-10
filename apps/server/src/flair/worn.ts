@@ -1,10 +1,10 @@
 import { flairById, MAX_WORN_FLAIR, type FlairId } from '@chess-goat/shared';
 
 /**
- * Flair spec §3.3: the worn list after `fresh` is earned. New flair fills the free slots, whatever
+ * The worn list after `fresh` is earned. New flair fills the free slots, whatever
  * its category; if there is more of it than slots, a uniformly random subset fills them. The chosen
  * ids are appended in catalog order, so `fresh` must be in catalog order. A worn id the catalog no
- * longer has (spec §1.7) is dropped first: its slot is free.
+ * longer has is dropped first: its slot is free.
  */
 export function fillFreeSlots(
   worn: readonly string[],

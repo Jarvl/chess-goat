@@ -3,7 +3,7 @@ import { challenges } from '../db/schema';
 import type { Deps } from './deps';
 import { getGroupByChatId, setBotMembership } from './groups';
 
-/** Spec §5.8: the bot left, so pending challenges end and no card is edited. */
+/** The bot left, so pending challenges end and no card is edited. */
 export async function cancelPendingChallengesForGroup(
   deps: Deps,
   groupId: number,

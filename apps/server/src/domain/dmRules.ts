@@ -15,7 +15,7 @@ export function canDelete(sentAt: Date, now: Date): boolean {
 
 const SILENT_ENDINGS: ReadonlySet<EndReason> = new Set(['abort', 'timeout_abort', 'voided']);
 
-/** DM notifications spec §4.2: the result DM goes to each player who did not end the game. */
+/** The result DM goes to each player who did not end the game. */
 export function resultRecipients(endReason: EndReason, endedBy: Colour | null): Colour[] {
   if (SILENT_ENDINGS.has(endReason)) return [];
   if (endedBy === null) return ['white', 'black'];

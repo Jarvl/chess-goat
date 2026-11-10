@@ -7,7 +7,7 @@ import { requireGroup, requireGroupByPublicId } from '../domain/groups';
 import { buildLobby, meGames } from '../domain/lobby';
 import type { ApiContext } from './context';
 
-/** Spec §5.3/§6.1: where a launch lands, with that screen's data; no membership evidence means locked. */
+/** Where a launch lands, with that screen's data; no membership evidence means locked. */
 export async function resolveLaunchRoute(
   ctx: ApiContext,
   user: UserRow,

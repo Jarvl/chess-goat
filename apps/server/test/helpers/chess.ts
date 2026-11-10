@@ -12,10 +12,10 @@ export const AFTER_E4_C5 = 'rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQ
 export const BEFORE_SCHOLARS_MATE =
   'r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4';
 
-/** White to move, with a pawn on e7 one step from promoting on e8 (flair spec §7). */
+/** White to move, with a pawn on e7 one step from promoting on e8. */
 export const PROMOTION_FEN = '3k4/4P3/8/8/8/8/8/4K3 w - - 0 1';
 
-/** White, with only king and queen, mates by `a1a8` (flair spec §1.8). */
+/** White, with only king and queen, mates by `a1a8`. */
 export const QUEEN_MATE_FEN = '7k/8/6K1/8/8/8/8/Q7 w - - 0 1';
 
 /** The same mate with a rook, `a1a8`. */
@@ -34,7 +34,7 @@ export const BISHOPS_MATE_FEN = 'k7/8/1K1B4/8/8/8/2B5/8 w - - 0 1';
 export const BISHOPS_AND_PAWN_MATE_FEN = 'k7/8/1K1B4/8/8/8/2B4P/8 w - - 0 1';
 
 /**
- * Games for the flair move-pattern tests (flair spec §1.8, §7), in coordinate notation from the
+ * Games for the flair move-pattern tests, in coordinate notation from the
  * initial position. Each line was replayed with the shared arbiter, and the mates are mates at the
  * plies noted.
  */

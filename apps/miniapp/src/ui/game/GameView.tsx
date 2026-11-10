@@ -170,7 +170,7 @@ export function GameView(props: {
       }
       noteTurnChange(previous, next);
       for (const notice of diffNotices(previous, next, { discardedDraft })) notify(notice);
-      // Spec §6.3: a check buzzes, whichever side gave it.
+      // A check buzzes, whichever side gave it.
       if (next.plyCount > previous.plyCount && positionAt(next, next.plyCount).check)
         tg.hapticNotify('warning');
       // A move waiting for Confirm move is void once the game has moved on (the server would
@@ -181,7 +181,7 @@ export function GameView(props: {
     [store, notify, tg],
   );
 
-  // Live updates for running games (spec §6.4); finished games are static.
+  // Live updates for running games; finished games are static.
   useEffect(() => {
     if (dto.status !== 'active') return;
     const stream = new GameStream({
@@ -838,7 +838,7 @@ export function GameView(props: {
     if (url) tg.openLink(url);
   };
   // The download goes to Telegram's downloader or the system browser, so it carries a short-lived
-  // link token from the server, never the session token (spec §9).
+  // link token from the server, never the session token.
   const pgn = async (): Promise<void> => {
     try {
       const link = await client.post(`/api/games/${gameId}/pgn-link`, {}, PgnLinkDtoSchema);
@@ -861,7 +861,7 @@ export function GameView(props: {
   const playing = isPlayer && dto.status === 'active';
   const finished = dto.status === 'finished';
   // Draw waits for the second move, when the last slot turns from Abort to Resign, and the bot
-  // never takes one (spec §8).
+  // never takes one.
   const early = dto.plyCount < 2;
   const drawOpen = canOffer && !early && dto.engineLevel === null;
   // Unconfirmed changes: with confirmations on, the waiting move, premove edits and an opponent

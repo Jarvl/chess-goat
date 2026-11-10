@@ -1,4 +1,4 @@
-/** Glicko-2 as in Glickman, "Example of the Glicko-2 system", with the spec's constants (§7.5). */
+/** Glicko-2 as in Glickman, "Example of the Glicko-2 system", with the spec's constants. */
 export const GLICKO2 = {
   initialRating: 1500,
   initialRd: 350,
@@ -112,7 +112,7 @@ export function ratePeriod(
   return clampRd({ rating: muNew * scale + 1500, rd: phiNew * scale, volatility: sigmaNew });
 }
 
-/** Spec §7.5: `φ² ← min(φ² + d·σ², (350 / 173.7178)²)` for `d` idle days before a result. */
+/** `φ² ← min(φ² + d·σ², (350 / 173.7178)²)` for `d` idle days before a result. */
 export function inflateForInactivity(player: Rating, idleDays: number): Rating {
   if (idleDays <= 0) return player;
   const { scale, rdCeiling } = GLICKO2;

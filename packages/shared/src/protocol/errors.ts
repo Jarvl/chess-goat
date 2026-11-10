@@ -30,7 +30,7 @@ export const ApiErrorBodySchema = z.object({
 
 export type ApiErrorBody = z.infer<typeof ApiErrorBodySchema>;
 
-/** HTTP status per code. The board treats every 409 as "reload the state and snap back" (spec §6.3). */
+/** HTTP status per code. The board treats every 409 as "reload the state and snap back". */
 export const HTTP_STATUS_BY_ERROR_CODE: Readonly<Record<ErrorCode, number>> = {
   unauthorized: 401,
   forbidden: 403,

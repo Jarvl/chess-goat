@@ -58,7 +58,7 @@ function arrival(route: Route): Route {
 /**
  * A tabbed in-memory router (Telegram owns the URL fragment). Tabs carry lateral movement and
  * never deepen a stack; the BackButton carries depth only, so it stays a single tap from the
- * way out (nav spec, superseding technical design §6.1 step 5).
+ * way out.
  *
  * `closeFromRoot` is set for a launch that came from a chat link: there the BackButton also
  * shows at the root, where it closes, so "back to the chat I came from" keeps costing one tap.

@@ -9,13 +9,13 @@ import {
 } from '../../telegram/client';
 import type { JobResult } from '../types';
 
-/** One Bot API call with the chat-level consequences of spec §11, shared by every Telegram job. */
+/** One Bot API call with the chat-level consequences, shared by every Telegram job. */
 
 export type TelegramHandlerContext = { deps: Deps; api: TelegramApi; config: Config };
 
 export type CallResult<T> = { ok: true; value: T } | { ok: false; failure: TelegramFailure };
 
-/** Runs one Bot API call and applies the chat-level consequences of spec §11. */
+/** Runs one Bot API call and applies the chat-level consequences */
 export async function call<T>(
   ctx: TelegramHandlerContext,
   chatId: number | null,

@@ -41,7 +41,7 @@ export function parseUci(uci: string): ParsedUci | null {
   return promotion ? { from, to, promotion } : { from, to };
 }
 
-/** The first four FEN fields identify a position for repetition purposes (spec §7.2). */
+/** The first four FEN fields identify a position for repetition purposes. */
 export function positionKey(fen: string): string {
   return fen.split(' ').slice(0, 4).join(' ');
 }
@@ -168,7 +168,7 @@ function materialOf(fen: string, colour: Colour): Material {
 
 /**
  * FIDE Article 6.9: the player whose flag fell loses, unless the opponent could not checkmate by
- * any series of legal moves, in which case the game is drawn (spec §18 item 5).
+ * any series of legal moves, in which case the game is drawn.
  */
 export function timeoutOutcome(
   fen: string,

@@ -27,7 +27,7 @@ export type SnapshotSide = {
   ratingChange: { before: number; after: number; rdAfter: number } | null;
   /** The player's stored Telegram photo (a small JPEG); null without one, and for the bot. */
   photo: Buffer | null;
-  /** Worn flair ids in slot order (flair spec §2), as stored. */
+  /** Worn flair ids in slot order, as stored. */
   flair: readonly string[];
 };
 

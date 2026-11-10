@@ -51,7 +51,7 @@ export function landingFor(
   }
 }
 
-/** Spec §6.1 steps 1–4: prepare the client, launch once, land, then ask for write access. */
+/** Steps 1–4: prepare the client, launch once, land, then ask for write access. */
 export async function boot(app: AppContextValue): Promise<void> {
   const { tg, client, router, prefetched } = app;
   applyTheme(tg);
@@ -93,7 +93,7 @@ export async function boot(app: AppContextValue): Promise<void> {
   }
 }
 
-/** The 401 path of spec §6.1 step 6: one relaunch with the original initData, or the reopen screen. */
+/** The 401 path: one relaunch with the original initData, or the reopen screen. */
 export async function relaunch(app: AppContextValue): Promise<string | null> {
   const outcome = await launch(app.client, app.tg.initData, app.tg.startParam);
   if (outcome.kind === 'ok') return outcome.response.token;

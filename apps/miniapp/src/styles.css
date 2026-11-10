@@ -288,7 +288,7 @@ button {
   white-space: nowrap;
 }
 
-/* Worn flair beside a name (flair spec §5.1). The emojis are spaced by a flex `gap`, never
+/* Worn flair beside a name. The emojis are spaced by a flex `gap`, never
    `letter-spacing`, which can pull a ZWJ sequence (several rank flair are one) into two glyphs.
    `flex: none` keeps the flair whole, so in a `.name-row` or `.game-card .who` the name alone
    ellipsises as the line narrows. */
@@ -312,7 +312,7 @@ button {
   font-size: 15px;
 }
 
-/* The Settings row (flair spec §5.2). */
+/* The Settings row. */
 .field .flair {
   font-size: 16px;
 }
@@ -332,7 +332,7 @@ button {
   font-size: 20px;
 }
 
-/* The Flair screen (flair spec §5.3): a preview of what you wear above three slots, then every
+/* The Flair screen: a preview of what you wear above three slots, then every
    flair in its category. Emoji are sized and centred in boxes, never spaced with `letter-spacing`. */
 .flair-preview {
   display: flex;
@@ -628,7 +628,7 @@ button {
   text-align: center;
 }
 
-/* Tip jar spec §3.2: the Support card. */
+/* The Support card. */
 .tip-intro {
   display: flex;
   flex-direction: column;
@@ -1157,8 +1157,7 @@ button {
    `coords.files` below), which assumes a wrap with extra margin reserved around the board. This
    wrap is sized flush to the board, so the default offsets both overshoot the wrap (files) and
    get painted over by the player bar that follows in the DOM (both). Flush them to the board's
-   own edges and restyle to match the prototype's corner-of-the-square coordinates (spec §1
-   Board): 10 px bold, lower-case files bottom-right of their own square, ranks top-left. */
+   own edges and restyle to match the prototype's corner-of-the-square coordinates: 10 px bold, lower-case files bottom-right of their own square, ranks top-left. */
 .board-wrap coords {
   font-size: 10px;
   font-weight: 700;

@@ -21,7 +21,7 @@ const TYPES: Record<string, string> = {
 
 const IMMUTABLE = 'public, max-age=31536000, immutable';
 const SHORT = 'public, max-age=300';
-/** Spec §12: no third-party scripts, fonts or analytics; chessground needs inline styles. */
+/** No third-party scripts, fonts or analytics; chessground needs inline styles. */
 export const APP_CSP =
   "default-src 'self'; script-src 'self' https://telegram.org; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'";
 
@@ -35,7 +35,7 @@ async function fileAt(path: string): Promise<Buffer | null> {
 }
 
 /**
- * Serves the built Mini App under `mountPath` (spec §4.4): hashed files in `assets/` are immutable
+ * Serves the built Mini App under `mountPath`: hashed files in `assets/` are immutable
  * for a year, `index.html` is never cached, other files get five minutes, and paths without an
  * extension fall back to `index.html` so client-side routes survive a reload.
  */

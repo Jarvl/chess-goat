@@ -90,7 +90,7 @@ export async function setBotMembership(
     .where(eq(groups.id, groupId));
 }
 
-/** `migrate_to_chat_id`: the Telegram id changes, the internal id and every game stay (spec §5.8). */
+/** `migrate_to_chat_id`: the Telegram id changes, the internal id and every game stay. */
 export async function migrateChatId(
   tx: DbOrTx,
   oldChatId: number,

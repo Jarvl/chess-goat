@@ -62,7 +62,7 @@ export async function leavePlay(
   now: Date,
   retireDmsOf: readonly number[],
 ): Promise<string[]> {
-  // DM notifications spec §2.4: before the games end, so the user's own DMs all read "Game
+  // Before the games end, so the user's own DMs all read "Game
   // ended" rather than the game-end stubs `finishGame` would give them. Each row kept its chat id.
   for (const userId of retireDmsOf) await retireUserDms(tx, userId, deletedStub());
   const publicIds: string[] = [];
@@ -98,7 +98,7 @@ export function deletedBotFields(now: Date) {
   return { firstName: 'Deleted bot', tagline: null, lastActiveAt: null, deletedAt: now };
 }
 
-/** Spec §12 "Delete my data": immediate and irreversible; opponents' histories stay consistent. */
+/** "Delete my data": immediate and irreversible; opponents' histories stay consistent. */
 export async function deleteMyData(deps: Deps, userId: number): Promise<void> {
   const finished = await deps.db.transaction(async (tx) => {
     const now = await dbNow(tx);
@@ -136,9 +136,9 @@ export async function deleteMyData(deps: Deps, userId: number): Promise<void> {
       play = await lockPlay(tx, [userId, ...botIds, ...deletedBots.map((b) => b.id)]);
     }
     const publicIds = await leavePlay(tx, play, now, [userId]);
-    // Flair spec §3.4. The update above takes the row lock, which an award job for this player also
+    // The update above takes the row lock, which an award job for this player also
     // holds while it inserts `user_flair` rows. Deleting only after it has the lock means such a job
-    // has committed and this sees its rows; a job that starts later finds `deleted_at` set (§3.2).
+    // has committed and this sees its rows; a job that starts later finds `deleted_at` set.
     await tx.delete(userFlair).where(eq(userFlair.userId, userId));
     await deletePhoto(tx, userId);
     await tx.update(groupMembers).set({ status: 'left' }).where(eq(groupMembers.userId, userId));

@@ -9,7 +9,7 @@ import type { JobHandler } from '../types';
 
 const Payload = z.object({ groupId: z.number().int() });
 
-/** Spec §7.5: replay the group, rewrite snapshots, re-edit the cards whose displayed deltas changed. */
+/** Replay the group, rewrite snapshots, re-edit the cards whose displayed deltas changed. */
 export function rebuildRatingsHandler(deps: Deps): JobHandler {
   return async ({ job }) => {
     const { groupId } = Payload.parse(job.payload);

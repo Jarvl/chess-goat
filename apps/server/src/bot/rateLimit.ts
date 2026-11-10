@@ -1,4 +1,4 @@
-/** Sliding-window limiter kept in memory; one process at v1 (spec §4.3), so no table is needed. */
+/** Sliding-window limiter kept in memory; one process at v1, so no table is needed. */
 export class RateLimiter {
   private readonly hits = new Map<string, number[]>();
   private lastSweep = 0;

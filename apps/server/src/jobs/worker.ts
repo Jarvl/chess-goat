@@ -20,12 +20,12 @@ type LeasedJob = JobRow & { runAtText: string };
 
 type Outcome = JobResult | { outcome: 'error'; error: string };
 
-/** Spec §10: `min(5 s · 2^attempts, 1 h)` where `attempts` counts failures so far. */
+/** `min(5 s · 2^attempts, 1 h)` where `attempts` counts failures so far. */
 export function backoffSeconds(attempts: number): number {
   return Math.min(5 * 2 ** attempts, 3600);
 }
 
-/** Spec §11: pollers back off while the database is unavailable; doubles per failure, capped at a minute. */
+/** Pollers back off while the database is unavailable; doubles per failure, capped at a minute. */
 export function pollBackoffMs(baseMs: number, consecutiveFailures: number): number {
   return Math.min(baseMs * 2 ** consecutiveFailures, 60_000);
 }

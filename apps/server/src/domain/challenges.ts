@@ -93,7 +93,7 @@ export function editCard(
   });
 }
 
-/** DM notifications spec §2.4: once a challenge is settled, the challenged player's DM about it goes. */
+/** Once a challenge is settled, the challenged player's DM about it goes. */
 export async function retireChallengeDm(
   tx: DbOrTx,
   challenge: Pick<ChallengeRow, 'id' | 'challengerId'>,
@@ -103,7 +103,7 @@ export async function retireChallengeDm(
   await retireChallengeDms(tx, challenge.id, challengeStub(nameWithFlair(challenger), outcome));
 }
 
-/** Spec §7.1/§7.8: limits checked, the card send and the opponent's DM enqueued in the same transaction. */
+/** Limits checked, the card send and the opponent's DM enqueued in the same transaction. */
 export async function createChallenge(
   deps: Deps,
   input: CreateChallengeInput,
@@ -231,7 +231,7 @@ function assertIsOpponent(
   }
 }
 
-/** Spec §7.1 accept: the row lock makes the first committed acceptance of an open challenge win. */
+/** Accept: the row lock makes the first committed acceptance of an open challenge win. */
 export async function acceptChallenge(
   deps: Deps,
   input: { challengeId: number; userId: number },
@@ -369,7 +369,7 @@ export async function cancelChallenge(
   });
 }
 
-/** Scanner (spec §7.3): pending challenges past `expires_at`, at most `limit` per pass. */
+/** Scanner: pending challenges past `expires_at`, at most `limit` per pass. */
 export async function expireChallenges(deps: Deps, limit = 100): Promise<number> {
   return deps.db.transaction(async (tx) => {
     const due = await tx
@@ -403,7 +403,7 @@ export async function createRematch(
   const [game] = await deps.db.select().from(games).where(eq(games.id, input.gameId)).limit(1);
   if (!game) throw new DomainError('not_found', 'game not found');
   if (game.status !== 'finished') throw new DomainError('stale_state', 'the game is still running');
-  // Spec §8: a bot rematch is a new engine game, created by the app through POST
+  // A bot rematch is a new engine game, created by the app through POST
   // /groups/:g/engine-games. Going through a challenge would post a card to the group and wait for
   // an acceptance that never comes.
   if (game.engineLevel !== null) {

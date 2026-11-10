@@ -68,7 +68,7 @@ describe('database', () => {
       'challenges',
       'dm_messages',
       'flair_backfills',
-      // Unused; kept until a later release so the previous image can still boot (backfill spec §2).
+      // Unused; kept until a later release so the previous image can still boot.
       'flair_introductions',
       'games',
       'group_members',

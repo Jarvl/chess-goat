@@ -16,7 +16,7 @@ type OfferState = Pick<
   'drawOfferBy' | 'lastDrawOfferPlyWhite' | 'lastDrawOfferPlyBlack' | 'plyCount'
 >;
 
-/** Spec §7.1/§7.8: no offer while one stands, and at most one offer per own move. */
+/** No offer while one stands, and at most one offer per own move. */
 export function canOfferDraw(game: OfferState, colour: Colour): boolean {
   if (game.drawOfferBy !== null) return false;
   const last = colour === 'white' ? game.lastDrawOfferPlyWhite : game.lastDrawOfferPlyBlack;
@@ -33,7 +33,7 @@ export async function offerDraw(deps: Deps, input: Input): Promise<GameDto> {
   const dto = await deps.db.transaction(async (tx) => {
     const { game, colour, ended } = await lockActiveGame(tx, input.gameId, input.userId);
     if (ended) return loadGameDto(tx, game, input.userId);
-    // Spec §8: the bot never takes a draw, so there is nothing to offer it.
+    // The bot never takes a draw, so there is nothing to offer it.
     if (isEngineGame(game)) {
       throw new DomainError('validation', 'the bot does not take draws', {
         reason: 'engine_game',
@@ -57,7 +57,7 @@ export async function offerDraw(deps: Deps, input: Input): Promise<GameDto> {
       .where(eq(games.id, game.id))
       .returning();
     if (!updated) throw new DomainError('not_found', 'game not found');
-    // DM notifications spec §2.4: an offer made while the recipient is to move is a DM of its own;
+    // An offer made while the recipient is to move is a DM of its own;
     // one made by the player to move rides on the recipient's next turn DM.
     // A bot gets no DMs, and nothing about a bot-vs-bot game reaches the chat.
     const recipientId = opposite(colour) === 'white' ? game.whiteId : game.blackId;
@@ -114,7 +114,7 @@ export async function declineDraw(deps: Deps, input: Input): Promise<GameDto> {
   return dto;
 }
 
-/** Spec §7.1: a claim succeeds only when the arbiter reports the current position claimable. */
+/** A claim succeeds only when the arbiter reports the current position claimable. */
 export async function claimDraw(deps: Deps, input: Input): Promise<GameDto> {
   const dto = await deps.db.transaction(async (tx) => {
     const { game, colour, now, ended } = await lockActiveGame(tx, input.gameId, input.userId);

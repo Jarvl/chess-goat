@@ -44,7 +44,7 @@ export function outcomeFor(
   return parts.join(' · ');
 }
 
-/** The status line of a game row (redesign spec §3.1 Pill). */
+/** The status line of a game row. */
 export function pillFor(game: GameSummary, viewerId: string | null, now: Date): Pill {
   if (game.status === 'finished')
     return {

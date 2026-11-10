@@ -91,7 +91,7 @@ type SeedRequest = {
   flair?: boolean;
 };
 
-/** What `flair: true` seeds (flair spec §7): earned and worn, in slot order. */
+/** What `flair: true` seeds: earned and worn, in slot order. */
 const SEEDED_FLAIR = {
   alice: ['rank_1400', 'en_passant_win', 'win_streak_5'],
   bob: ['rank_1200', 'promotion_win', 'scholars_mate_loss'],
@@ -127,7 +127,7 @@ async function main(): Promise<void> {
       LOG_LEVEL: 'warn',
       // The browser tests read `sse_streams` from /metrics; the same token is in e2e/support.ts.
       METRICS_TOKEN: 'e2e-metrics-token-0123456789abcdef',
-      // On, so spec §11's "one engine game seeded in the existing harness and played through" can
+      // On, so the "one engine game seeded in the existing harness and played through" test can
       // exist: with the flag off, the endpoint refuses and the handler never runs.
       ENGINE_ENABLED: true,
     }),

@@ -137,7 +137,7 @@ function premoveNotices(prev: GameDto, next: GameDto): Notice[] {
 }
 
 /**
- * Spec §6.4: banners come from the diff between consecutive states, never from separate events.
+ * Banners come from the diff between consecutive states, never from separate events.
  * `discardedDraft` says the store held unconfirmed premove changes before `next` was applied:
  * a new ply or a game end throws them away (conditional premoves spec, Sending it). Only a new ply
  * in a game still being played says so; a game end has its result screen to explain it.
@@ -183,7 +183,7 @@ export function diffNotices(
 
 export class GameStore {
   readonly dto: Signal<GameDto>;
-  /** null shows the latest position; a number shows an earlier one view-only (spec §6.3). */
+  /** null shows the latest position; a number shows an earlier one view-only. */
   readonly viewingPly: Signal<number | null> = signal(null);
   readonly flipped: Signal<boolean> = signal(false);
   readonly position: ReadonlySignal<Position>;

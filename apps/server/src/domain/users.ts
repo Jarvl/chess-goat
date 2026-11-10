@@ -20,7 +20,7 @@ export type TelegramUserInfo = {
   languageCode?: string | null;
 };
 
-/** Upsert keyed by Telegram id; refreshes the display fields and `last_seen_at` (spec §8). */
+/** Upsert keyed by Telegram id; refreshes the display fields and `last_seen_at`. */
 export async function ensureUser(tx: DbOrTx, info: TelegramUserInfo): Promise<UserRow> {
   const fields = {
     firstName: info.firstName,

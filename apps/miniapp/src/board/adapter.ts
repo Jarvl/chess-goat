@@ -23,7 +23,7 @@ export function highlightSquares(squares: string[]): Map<Key, string> {
   return new Map(squares.map((square) => [square as Key, 'premove-sq']));
 }
 
-/** Spec §6.3: the seam around chessground; nothing else imports it. */
+/** The seam around chessground; nothing else imports it. */
 export interface BoardAdapter {
   setPosition(position: BoardPosition): void;
   setMovable(movable: Movable): void;

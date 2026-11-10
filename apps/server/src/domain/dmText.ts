@@ -1,7 +1,7 @@
 import { endReasonLabel, isProvisional, ratingLabel, t, type EndReason } from '@chess-goat/shared';
 
 /**
- * DM notifications spec §4: the text of every DM and of the one line a DM leaves behind. Names
+ * The text of every DM and of the one line a DM leaves behind. Names
  * arrive already rendered with `nameWithFlair`.
  */
 

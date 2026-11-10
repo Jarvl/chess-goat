@@ -20,8 +20,8 @@ const codePoints = (emoji: string) =>
 const band = (min: number | null, max: number | null) => ({ kind: 'held', min, max });
 
 /**
- * The 14 flair the catalog launched with (spec §1.2), in display order: category, id and code
- * points. Adding a flair is one catalog entry and one string (spec §1.7), so the tests pin these by
+ * The 14 flair the catalog launched with, in display order: category, id and code
+ * points. Adding a flair is one catalog entry and one string, so the tests pin these by
  * id and in their relative order, and never that the catalog holds exactly them.
  */
 const LAUNCH: [category: string, id: string, codePoints: string][] = [

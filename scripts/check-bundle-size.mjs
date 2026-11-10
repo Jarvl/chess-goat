@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Spec §6.5: initial JavaScript ≤ 120 KB gzipped, CSS ≤ 25 KB gzipped, measured on the built app.
+// Initial JavaScript ≤ 120 KB gzipped, CSS ≤ 25 KB gzipped, measured on the built app.
 import { existsSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import { gzipSync } from 'node:zlib';

@@ -5,7 +5,7 @@ import { dmMessages, type DmKind, type DmMessageRow } from '../db/schema';
 import { enqueue } from '../jobs/queue';
 
 /**
- * DM notifications spec §2: the live DM rows. Every function runs inside the caller's transaction,
+ * The live DM rows. Every function runs inside the caller's transaction,
  * so the row and the job that acts on its message commit together.
  */
 
@@ -114,7 +114,7 @@ export function retireUserDms(tx: DbOrTx, userId: number, stub: string): Promise
   return retireWhere(tx, eq(dmMessages.userId, userId), () => stub);
 }
 
-/** Spec §2.2: after the user moves, their live DM becomes the waiting line, silently. */
+/** After the user moves, their live DM becomes the waiting line, silently. */
 export async function markWaiting(
   tx: DbOrTx,
   p: { userId: number; gameId: number; text: string },

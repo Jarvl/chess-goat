@@ -187,7 +187,7 @@ function waitsOn(row: TurnRow, userId: number): boolean {
   return (row.fen.split(' ')[1] === 'b' ? row.blackId : row.whiteId) === userId;
 }
 
-/** Groups where the user is a known member and the bot is still present (spec §9 `GET /me/groups`). */
+/** Groups where the user is a known member and the bot is still present. */
 export async function meGroups(deps: Deps, userId: number): Promise<MeGroupsDto> {
   const memberOf = await visibleGroups(deps.db, userId);
   if (memberOf.length === 0) return { groups: [] };
@@ -207,7 +207,7 @@ export async function meGroups(deps: Deps, userId: number): Promise<MeGroupsDto>
 
 /**
  * How many active games across every visible group are waiting on this user — the Games tab's
- * badge (spec §6.2). Counted rather than listed: the launch response carries it for every launch,
+ * badge. Counted rather than listed: the launch response carries it for every launch,
  * including a deep link into one game, where the full list is never built.
  */
 export async function yourMoveTotal(deps: Deps, userId: number): Promise<number> {
@@ -224,7 +224,7 @@ export async function yourMoveTotal(deps: Deps, userId: number): Promise<number>
 /**
  * The viewer's active games across every group they can still see, their own turn first and
  * then most recently moved — the Active tab's ordering widened to all groups.
- * This is the Mini App's home screen (spec §9 `GET /me/games`).
+ * This is the Mini App's home screen.
  */
 export async function meGames(deps: Deps, userId: number): Promise<MeGamesDto> {
   const memberOf = await visibleGroups(deps.db, userId);

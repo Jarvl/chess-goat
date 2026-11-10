@@ -98,7 +98,7 @@ function avatar(value: SnapshotAvatar): El {
 }
 
 /**
- * The player's worn flair (flair spec §5.1), one picture per emoji, spaced by a gap as in the Mini
+ * The player's worn flair, one picture per emoji, spaced by a gap as in the Mini
  * App. It never shrinks, so a long name is cut short before it.
  */
 function flair(bar: SnapshotBar): El[] {

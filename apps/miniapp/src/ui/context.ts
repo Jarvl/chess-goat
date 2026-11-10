@@ -5,7 +5,7 @@ import type { ApiClient } from '../api/client';
 import type { Router } from '../router';
 import type { Tg } from '../tg/webapp';
 
-/** Data that arrived with the launch response, consumed once by the first screen (spec §6.1). */
+/** Data that arrived with the launch response, consumed once by the first screen. */
 export type Prefetched = {
   game?: GameDto;
   lobby?: LobbyDto;

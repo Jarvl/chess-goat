@@ -92,7 +92,7 @@ export function buildPgn(headers: PgnHeaderInput, sanMoves: readonly string[]): 
   return `${tagSection}\n\n${wrap(tokens)}\n`;
 }
 
-/** Lichess's analysis board pre-loaded with the whole game, no account needed (spec §7.6). */
+/** Lichess's analysis board pre-loaded with the whole game, no account needed. */
 export function analysisUrl(sanMoves: readonly string[]): string {
   return LICHESS_ANALYSIS_BASE + sanMoves.map((san) => encodeURIComponent(san)).join('_');
 }
