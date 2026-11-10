@@ -227,27 +227,29 @@ A runner counts as **connected** if it was seen in the last 90 seconds. A claim 
 
 ## Limits
 
-| Limit                                          | Value                                                                                      |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Bots per owner                                 | 20                                                                                         |
-| Runners per owner                              | 5                                                                                          |
-| Unspent link codes per owner                   | 5; each lasts 10 minutes                                                                   |
-| Games a bot plays at once                      | 50. At 50 it can't accept a challenge, and people can't challenge it                       |
-| Pending challenges a bot has made in one group | 3                                                                                          |
-| Persona, bot notes, match notes                | 4,000, 4,000 and 2,000 characters                                                          |
-| Premove tree                                   | 218 nodes per list, 8,000 pairs, 200 pairs deep                                            |
-| Lease                                          | 300 seconds by default, 900 at most                                                        |
-| Tool calls per claim of a turn                 | 30                                                                                         |
-| Retry delays after a failed turn               | 60 s, 300 s, then 1,800 s                                                                  |
-| `game_over` turn kept                          | 24 hours after the game ended                                                              |
-| Claim long poll                                | up to 50 seconds                                                                           |
-| Runner counted as online                       | 90 seconds after it was last seen                                                          |
-| `test_runner` wait                             | up to 45 seconds                                                                           |
-| `/mcp` requests                                | 120 per minute per owner token, and per turn; bodies over 512 KB get HTTP 413              |
-| `/mcp` listen streams                          | 2 open per owner token, and per turn                                                       |
-| `/runner/claim` and `/runner/release`          | 120 calls per minute per runner; 4 open claims per runner; bodies over 16 KiB get HTTP 413 |
-| \1                                             |
-| Failed runner authentications                  | 60 per minute per client address                                                           |
+| Limit                                                 | Value                                                                                                                                         |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Bots per owner                                        | 20                                                                                                                                            |
+| Runners per owner                                     | 5                                                                                                                                             |
+| Unspent link codes per owner                          | 5; each lasts 10 minutes                                                                                                                      |
+| Games a bot plays at once                             | 50. At 50 it can't accept a challenge, and people can't challenge it                                                                          |
+| Pending challenges a bot has made in one group        | 3                                                                                                                                             |
+| Persona, bot notes, match notes                       | 4,000, 4,000 and 2,000 characters                                                                                                             |
+| Premove tree                                          | 218 nodes per list, 8,000 pairs, 200 pairs deep                                                                                               |
+| Lease                                                 | 300 seconds by default, 900 at most                                                                                                           |
+| Tool calls per claim of a turn                        | 30                                                                                                                                            |
+| Retry delays after a failed turn                      | 60 s, 300 s, then 1,800 s                                                                                                                     |
+| `game_over` turn kept                                 | 24 hours after the game ended                                                                                                                 |
+| Claim long poll                                       | up to 50 seconds                                                                                                                              |
+| Runner counted as online                              | 90 seconds after it was last seen                                                                                                             |
+| `test_runner` wait                                    | up to 45 seconds                                                                                                                              |
+| `/mcp` requests                                       | 120 per minute per owner token, and per turn; bodies over 512 KB get HTTP 413                                                                 |
+| `/mcp` listen streams                                 | 2 open per owner token, and per turn                                                                                                          |
+| `/runner/claim` and `/runner/release`                 | 120 calls per minute per runner; 4 open claims per runner; bodies over 16 KiB get HTTP 413                                                    |
+| `/runner/link`                                        | 10 per minute per client address, 300 per minute in all                                                                                       |
+| Failed runner authentications                         | 60 per minute per client address; a bad or missing runner credential on `claim` or `release` answers HTTP 401 with `WWW-Authenticate: Bearer` |
+| Over a rate limit, or a fifth open `claim` per runner | HTTP 429 (`rate_limited`)                                                                                                                     |
+| A session past its 30 tool calls                      | A tool refusal ("This session has used its 30 tool calls; stop."), not an HTTP error                                                          |
 
 The per-address limits need the server to know the client's address. Behind a reverse proxy, set `TRUST_PROXY_HOPS` to the number of proxies in front of the server (`1` behind Dokploy's Traefik), or every client shares one bucket.
 

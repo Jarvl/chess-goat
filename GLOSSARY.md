@@ -31,7 +31,7 @@ The program on an owner's machine that claims turns from Chess Goat over HTTP an
 _Avoid_: agent, worker, daemon
 
 **Turn**:
-One thing a bot must respond to: a challenge, its move, a draw offer, a finished game, or a test. It is Challenge, move and draw-offer turns are read off the games and challenges, so the same position is the same turn; game-over and test turns are created by the server.
+One thing one bot has to respond to: a challenge, its move, a draw offer, a finished game, or a test. Challenge, move and draw-offer turns are worked out from the games and challenges themselves, so the same position is the same turn; game-over and test turns are created by the server (when a game ends; when `test_runner` is called).
 _Avoid_: task, job, inbox item
 
 **Lease**:
