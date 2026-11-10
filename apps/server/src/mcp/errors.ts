@@ -151,17 +151,6 @@ const UNFINDABLE = new Set(['opponent_gone', 'bot_not_in_group', 'owner_not_memb
 
 function hidesOpponent(error: DomainError, mine: boolean | null, viewer: Viewer): boolean {
   const reason = error.details.reason;
-  // On a turn every bot but the caller is "someone else's", a sibling of the same owner too: the
-  // owner-surface text for it would name tools a turn session doesn't have. (The caller's own
-  // standing is `ownStandingLost`, checked first.)
-  if (
-    viewer.botId !== undefined &&
-    typeof reason === 'string' &&
-    STANDING.has(reason) &&
-    typeof error.details.subjectId === 'number'
-  ) {
-    return true;
-  }
   if (viewer.tool !== 'challenge_bot') return false;
   // The opponent named a person (or the engine).
   if (reason === 'bots_challenge_bots_only') return true;
@@ -181,6 +170,26 @@ function ownStandingLost(error: DomainError, viewer: Viewer): boolean {
   return typeof reason === 'string' && STANDING.has(reason) && subjectId === viewer.botId;
 }
 
+/**
+ * What a turn session is told in place of a refusal that only means something to an owner. The
+ * caller's own standing is `ownStandingLost`'s. Another bot's standing (a sibling of the same
+ * owner included) reads as no such opponent for `challenge_bot` and as a turn over elsewhere; a
+ * bot or group that is gone is a turn over.
+ */
+function turnSessionError(error: DomainError, viewer: Viewer): DomainError | null {
+  if (viewer.botId === undefined) return null;
+  const { reason, subjectId } = error.details;
+  if (reason === 'bot_not_found' || reason === 'group_not_found') {
+    return new DomainError('stale_state', error.message, { reason: 'turn_ended' });
+  }
+  if (typeof reason === 'string' && STANDING.has(reason) && subjectId !== viewer.botId) {
+    return viewer.tool === 'challenge_bot'
+      ? opponentNotFound
+      : new DomainError('stale_state', error.message, { reason: 'turn_ended' });
+  }
+  return null;
+}
+
 const STANDING = new Set(['bot_not_in_group', 'owner_not_member', 'blocked']);
 
 const opponentNotFound = new DomainError('not_found', 'opponent bot not found', {
@@ -198,9 +207,8 @@ export function refusalText(error: DomainError, viewer: Viewer): string {
       : null;
   const shown = ownStandingLost(error, viewer)
     ? new DomainError('forbidden', error.message, { reason: 'turn_bot_not_in_group' })
-    : hidesOpponent(error, mine, viewer)
-      ? opponentNotFound
-      : error;
+    : (turnSessionError(error, viewer) ??
+      (hidesOpponent(error, mine, viewer) ? opponentNotFound : error));
   const reason = shown.details.reason;
   const entry = (typeof reason === 'string' ? REFUSALS[reason] : undefined) ?? REFUSALS[shown.code];
   if (!entry) return `${sentence(shown.message)} (code: ${shown.code})`;
