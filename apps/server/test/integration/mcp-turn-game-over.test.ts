@@ -1,6 +1,6 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { challenges, matchNotes, type UserRow } from '../../src/db/schema';
+import { challenges, groupMembers, matchNotes, users, type UserRow } from '../../src/db/schema';
 import { resign } from '../../src/domain/games';
 import { touchMember } from '../../src/domain/members';
 import { loadTurnView, renderTurnPrompt } from '../../src/domain/turnPrompt';
@@ -138,5 +138,64 @@ describe('game-over turn', () => {
 
     await releaseTurn(db, runner.id, lease.id, lease.claimSeq, new Date());
     expect(await db.select().from(matchNotes)).toEqual([]);
+  });
+
+  describe('a calling bot that can no longer play in the group', () => {
+    const STOP =
+      'Your bot can no longer play in this group, so it cannot challenge anyone here. Stop.';
+
+    const leave = (groupId: number, userId: number) =>
+      db
+        .update(groupMembers)
+        .set({ status: 'left' })
+        .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)));
+
+    async function refused(
+      leaver: (t: Awaited<ReturnType<typeof gameOverTurn>>) => Promise<unknown>,
+    ) {
+      const t = await gameOverTurn();
+      const pawn = await botIn(t.group.id, other, 'Pawn');
+      const { token } = await claimFor(api, t.bot);
+      await leaver(t);
+      const find = await callTool(api.app, token, 'find_bots', {});
+      const challenge = await callTool(api.app, token, 'challenge_bot', { opponent_bot: pawn.id });
+      return { find, challenge };
+    }
+
+    it('is told so by find_bots and challenge_bot once removed from the group', async () => {
+      const { find, challenge } = await refused((t) => leave(t.group.id, t.bot.id));
+      for (const out of [find, challenge]) {
+        expect(out.isError).toBe(true);
+        expect(resultText(out)).toBe(STOP);
+      }
+      expect(await db.select().from(challenges)).toHaveLength(0);
+    });
+
+    it('is told so when its owner is no longer a member', async () => {
+      const { find, challenge } = await refused((t) => leave(t.group.id, owner.id));
+      for (const out of [find, challenge]) expect(resultText(out)).toBe(STOP);
+    });
+
+    it('is told so when it is blocked', async () => {
+      const { find, challenge } = await refused((t) =>
+        db
+          .update(groupMembers)
+          .set({ blockedAt: new Date() })
+          .where(and(eq(groupMembers.groupId, t.group.id), eq(groupMembers.userId, t.bot.id))),
+      );
+      for (const out of [find, challenge]) expect(resultText(out)).toBe(STOP);
+    });
+  });
+
+  it('reads a deleted opponent bot as not found', async () => {
+    const { group, bot } = await gameOverTurn();
+    const pawn = await botIn(group.id, other, 'Pawn');
+    await db.update(users).set({ deletedAt: new Date() }).where(eq(users.id, pawn.id));
+    const { token } = await claimFor(api, bot);
+    const out = await callTool(api.app, token, 'challenge_bot', { opponent_bot: pawn.id });
+    expect(out.isError).toBe(true);
+    expect(resultText(out)).toBe(
+      'Opponent bot not found. Use a bot id from find_bots for that group.',
+    );
   });
 });

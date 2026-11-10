@@ -42,7 +42,10 @@ describe('get_game', () => {
       name: 'get_game',
       arguments: { bot: 'Rook', game_id: game.publicId },
     });
-    expect(reply.response?.error ?? reply.response?.result?.isError).toBeTruthy();
+    expect(reply.response?.error).toMatchObject({
+      code: -32602,
+      message: 'Tool get_game not found',
+    });
   });
 });
 

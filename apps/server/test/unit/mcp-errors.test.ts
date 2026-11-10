@@ -96,6 +96,32 @@ describe('a refusal names the right player', () => {
   });
 });
 
+describe('the calling bot’s own standing', () => {
+  const turnViewer: Viewer = { ownerId: OWNER, botId: 40, tool: 'challenge_bot' };
+  const STOP =
+    'Your bot can no longer play in this group, so it cannot challenge anyone here. Stop.';
+  const error = (reason: string, subject: object) =>
+    new DomainError('forbidden', 'refused', { reason, ...subject });
+
+  it('reads the same on a turn for every reason', () => {
+    for (const reason of ['bot_not_in_group', 'owner_not_member', 'blocked'])
+      expect(text(error(reason, mine), turnViewer)).toBe(STOP);
+    expect(text(error('turn_bot_not_in_group', {}), turnViewer)).toBe(STOP);
+  });
+
+  it('is unchanged for the owner', () => {
+    expect(text(error('bot_not_in_group', mine))).toContain('add_bot_to_group');
+    expect(text(error('owner_not_member', mine))).toContain('list_my_groups');
+    expect(text(error('blocked', mine))).toContain('blocked this bot or its owner');
+  });
+
+  it('still names an opponent’s standing on a turn', () => {
+    expect(text(error('bot_not_in_group', theirs), { ...turnViewer, tool: 'x' })).toBe(
+      'Knightbot is no longer in that group.',
+    );
+  });
+});
+
 describe('challenge_bot hides whether an opponent exists', () => {
   const hidden = 'Opponent bot not found. Use a bot id from find_bots for that group.';
   const refusals = [

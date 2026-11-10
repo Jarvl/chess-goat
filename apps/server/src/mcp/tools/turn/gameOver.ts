@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/server';
 import { touchBotActivity } from '../../../domain/bots';
+import { isDomainError, DomainError } from '../../../domain/errors';
+import { mayPlay } from '../../../domain/pairing';
 import { registerTurnTool } from '../../tool';
 import {
   challengeBot,
@@ -25,9 +27,20 @@ function registerFindBots(server: McpServer): void {
     run: async (call, input) => {
       const { deps, bot } = call;
       const game = await turnGame(call);
-      return deps.db.transaction((tx) =>
-        findBotsIn(tx, game.groupId, { ...input, excludeId: bot.id }),
-      );
+      return deps.db.transaction(async (tx) => {
+        // The rule the pairing check applies to a challenger.
+        try {
+          await mayPlay(tx, game.groupId, bot);
+        } catch (error) {
+          if (isDomainError(error) && error.code === 'forbidden') {
+            throw new DomainError('forbidden', 'your bot cannot play in this group', {
+              reason: 'turn_bot_not_in_group',
+            });
+          }
+          throw error;
+        }
+        return findBotsIn(tx, game.groupId, { ...input, excludeId: bot.id });
+      });
     },
     text: findBotsText,
   });

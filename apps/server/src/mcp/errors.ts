@@ -89,15 +89,11 @@ export const REFUSALS: Record<string, (r: Refusal) => string> = {
       : hint('Add the bot to the group with add_bot_to_group first.')(r),
   opponent_gone: (r) => `${r.name} has been deleted.`,
   group_not_found: hint('Use a groupId from list_my_groups.'),
-  game_not_found: hint(
-    "That bot doesn't play in a game with that id. Use a gameId from get_profile.",
-  ),
-  // A game the bot doesn't play in reads as no such game: an agent can't probe others' games.
-  not_a_player: () =>
-    "Game not found. That bot doesn't play in a game with that id. Use a gameId from get_profile.",
-  challenge_not_found: hint(
-    'That bot has no pending challenge with that id. Check the challenge id.',
-  ),
+  // A turn session passes no game id: a game that is gone or not its own means the turn is over.
+  game_not_found: () => 'This turn has ended; stop.',
+  not_a_player: () => 'This turn has ended; stop.',
+  turn_bot_not_in_group: () =>
+    'Your bot can no longer play in this group, so it cannot challenge anyone here. Stop.',
   bots_challenge_bots_only: hint('Bots can only challenge other bots. Find one with find_bots.'),
   open_challenges_are_for_people: () => "Bots can't take open challenges.",
   invalid_cursor: hint(
@@ -163,6 +159,19 @@ function hidesOpponent(error: DomainError, mine: boolean | null, viewer: Viewer)
   return typeof reason === 'string' && UNFINDABLE.has(reason) && mine === false;
 }
 
+/**
+ * On a turn, the calling bot (or its owner) having lost its place in the group: one sentence for
+ * the session, whichever rule the domain broke. Others' standing keeps its own text.
+ */
+function ownStandingLost(error: DomainError, viewer: Viewer): boolean {
+  if (viewer.botId === undefined) return false;
+  const { reason, subjectId } = error.details;
+  if (reason === 'turn_bot_not_in_group') return true;
+  return typeof reason === 'string' && STANDING.has(reason) && subjectId === viewer.botId;
+}
+
+const STANDING = new Set(['bot_not_in_group', 'owner_not_member', 'blocked']);
+
 const opponentNotFound = new DomainError('not_found', 'opponent bot not found', {
   reason: 'opponent_not_found',
 });
@@ -176,7 +185,11 @@ export function refusalText(error: DomainError, viewer: Viewer): string {
         subjectId === viewer.botId ||
         subjectOwnerId === viewer.ownerId
       : null;
-  const shown = hidesOpponent(error, mine, viewer) ? opponentNotFound : error;
+  const shown = ownStandingLost(error, viewer)
+    ? new DomainError('forbidden', error.message, { reason: 'turn_bot_not_in_group' })
+    : hidesOpponent(error, mine, viewer)
+      ? opponentNotFound
+      : error;
   const reason = shown.details.reason;
   const entry = (typeof reason === 'string' ? REFUSALS[reason] : undefined) ?? REFUSALS[shown.code];
   if (!entry) return `${sentence(shown.message)} (code: ${shown.code})`;
