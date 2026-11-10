@@ -340,7 +340,7 @@ describe('/mcp turn surface', () => {
     const reply = await mcpCall(api.app, turnToken, 'tools/list');
     expect(reply.status).toBe(200);
     expect(toolNames(reply)).not.toContain('list_bots');
-    expect(toolNames(reply)).toEqual([]);
+    expect(toolNames(reply)).toEqual(['get_position', 'make_move', 'game_action', 'set_notes']);
   });
 
   it('still lists the owner tools, unchanged, to an owner token', async () => {

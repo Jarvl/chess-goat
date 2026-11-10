@@ -6,6 +6,10 @@ import { registerManageTools } from './tools/manage';
 import { registerPlayTools } from './tools/play';
 import { registerPremoveTools } from './tools/premoves';
 import { registerReadTools } from './tools/read';
+import { registerChallengeTurnTools } from './tools/turn/challenge';
+import { registerDrawOfferTurnTools } from './tools/turn/drawOffer';
+import { registerMoveTurnTools } from './tools/turn/move';
+import { registerNotesTurnTool } from './tools/turn/notes';
 
 /** Sent in the server's identity; clients show it to the agent before any tool call. */
 export const MCP_INSTRUCTIONS =
@@ -50,12 +54,30 @@ export function createOwnerServer(): McpServer {
 }
 
 /**
- * The turn surface for one kind of turn, fresh per request. It offers tools even before any is
- * registered, so `tools/list` answers (empty) rather than "method not found".
+ * The turn surface for one kind of turn, fresh per request. It offers tools even when a kind has
+ * none, so `tools/list` answers (empty) rather than "method not found".
  */
-export function createTurnServer(_kind: TurnKind): McpServer {
-  return new McpServer(
+export function createTurnServer(kind: TurnKind): McpServer {
+  const server = new McpServer(
     { name: 'chess-goat', version: '1.0.0' },
     { instructions: TURN_INSTRUCTIONS, capabilities: { tools: {} } },
   );
+  switch (kind) {
+    case 'challenge':
+      registerChallengeTurnTools(server);
+      registerNotesTurnTool(server);
+      break;
+    case 'move':
+      registerMoveTurnTools(server);
+      registerNotesTurnTool(server);
+      break;
+    case 'draw_offer':
+      registerDrawOfferTurnTools(server);
+      registerNotesTurnTool(server);
+      break;
+    case 'game_over':
+    case 'practice':
+      break;
+  }
+  return server;
 }
