@@ -457,6 +457,8 @@ export const turnLeases = pgTable(
     leasedUntil: tz(),
     failures: integer().notNull().default(0),
     claimableAt: tz().notNull().defaultNow(),
+    /** Bumped on each claim, so a session from an earlier lease of this row is told apart. */
+    claimSeq: integer().notNull().default(0),
     /** Tool calls spent on the current turn token. */
     callsUsed: integer().notNull().default(0),
     notesRevisionSeen: integer(),

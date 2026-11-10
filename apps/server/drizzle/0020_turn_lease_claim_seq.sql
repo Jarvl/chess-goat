@@ -1,0 +1,1 @@
+ALTER TABLE "turn_leases" ADD COLUMN "claim_seq" integer DEFAULT 0 NOT NULL;

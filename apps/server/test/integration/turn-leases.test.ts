@@ -99,7 +99,7 @@ describe('claimTurn', () => {
     for (const delay of [60, 300, 1800, 1800]) {
       const claimed = await claimTurn(deps, runner, { now });
       expect(claimed).not.toBeNull();
-      await releaseTurn(db, runner.id, claimed!.lease.id, now);
+      await releaseTurn(db, runner.id, claimed!.lease.id, claimed!.lease.claimSeq, now);
       expect(
         await claimTurn(deps, runner, { now: new Date(now.getTime() + (delay - 1) * 1000) }),
       ).toBeNull();
@@ -114,22 +114,56 @@ describe('claimTurn', () => {
   it('an expired lease counts as a failure', async () => {
     const { runner } = await setup();
     const claimed = await claimTurn(deps, runner, { now: T0, leaseSeconds: 60 });
+    expect(claimed?.lease.claimSeq).toBe(1);
     expect(await claimTurn(deps, runner, { now: at(59) })).toBeNull();
-    // The lease ends at 60 s; the retry delay runs from the claim that noticed.
-    expect(await claimTurn(deps, runner, { now: at(60) })).toBeNull();
+    // The lease ended at 60 s; noticed later, the retry delay still runs from then.
+    expect(await claimTurn(deps, runner, { now: at(100) })).toBeNull();
     const [row] = await leaseRows();
     expect(row).toMatchObject({ failures: 1, runnerId: null, leasedUntil: null });
     expect(row!.claimableAt).toEqual(at(120));
+    // Noticed once: a later claim counts no second failure.
+    expect(await claimTurn(deps, runner, { now: at(110) })).toBeNull();
+    expect((await leaseRows())[0]!.failures).toBe(1);
     const again = await claimTurn(deps, runner, { now: at(120) });
-    expect(again?.lease.id).toBe(claimed!.lease.id);
+    expect(again?.lease).toMatchObject({ id: claimed!.lease.id, claimSeq: 2 });
   });
+
+  for (const reclaimer of ['another runner', 'the same runner'] as const) {
+    it(`an expired session cannot act on the lease ${reclaimer} took over`, async () => {
+      const { owner, runner } = await setup();
+      const other = reclaimer === 'the same runner' ? runner : await insertRunner(owner);
+      const first = (await claimTurn(deps, runner, { now: T0, leaseSeconds: 60 }))!.lease;
+      const second = (await claimTurn(deps, other, { now: at(120) }))!.lease;
+      expect(second).toMatchObject({ id: first.id, runnerId: other.id, failures: 1 });
+      expect(second.claimSeq).toBe(first.claimSeq + 1);
+
+      const ended = { details: { reason: 'turn_ended' } };
+      const stale = { claimSeq: first.claimSeq };
+      await expect(requireLiveLease(db, first.id, at(130), stale)).rejects.toMatchObject(ended);
+      await expect(spendCall(db, first.id, first.claimSeq)).rejects.toMatchObject(ended);
+      await releaseTurn(db, runner.id, first.id, first.claimSeq, at(130));
+
+      // The new session's lease, budget and failure count are untouched.
+      const [row] = await leaseRows();
+      expect(row).toMatchObject({
+        runnerId: other.id,
+        leasedUntil: second.leasedUntil,
+        callsUsed: 0,
+        failures: 1,
+      });
+      await expect(
+        requireLiveLease(db, second.id, at(130), { claimSeq: second.claimSeq }),
+      ).resolves.toMatchObject({ id: second.id });
+      await spendCall(db, second.id, second.claimSeq);
+    });
+  }
 
   it('ignores a release by a runner that does not hold the lease', async () => {
     const { owner, runner } = await setup();
     const other = await insertRunner(owner);
     const claimed = await claimTurn(deps, runner, { now: T0 });
-    await releaseTurn(db, other.id, claimed!.lease.id, T0);
-    await releaseTurn(db, runner.id, 999_999, T0);
+    await releaseTurn(db, other.id, claimed!.lease.id, claimed!.lease.claimSeq, T0);
+    await releaseTurn(db, runner.id, 999_999, 1, T0);
     const [row] = await leaseRows();
     expect(row).toMatchObject({ runnerId: runner.id, failures: 0 });
   });
@@ -162,7 +196,7 @@ describe('claimTurn', () => {
     const { bot, game, runner } = await setup();
     const claimed = await claimTurn(deps, runner, { now: T0 });
     await playMove(deps, { gameId: game.publicId, userId: bot.id, move: 'e4', expectedPly: 0 });
-    await releaseTurn(db, runner.id, claimed!.lease.id, at(10));
+    await releaseTurn(db, runner.id, claimed!.lease.id, claimed!.lease.claimSeq, at(10));
     expect(await leaseRows()).toEqual([]);
   });
 
@@ -208,7 +242,7 @@ describe('claimTurn', () => {
       .values({ botId: bot.id, kind: 'practice', claimableAt: T0, expiresAt: at(600) });
     const claimed = await claimTurn(deps, runner, { now: T0 });
     expect(claimed?.lease.kind).toBe('practice');
-    await releaseTurn(db, runner.id, claimed!.lease.id, T0);
+    await releaseTurn(db, runner.id, claimed!.lease.id, claimed!.lease.claimSeq, T0);
     const [practice] = await db.select().from(turnLeases).where(eq(turnLeases.kind, 'practice'));
     expect(practice).toMatchObject({ runnerId: null, leasedUntil: null, failures: 0 });
     expect((await claimTurn(deps, runner, { now: at(600) }))?.lease.kind).toBe('move');
@@ -239,7 +273,7 @@ describe('requireLiveLease', () => {
     await db.update(users).set({ deletedAt: T0 }).where(eq(users.id, bot.id));
     await expect(requireLiveLease(db, leaseId, at(10), opts)).rejects.toMatchObject(ended);
     await db.update(users).set({ deletedAt: null }).where(eq(users.id, bot.id));
-    await releaseTurn(db, runner.id, leaseId, at(10));
+    await releaseTurn(db, runner.id, leaseId, claimed!.lease.claimSeq, at(10));
     await expect(requireLiveLease(db, leaseId, at(10), opts)).rejects.toMatchObject(ended);
     await expect(requireLiveLease(db, 999_999, at(10), opts)).rejects.toMatchObject(ended);
   });
@@ -250,8 +284,8 @@ describe('spendCall', () => {
     const { runner } = await setup();
     const claimed = await claimTurn(deps, runner, { now: T0 });
     const leaseId = claimed!.lease.id;
-    for (let i = 0; i < 30; i += 1) await spendCall(db, leaseId);
-    await expect(spendCall(db, leaseId)).rejects.toMatchObject({
+    for (let i = 0; i < 30; i += 1) await spendCall(db, leaseId, claimed!.lease.claimSeq);
+    await expect(spendCall(db, leaseId, claimed!.lease.claimSeq)).rejects.toMatchObject({
       code: 'limit_exceeded',
       details: { reason: 'turn_budget_spent' },
     });
@@ -317,7 +351,7 @@ describe('game-over turns', () => {
 
     const claimed = await claimTurn(deps, runner, { now: T0 });
     expect(claimed?.lease.kind).toBe('game_over');
-    await releaseTurn(db, runner.id, claimed!.lease.id, at(10));
+    await releaseTurn(db, runner.id, claimed!.lease.id, claimed!.lease.claimSeq, at(10));
     expect(await notesOf(claimed!.bot.id)).toEqual([]);
     const other = claimed!.bot.id === white.id ? black.id : white.id;
     expect(await notesOf(other)).toHaveLength(1);

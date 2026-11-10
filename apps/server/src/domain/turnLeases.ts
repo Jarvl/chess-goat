@@ -62,7 +62,8 @@ async function deleteLease(tx: DbOrTx, row: TurnLeaseRow): Promise<void> {
 
 /**
  * Ends the row's lease, run out or given back: a still-pending derived turn counts a failure and
- * waits its retry delay; a resolved one and a game-over turn go; a practice turn is freed.
+ * waits its retry delay from when the lease ended (its expiry, or `now` if given back before it);
+ * a resolved one and a game-over turn go; a practice turn is freed.
  */
 async function endLease(
   tx: DbOrTx,
@@ -83,13 +84,14 @@ async function endLease(
     return null;
   }
   const failures = row.failures + 1;
+  const ended = row.leasedUntil !== null && row.leasedUntil < now ? row.leasedUntil : now;
   const [failed] = await tx
     .update(turnLeases)
     .set({
       runnerId: null,
       leasedUntil: null,
       failures,
-      claimableAt: addSeconds(now, retryDelay(failures)),
+      claimableAt: addSeconds(ended, retryDelay(failures)),
     })
     .where(eq(turnLeases.id, row.id))
     .returning();
@@ -130,7 +132,10 @@ async function settleLeases(
 }
 
 /** Live bots this runner serves: its owner's, narrowed to `runner.botIds` when set. */
-async function servedBots(tx: DbOrTx, runner: RunnerRow): Promise<UserRow[]> {
+async function servedBots(
+  tx: DbOrTx,
+  runner: Pick<RunnerRow, 'ownerId' | 'botIds'>,
+): Promise<UserRow[]> {
   const conditions = [eq(users.ownerId, runner.ownerId), isNull(users.deletedAt)];
   if (runner.botIds !== null) conditions.push(inArray(users.id, runner.botIds));
   // Key share before any lease row: `setBotNotes` locks the bot, then the lease; claiming must
@@ -150,23 +155,26 @@ export async function claimTurn(
   opts: { leaseSeconds?: number; now?: Date },
 ): Promise<ClaimedTurn | null> {
   const now = opts.now ?? new Date();
-  const seconds = Math.min(
-    Math.max(Math.floor(opts.leaseSeconds ?? LEASE_DEFAULT_SECONDS), 1),
-    LEASE_MAX_SECONDS,
-  );
+  const requested = Number.isFinite(opts.leaseSeconds) ? opts.leaseSeconds! : LEASE_DEFAULT_SECONDS;
+  const seconds = Math.min(Math.max(Math.floor(requested), 1), LEASE_MAX_SECONDS);
   const leasedUntil = addSeconds(now, seconds);
   return deps.db.transaction(async (tx) => {
-    // One claim at a time per owner, so two runners can't both take a turn.
+    // Lock order: the owner's advisory lock, the runner, its bots (key share), their lease rows,
+    // then the key shares an insert takes on its game or challenge. Nothing may lock a lease row
+    // after a game row, or it could deadlock with a claim.
+    // One claim at a time per owner, so two runners can't both take a turn. (A runner's owner
+    // never changes, so the caller's copy can key the lock.)
     const ownerKey = runner.ownerId % 2_147_483_647;
     await tx.execute(sql`select pg_advisory_xact_lock(${CLAIM_LOCK}::int, ${ownerKey}::int)`);
-    // A runner revoked meanwhile claims nothing; the share lock holds off its revocation.
+    // Read as it is now: a runner revoked meanwhile claims nothing, and the share lock holds off
+    // its revocation.
     const [live] = await tx
-      .select({ id: runners.id })
+      .select()
       .from(runners)
       .where(eq(runners.id, runner.id))
       .for('key share');
     if (!live) return null;
-    const bots = await servedBots(tx, runner);
+    const bots = await servedBots(tx, live);
     if (bots.length === 0) return null;
     const botIds = bots.map((bot) => bot.id);
 
@@ -200,7 +208,7 @@ export async function claimTurn(
 
     const bot = bots.find((candidate) => candidate.id === chosen.botId)!;
     const lease = {
-      runnerId: runner.id,
+      runnerId: live.id,
       leasedUntil,
       callsUsed: 0,
       notesRevisionSeen: bot.botNotesRevision,
@@ -208,7 +216,7 @@ export async function claimTurn(
     if ('id' in chosen) {
       const [updated] = await tx
         .update(turnLeases)
-        .set(lease)
+        .set({ ...lease, claimSeq: sql`${turnLeases.claimSeq} + 1` })
         .where(eq(turnLeases.id, chosen.id))
         .returning();
       return { lease: updated!, bot };
@@ -223,6 +231,7 @@ export async function claimTurn(
         challengeId: chosen.challengeId,
         ply: chosen.ply,
         claimableAt: now,
+        claimSeq: 1,
         ...lease,
       })
       .returning();
@@ -230,20 +239,30 @@ export async function claimTurn(
   });
 }
 
-/** Ends a lease early. A still-pending derived turn gets failures + 1 and the next retry delay. */
+/**
+ * Ends a lease early. A still-pending derived turn gets failures + 1 and the next retry delay.
+ * A lease this runner does not hold under `claimSeq` (gone, or since claimed again) is left alone.
+ */
 export async function releaseTurn(
   tx: DbOrTx,
   runnerId: number,
   leaseId: number,
+  claimSeq: number,
   now: Date,
 ): Promise<void> {
   await tx.transaction(async (inner) => {
     const [row] = await inner
       .select()
       .from(turnLeases)
-      .where(and(eq(turnLeases.id, leaseId), eq(turnLeases.runnerId, runnerId)))
+      .where(
+        and(
+          eq(turnLeases.id, leaseId),
+          eq(turnLeases.runnerId, runnerId),
+          eq(turnLeases.claimSeq, claimSeq),
+        ),
+      )
       .for('update');
-    // Not held by this runner (or gone): nothing to give back.
+    // Not this claim of the lease: nothing to give back.
     if (!row) return;
     const stillPending =
       isDerived(row.kind) && isPending(row, await pendingTurns(inner, [row.botId]));
@@ -252,14 +271,15 @@ export async function releaseTurn(
 }
 
 /**
- * The lease, if it is held, unexpired and its turn still pending (or, with `allowResolved`,
- * resolved but still under lease). Else throws reason 'turn_ended'.
+ * The lease, if it is held, unexpired, still the claim `claimSeq` names (when given) and its turn
+ * still pending (or, with `allowResolved`, resolved but still under lease). Else throws reason
+ * 'turn_ended'.
  */
 export async function requireLiveLease(
   tx: DbOrTx,
   leaseId: number,
   now: Date,
-  opts: { allowResolved?: boolean } = {},
+  opts: { allowResolved?: boolean; claimSeq?: number } = {},
 ): Promise<TurnLeaseRow> {
   const [found] = await tx
     .select({ lease: turnLeases, deletedAt: users.deletedAt })
@@ -269,6 +289,8 @@ export async function requireLiveLease(
   if (!found || found.deletedAt !== null) throw turnEnded();
   const { lease } = found;
   if (!isLeased(lease, now)) throw turnEnded();
+  // The row was claimed again since: this session's lease ended with its own claim.
+  if (opts.claimSeq !== undefined && opts.claimSeq !== lease.claimSeq) throw turnEnded();
   if (lease.expiresAt !== null && lease.expiresAt <= now) throw turnEnded();
   if (!opts.allowResolved && isDerived(lease.kind)) {
     if (!isPending(lease, await pendingTurns(tx, [lease.botId]))) throw turnEnded();
@@ -276,19 +298,29 @@ export async function requireLiveLease(
   return lease;
 }
 
-/** Counts one tool call; throws 'turn_budget_spent' past TURN_CALL_BUDGET. */
-export async function spendCall(tx: DbOrTx, leaseId: number): Promise<void> {
+/**
+ * Counts one tool call of the claim `claimSeq`; throws 'turn_budget_spent' past TURN_CALL_BUDGET,
+ * and 'turn_ended' when the row is gone or claimed again. It checks nothing else: the caller runs
+ * `requireLiveLease` first.
+ */
+export async function spendCall(tx: DbOrTx, leaseId: number, claimSeq: number): Promise<void> {
   const [spent] = await tx
     .update(turnLeases)
     .set({ callsUsed: sql`${turnLeases.callsUsed} + 1` })
-    .where(and(eq(turnLeases.id, leaseId), lt(turnLeases.callsUsed, TURN_CALL_BUDGET)))
+    .where(
+      and(
+        eq(turnLeases.id, leaseId),
+        eq(turnLeases.claimSeq, claimSeq),
+        lt(turnLeases.callsUsed, TURN_CALL_BUDGET),
+      ),
+    )
     .returning({ id: turnLeases.id });
   if (spent) return;
-  const [exists] = await tx
-    .select({ id: turnLeases.id })
+  const [current] = await tx
+    .select({ claimSeq: turnLeases.claimSeq })
     .from(turnLeases)
     .where(eq(turnLeases.id, leaseId));
-  if (!exists) throw turnEnded();
+  if (current?.claimSeq !== claimSeq) throw turnEnded();
   throw new DomainError('limit_exceeded', 'turn call budget spent', {
     reason: 'turn_budget_spent',
     limit: TURN_CALL_BUDGET,
@@ -320,7 +352,10 @@ export async function offerGameOverTurns(tx: DbOrTx, game: GameRow, now: Date): 
     .onConflictDoNothing();
 }
 
-/** Failure counts for live turns, for list_bots: botId → count of turns with failures > 0. */
+/**
+ * Failure counts for live turns, for list_bots: botId → count of turns with failures > 0. Pass
+ * live bot ids only (`pendingTurns` does not filter deleted bots).
+ */
 export async function failingTurns(
   tx: DbOrTx,
   botIds: readonly number[],
