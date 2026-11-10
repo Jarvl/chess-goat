@@ -66,8 +66,6 @@ The whole server runs as one Node process with four roles (`api`, `bot`, `jobs`,
 | [Operations](docs/operations.md)                                                      | Deployment checklist, metrics and alerts        |
 | [Testing](docs/testing.md)                                                            | How it is tested, and what is left before alpha |
 | [Product requirements](docs/PRD.md)                                                   | What the product does and deliberately does not |
-| [Technical design](docs/superpowers/specs/2026-09-20-group-chess-technical-design.md) | Architecture, data model and protocols          |
-| [Specs](docs/superpowers/specs) and [implementation plans](docs/superpowers/plans)    | The design record of each feature               |
 
 ## Layout
 

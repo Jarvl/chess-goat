@@ -5,7 +5,7 @@
 | **Product** | Chess Goat — a Telegram bot for playing and watching 1v1 chess with the people in a group chat |
 | **Status** | Draft v0.2, for review |
 | **Date** | 2026-09-20 |
-| **Next step** | Technical requirements and architecture document: [docs/superpowers/specs/2026-09-20-group-chess-technical-design.md](superpowers/specs/2026-09-20-group-chess-technical-design.md) |
+| **Next step** | Technical requirements and architecture document (since removed from the repo) |
 
 ---
 
@@ -44,12 +44,10 @@ These were considered and are explicitly out of scope, so they should not creep 
 - Real-time blitz and bullet. Clocks are per-move (hours or days). Faster clocks can be revisited once the Mini App is proven.
 
 An engine opponent was originally on this list and was deliberately added to the product on
-2026-09-21; see
-[docs/superpowers/specs/2026-09-21-engine-opponent-design.md](superpowers/specs/2026-09-21-engine-opponent-design.md).
+2026-09-21.
 The remaining items above are still out of scope, in particular any in-app analysis (§7.8).
 
-Flair, emoji earned in play and worn beside a name, was deliberately added on 2026-09-29; see
-[docs/superpowers/specs/2026-09-29-flair-design.md](superpowers/specs/2026-09-29-flair-design.md).
+Flair, emoji earned in play and worn beside a name, was deliberately added on 2026-09-29.
 
 ## 4. Users
 
@@ -154,7 +152,7 @@ Priorities: **P0** = launch, **P1** = fast follow. Almost everything is P0 becau
 
 - **Moving**: hold-and-drag and tap-tap, both always available. On pick-up, the piece's legal destinations are marked. Drop on a legal square plays the move; drop anywhere else snaps back silently. Promotion opens a four-piece chooser over the target square.
 - **Who can move**: only the player whose turn it is. The other player can queue **premoves** instead (below). For spectators the pieces are simply not draggable. No toast, no message.
-- **Conditional premoves**: a player can prepare replies in advance, on the opponent's turn or on their own turn once they have played their move. Premoves form a tree: each branch is a pair, an opponent move they expect and their single reply to it, and under a reply hang the pairs for the opponent's next move. Every move in the tree is fully legal in the position its line reaches, so the board is live for both sides while building. There is no size limit beyond the request size (about 9,000 pairs). When the opponent plays a move the tree has a branch for, the server plays the reply at once, even with the app closed, and the rest of that branch becomes the new tree; an opponent move the tree has no branch for clears it, and the player is told in the turn DM and in the app. A line that simply runs out cancels nothing. Removing or replacing a premove always asks first. With move confirmations on, premoves are a draft confirmed with the move (**Confirm move + 2 premoves**) or on their own (**Confirm premoves**); with them off, each completed change saves at once. Premoves are visible only to their owner, on every device they have the game open on. Design: [conditional premoves spec](superpowers/specs/2026-10-29-conditional-premoves-design.md).
+- **Conditional premoves**: a player can prepare replies in advance, on the opponent's turn or on their own turn once they have played their move. Premoves form a tree: each branch is a pair, an opponent move they expect and their single reply to it, and under a reply hang the pairs for the opponent's next move. Every move in the tree is fully legal in the position its line reaches, so the board is live for both sides while building. There is no size limit beyond the request size (about 9,000 pairs). When the opponent plays a move the tree has a branch for, the server plays the reply at once, even with the app closed, and the rest of that branch becomes the new tree; an opponent move the tree has no branch for clears it, and the player is told in the turn DM and in the app. A line that simply runs out cancels nothing. Removing or replacing a premove always asks first. With move confirmations on, premoves are a draft confirmed with the move (**Confirm move + 2 premoves**) or on their own (**Confirm premoves**); with them off, each completed change saves at once. Premoves are visible only to their owner, on every device they have the game open on..
 - **Move confirmations**: user setting, one of Always, Only against people (default) and Never. Moves are permanent and mobile drops are easy to fumble, which matters most against a person; a bot game is many quick moves where the extra tap costs more than a slip. When a move needs confirming it is shown on the board with **Confirm move** / **Cancel** before it is sent. Leaving the game cancels it, asking first when it holds unconfirmed changes.
 - **Orientation**: the viewer's own colour at the bottom; spectators see White at the bottom with a flip control.
 - **Board UI**: last move highlight, check highlight, coordinates, move list (SAN) with tap-to-view of earlier positions (view only; making a move from a past position first returns to the current one), both clocks with time remaining, player names and ratings, draw offer and resign controls.
@@ -190,7 +188,7 @@ Edits to the game card are silent (no notification). There are no per-move messa
 ### 7.7 Notifications — P0
 
 - **In-app**: the lobby shows "Your move" games first, with a badge.
-- **DM**: for users who granted write access, a DM on each turn change ("Your move vs Alice 👑 · 12. Nf3 · 23 h left") with **♟ Open game** and **Go to group** buttons; one reminder at 10 % of the move time remaining for controls of 8 h or more; a DM when the opponent offers a draw while it is your move (an offer made with a move rides on the turn DM instead); a DM when challenged; and a result DM ("You won vs Alice · Resignation · 1512 (+8)") when a game ends by something other than your own action. Each game or challenge keeps **at most one live bot message**: a new DM replaces the previous one, which is deleted, or reduced to one line once Telegram no longer allows deleting it (after two days). After you move, your DM quietly becomes "✓ You played 12… Nf6 · waiting for Alice". Names carry worn flair. Design: [DM notifications spec](superpowers/specs/2026-09-29-dm-notifications-design.md).
+- **DM**: for users who granted write access, a DM on each turn change ("Your move vs Alice 👑 · 12. Nf3 · 23 h left") with **♟ Open game** and **Go to group** buttons; one reminder at 10 % of the move time remaining for controls of 8 h or more; a DM when the opponent offers a draw while it is your move (an offer made with a move rides on the turn DM instead); a DM when challenged; and a result DM ("You won vs Alice · Resignation · 1512 (+8)") when a game ends by something other than your own action. Each game or challenge keeps **at most one live bot message**: a new DM replaces the previous one, which is deleted, or reduced to one line once Telegram no longer allows deleting it (after two days). After you move, your DM quietly becomes "✓ You played 12… Nf6 · waiting for Alice". Names carry worn flair..
 - **Group**: none. The challenge card mentions the challenged player once; that is the only mention the bot ever makes.
 - Open question: whether to offer an admin-controlled group mention as a fallback for users who declined DMs (default off).
 
