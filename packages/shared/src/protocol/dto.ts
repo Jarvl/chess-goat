@@ -425,7 +425,7 @@ export const FlairDtoSchema = z.object({
 
 export type FlairDto = z.infer<typeof FlairDtoSchema>;
 
-/** Bots spec: whether the viewer has an owner token, and when it was made and last used. */
+/** Whether the viewer has an owner token, and when it was made and last used. */
 export const OwnerTokenStatusDtoSchema = z.object({
   token: z.object({ createdAt: IsoDateSchema, lastUsedAt: IsoDateSchema.nullable() }).nullable(),
 });

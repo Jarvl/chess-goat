@@ -103,7 +103,7 @@ export type EngineLevel = (typeof ENGINE_LEVELS)[number];
 
 export const EngineLevelSchema = z.enum(ENGINE_LEVELS);
 
-/** When a dropped move waits for Confirm move (move confirmations spec). */
+/** When a dropped move waits for Confirm move. */
 export const MOVE_CONFIRMATIONS = ['always', 'people', 'never'] as const;
 
 export type MoveConfirmations = (typeof MOVE_CONFIRMATIONS)[number];

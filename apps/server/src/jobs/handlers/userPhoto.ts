@@ -11,7 +11,7 @@ import { can } from '../../domain/playerKind';
 
 const payloadSchema = z.object({ userId: z.number().int() });
 
-/** Profile photos spec: Telegram's 160×160 JPEG is far smaller; anything this big is not one. */
+/** Telegram's 160×160 JPEG is far smaller; anything this big is not one. */
 export const MAX_PHOTO_BYTES = 65_536;
 const JPEG_MAGIC = Buffer.from([0xff, 0xd8, 0xff]);
 
@@ -50,7 +50,7 @@ async function write(
   });
 }
 
-/** Profile photos spec, "What the job does". */
+/** Fetches the user's smallest Telegram profile photo and stores it, skipping the download when it is unchanged. */
 const fetchUserPhoto =
   (ctx: TelegramHandlerContext): JobHandler =>
   async ({ job }) => {

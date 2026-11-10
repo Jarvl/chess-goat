@@ -85,7 +85,7 @@ type SeedRequest = {
   prefs?: Record<string, Record<string, unknown>>;
   groupTitle?: string;
   bobName?: string;
-  /** Gives Alice a stored Telegram photo (profile photos spec). */
+  /** Gives Alice a stored Telegram photo. */
   alicePhoto?: boolean;
   /** Alice and Bob each earn and wear three flair, all earned in the seeded game. Needs a game. */
   flair?: boolean;
@@ -187,7 +187,7 @@ async function main(): Promise<void> {
       game = row;
     }
     if (request.scenario === 'several') {
-      // Two of Alice's games (game switcher spec): 1.e4 e5 against Bob, hers to move, then 1.e4
+      // Two of Alice's games: 1.e4 e5 against Bob, hers to move, then 1.e4
       // against Carol, Carol's to move.
       const row = await insertGame(db, group.id, alice, bob, { fen: AFTER_E4_E5, plyCount: 2 });
       await insertMove(db, row.id, 1, 'e2e4', 'e4', AFTER_E4);
@@ -200,7 +200,7 @@ async function main(): Promise<void> {
       game = row;
     }
     if (request.scenario === 'crowd') {
-      // Nine of Alice's games, more than a phone's strip shows at once (game switcher spec): the
+      // Nine of Alice's games, more than a phone's strip shows at once: the
       // first five hers to move, the rest her opponents'.
       for (let index = 0; index < 9; index += 1) {
         const opponent = index % 2 === 0 ? bob : rows.carol!.id;

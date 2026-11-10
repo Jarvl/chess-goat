@@ -9,7 +9,7 @@ export const STRIP_REFRESH_MS = 30_000;
 
 /**
  * The switcher strip's games for the game on screen, or null while it is hidden: to anyone
- * watching, and whenever the list holds no game but this one (game switcher spec). A game reached
+ * watching, and whenever the list holds no game but this one. A game reached
  * from the strip itself (`hop`) keeps the order already shown; arriving from anywhere else starts
  * a fresh one. Only the game on screen has a live stream, so the list is reloaded every
  * `STRIP_REFRESH_MS` while the app is in view and as soon as it comes back; a failed load keeps

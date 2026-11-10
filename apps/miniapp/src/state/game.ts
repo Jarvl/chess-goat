@@ -31,7 +31,7 @@ export type Notice =
   | 'premoves_cancelled'
   | 'premove_draft_discarded';
 
-/** The board while premoves are built (conditional premoves spec, Mini App: Board). */
+/** The board while premoves are built. */
 export type BuildView = {
   position: Position;
   turn: Colour;
@@ -107,7 +107,7 @@ export function positionAt(dto: GameDto, ply: number): Position {
 }
 
 /**
- * Conditional premoves spec, Notices: walks the moves after `prev`'s ply against `prev`'s tree.
+ * Walks the moves after `prev`'s ply against `prev`'s tree.
  * Each opponent move that matched a branch and was followed by its reply is a fired pair; the walk
  * stops where a line runs out (nothing cancelled) or on an opponent move the remaining tree has no
  * branch for (the server cleared the tree).
@@ -139,7 +139,7 @@ function premoveNotices(prev: GameDto, next: GameDto): Notice[] {
 /**
  * Banners come from the diff between consecutive states, never from separate events.
  * `discardedDraft` says the store held unconfirmed premove changes before `next` was applied:
- * a new ply or a game end throws them away (conditional premoves spec, Sending it). Only a new ply
+ * a new ply or a game end throws them away. Only a new ply
  * in a game still being played says so; a game end has its result screen to explain it.
  */
 export function diffNotices(
@@ -201,7 +201,7 @@ export class GameStore {
   readonly boardView: ReadonlySignal<Position>;
   readonly boardTurn: ReadonlySignal<Colour>;
 
-  // Conditional premoves (spec, Mini App: Server state vs draft).
+  // Conditional premoves.
   /** The viewer's tree as the server last sent it. */
   readonly serverTree: ReadonlySignal<PremoveNode[]>;
   /** The player's move waiting for Confirm move; GameView sets it from the move machine. */
@@ -245,7 +245,7 @@ export class GameStore {
     });
     this.sideToMove = computed(() => sideToMove(this.position.value.fen));
     // The board shows what buildView shows: the real position, an earlier one, or a position in
-    // the premove tree while building (conditional premoves spec, Mini App: Board).
+    // the premove tree while building.
     this.boardView = computed(() => this.buildView.value.position);
     this.boardTurn = computed(() => this.buildView.value.turn);
     this.canMove = computed(() => this.buildView.value.canMove);
@@ -376,7 +376,7 @@ export class GameStore {
     const viewing = this.viewingPly.value;
     this.dto.value = next;
     const samePly = next.plyCount === current.plyCount && next.status === current.status;
-    // A new ply or a game end voids the draft (conditional premoves spec, Sending it); a same-ply
+    // A new ply or a game end voids the draft; a same-ply
     // state only replaces the server tree.
     if (!samePly) this.resetDraft();
     // A player reading an old position is brought back when the game moves on; spectators stay.

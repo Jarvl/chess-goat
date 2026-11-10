@@ -47,7 +47,7 @@ export const users = pgTable(
     writeAccessAskedAt: tz(),
     prefs: jsonb().$type<Partial<Prefs>>().notNull().default({}),
     isEngine: boolean().notNull().default(false),
-    /** `user_photos.hash` of the current Telegram photo; null without one (profile photos spec). */
+    /** `user_photos.hash` of the current Telegram photo; null without one. */
     photoHash: text(),
     /** Worn flair ids in slot order, at most three. */
     flairWorn: text()
@@ -92,7 +92,7 @@ export const ownerTokens = pgTable('owner_tokens', {
 });
 
 /**
- * Profile photos spec: the small Telegram photo, or an all-null row meaning "checked, none".
+ * The small Telegram photo, or an all-null row meaning "checked, none".
  * `hash` is not unique: two users can have byte-identical photos.
  */
 export const userPhotos = pgTable(
@@ -262,7 +262,7 @@ export const games = pgTable(
       .default(sql`'{}'::text[]`),
     /**
      * The premove tree of the side not to move, in the premove tree codec's bytes; empty for none
-     * (conditional premoves spec, Data).
+     *.
      */
     premoveTree: bytea()
       .notNull()

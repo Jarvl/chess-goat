@@ -37,7 +37,7 @@ function hintFor(store: GameStore, viewer: Colour): string | null {
 }
 
 /**
- * The status line (conditional premoves spec, The game screen, item 4): a pill saying where the
+ * The status line: a pill saying where the
  * premoves stand, then one hint. `draft` says the screen holds changes not confirmed yet.
  */
 export function PremoveStatus(props: { store: GameStore; draft: boolean }) {

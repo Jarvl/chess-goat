@@ -9,7 +9,7 @@ import { GOAT_MARK_PNG } from './goatMark';
 import { PIECE_VIEWBOX, PIECES, type PieceCode } from './pieces';
 import type { SnapshotAvatar, SnapshotBar, SnapshotModel, SnapshotOutcome } from './snapshotModel';
 
-/** Share image spec, "Canvas": a player bar, the board, a player bar, then the brand footer. */
+/** A player bar, the board, a player bar, then the brand footer. */
 export const CARD_WIDTH = IMAGE_SIZE;
 const BAR_HEIGHT = 128;
 const FOOTER_HEIGHT = 64;
@@ -89,7 +89,7 @@ function avatar(value: SnapshotAvatar): El {
     },
     [
       value.initial,
-      // Profile photos spec: the Telegram photo covers the initial, which shows without one.
+      // The Telegram photo covers the initial, which shows without one.
       ...(value.photo
         ? [picture(value.photo, AVATAR, { position: 'absolute', left: 0, top: 0, ...round })]
         : []),
@@ -269,7 +269,7 @@ function board(model: SnapshotModel): El {
   );
 }
 
-/** Share image spec, "Brand footer": says where the image came from once it is forwarded. */
+/** Says where the image came from once it is forwarded. */
 function footer(model: SnapshotModel): El {
   return el(
     'div',

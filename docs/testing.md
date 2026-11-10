@@ -232,6 +232,6 @@ means a reviewer can tell what a change is supposed to do from its test.
 including the image smoke test, the device matrix run on at least iPhone and Android, and the
 metrics above checked on staging.
 
-**Coverage numbers are not collected.** The suite is organised around behaviour the spec names
+**Coverage numbers are not collected.** The suite is organised around behaviour the product promises
 rather than lines reached, and a percentage target would mostly reward testing the easy parts. If
 that changes, add `@vitest/coverage-v8` and set a floor per package rather than one global number.

@@ -28,7 +28,7 @@ const NO_TREE = new Uint8Array();
 
 /**
  * The stored premove tree's bytes, or none when it was stored at another ply (conditional
- * premoves spec, Data): a container that ignores trees can move past one without clearing it.
+ * A container that ignores trees can move past one without clearing it.
  */
 export function storedPremoveTree(
   game: Pick<GameRow, 'premoveTree' | 'premoveTreePly' | 'plyCount'>,

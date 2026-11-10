@@ -49,7 +49,7 @@ type Stacks = Record<TabName, Route[]>;
 
 /**
  * A game resumed from another section is arrived at, not hopped to: the switcher strip takes a
- * fresh order (game switcher spec), not whatever the other section's games left behind.
+ * fresh order, not whatever the other section's games left behind.
  */
 function arrival(route: Route): Route {
   return route.name === 'game' && route.hop ? { name: 'game', gameId: route.gameId } : route;

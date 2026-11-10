@@ -28,7 +28,7 @@ export function createApiApp(ctx: ApiContext, extra: RegisterRoutes[] = []): Hon
       );
     }
     if (error instanceof HTTPException) {
-      // Framework rejections (the body limit above all) keep their status in the spec's error shape.
+      // Framework rejections (the body limit above all) keep their status in the API's error shape.
       c.status(error.status);
       const code = error.status === 413 ? 'validation' : 'internal';
       return c.json(apiErrorBody(code, error.message || 'request rejected'));

@@ -414,7 +414,7 @@ async function commitOne(
 
 /**
  * Plays `uci` for `colour`, who is to move on the locked `game`, then fires premoves (conditional
- * premoves spec, Firing). Two trees are in play: `waiting`, the tree of the side that just moved,
+ * `waiting`, the tree of the side that just moved,
  * and `toMove`, the stored tree, which belongs to the side now to move. While `toMove` has a
  * branch for the move just played, its reply is played as a normal move and the trees swap. The
  * loop stops on a miss, which clears the stored tree (and flags its owner's turn DM if it held
@@ -527,8 +527,8 @@ async function commitMove(tx: DbOrTx, input: CommitInput): Promise<GameRow> {
 
 /**
  * The move transaction, step for step. A tree sent with the move is checked in full
- * before the lock, from the position after the move read without it (conditional premoves spec,
- * API); anything the locked checks refuse is left to them, so their error is the one reported.
+ * before the lock, from the position after the move read without it;
+ * anything the locked checks refuse is left to them, so their error is the one reported.
  */
 /** The position before the move at `ply`: null when the game has not reached that ply. */
 function positionAt(game: GameRow, history: readonly MoveRow[], ply: number): string | null {

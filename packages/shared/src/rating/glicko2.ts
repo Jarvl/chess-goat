@@ -1,4 +1,4 @@
-/** Glicko-2 as in Glickman, "Example of the Glicko-2 system", with the spec's constants. */
+/** Glicko-2 as in Glickman, "Example of the Glicko-2 system", with this project's constants. */
 export const GLICKO2 = {
   initialRating: 1500,
   initialRd: 350,

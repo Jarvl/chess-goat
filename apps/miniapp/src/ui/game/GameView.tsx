@@ -100,14 +100,14 @@ export function GameView(props: {
   } | null>(null);
   const [slowSend, setSlowSend] = useState(false);
   // True from a drop that waits for Confirm move until that move settles (sent, cancelled or
-  // rejected): the bar stays up through the send, and the tab bar stays hidden (move confirmations spec).
+  // rejected): the bar stays up through the send, and the tab bar stays hidden.
   const [confirming, setConfirming] = useState(false);
   // Which of Confirm and Cancel this client has no Telegram button for, so the page draws them.
   const [inPage, setInPage] = useState(NO_IN_PAGE);
   // Confirm premoves is on its way to the server.
   const [confirmingPremoves, setConfirmingPremoves] = useState(false);
   const confirmingPremovesRef = useRef(false);
-  // A save with confirmations off is running (conditional premoves spec, Sending it).
+  // A save with confirmations off is running.
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const now = useClock(store);
@@ -226,7 +226,7 @@ export function GameView(props: {
     }
   };
 
-  // Confirmations off (conditional premoves spec, Sending it): every completed change saves at
+  // Confirmations off: every completed change saves at
   // once, one save at a time. Each save names the tree its draft builds on (the last tree the
   // server confirmed for it), so another device's tree is refused, never overwritten. A change
   // made while a save runs is saved as soon as that one settles; one made on a draft that started
@@ -247,7 +247,7 @@ export function GameView(props: {
         const text = sendable(wanted.tree);
         if (text === base.tree) break;
         if (text === null) {
-          // Kept on screen, never sent (spec, The tree).
+          // Kept on screen, never sent.
           toast(t('app.game.premove_too_big'));
           break;
         }
@@ -442,7 +442,7 @@ export function GameView(props: {
     return () => clearTimeout(timer);
   }, [moveState.kind, slowSend]);
 
-  // The bottom bar (conditional premoves spec, Sending it: confirmations on): Confirm move with the
+  // The bottom bar: Confirm move with the
   // premoves on top of it, or Confirm premoves on the opponent's turn, each beside Cancel.
   const confirmOn = needsConfirmation(prefs.value.moveConfirmations, dto);
   const premoveDraftOpen =
@@ -494,7 +494,7 @@ export function GameView(props: {
     dispatch,
   ]);
   // Telegram's bar takes about the space the tab bar frees, so the board keeps its size while a
-  // draft is open; and no tab tap can leave it unsent (move confirmations spec).
+  // draft is open; and no tab tap can leave it unsent.
   const hideTabs = confirming || confirmingPremoves || (confirmOn && store.draftDirty.value);
   useEffect(() => {
     router.suppressTabs.value = hideTabs;
@@ -553,7 +553,7 @@ export function GameView(props: {
       store.selected.value.join(','),
     ].join('|');
 
-  /** Replace a reply in the tree (spec, Building it): previewed, then asked. */
+  /** Replace a reply in the tree: previewed, then asked. */
   const replaceInTree = async (
     path: readonly string[],
     uci: string,
@@ -586,7 +586,7 @@ export function GameView(props: {
     completed();
   };
 
-  /** Replace the waiting move from the position before it (spec, Building it). */
+  /** Replace the waiting move from the position before it. */
   const replaceWaiting = async (uci: string): Promise<void> => {
     const waiting = store.waiting.value;
     if (!waiting || moveRef.current.kind !== 'pendingConfirm') {
@@ -728,7 +728,7 @@ export function GameView(props: {
     });
     tg.hapticSelection();
   };
-  /** ✕ on the selected premove (spec, Building it): asks, then removes it and what follows. */
+  /** ✕ on the selected premove: asks, then removes it and what follows. */
   const removeSelected = async (): Promise<void> => {
     const path = store.selected.value;
     // A draft on its way to the server is what it sends; removing from it now would change nothing.
@@ -1119,7 +1119,7 @@ export function GameView(props: {
           </button>
         </div>
       )}
-      {/* Docked just above the tab bar, where a thumb reaches it (game switcher spec). */}
+      {/* Docked just above the tab bar, where a thumb reaches it. */}
       {strip ? <GameSwitcher games={strip} currentId={dto.id} live={dto} /> : null}
     </div>
   );

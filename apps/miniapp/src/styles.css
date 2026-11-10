@@ -877,7 +877,7 @@ button {
 }
 
 /* Clear of the game switcher docked on the tab bar: the strip and its chevron tab, or the tab
-   alone once minimized (game switcher spec), so a toast never covers a thumbnail. */
+   alone once minimized, so a toast never covers a thumbnail. */
 .with-tabbar.dock-open ~ .toast {
   bottom: calc(var(--tabbar-h) + 92px + 28px + 16px);
 }
@@ -970,7 +970,7 @@ button {
   padding: 8px 0 24px;
 }
 
-/* The switcher strip, docked just above the tab bar where a thumb reaches it (game switcher spec).
+/* The switcher strip, docked just above the tab bar where a thumb reaches it.
    It lies over the game, so the board keeps its size: the game's bottom padding lets every
    control scroll clear of the strip (92px) and the chevron tab on its edge (28px), or of the tab
    alone once minimized. */
@@ -1660,7 +1660,7 @@ cg-board square.move-dest:hover {
   background: var(--dot);
 }
 
-/* Premoves (conditional premoves spec, The game screen): the viewed premove's squares and blue
+/* Premoves: the viewed premove's squares and blue
    destination dots. */
 cg-board square.premove-sq {
   background-color: var(--pm-sq);

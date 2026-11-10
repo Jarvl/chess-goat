@@ -187,7 +187,7 @@ describe('send_share_photo', () => {
     await share(game.id, alice.id, 2);
     await share(game.id, bob.id, 2);
     await worker.runOnce();
-    // White is to move, so the tree is Bob's (conditional premoves spec: the side not to move owns it).
+    // White is to move, so the tree is Bob's (the side not to move owns it).
     await db
       .update(games)
       .set({

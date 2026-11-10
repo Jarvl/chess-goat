@@ -51,7 +51,7 @@ export type SnapshotAvatar =
   | { kind: 'person'; initial: string; colour: string; photo: string | null };
 export type SnapshotOutcome = 'won' | 'lost' | 'draw';
 
-/** One player bar, already worded (share image spec, "Player bar"). */
+/** One player bar, already worded. */
 export type SnapshotBar = {
   colour: Colour;
   avatar: SnapshotAvatar;

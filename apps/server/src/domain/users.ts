@@ -77,7 +77,7 @@ export async function requireUser(tx: DbOrTx, id: number): Promise<UserRow> {
 /**
  * Stored preferences over the defaults; keys no longer in the schema are dropped. A
  * `confirmMoves: false` stored before #16 reads as `moveConfirmations: 'never'`, and a stored
- * `moveConfirmations` always wins over it (move confirmations spec).
+ * `moveConfirmations` always wins over it.
  */
 export function prefsOf(user: Pick<UserRow, 'prefs'>): Prefs {
   const stored = user.prefs as Partial<Prefs> & { confirmMoves?: unknown };

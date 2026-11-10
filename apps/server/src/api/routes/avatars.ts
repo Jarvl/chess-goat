@@ -6,7 +6,7 @@ import type { ApiContext, ApiEnv } from '../context';
 const AVATAR_FILE = /^([0-9a-f]{64})\.jpg$/;
 
 /**
- * Profile photos spec: no session, because an `<img>` cannot send the bearer token. The name is the
+ * No session, because an `<img>` cannot send the bearer token. The name is the
  * photo's content hash, which cannot be guessed and changes with the photo, so a year's cache is safe.
  */
 export function avatarRoutes(ctx: ApiContext): Hono<ApiEnv> {

@@ -120,7 +120,7 @@ const samples: Record<string, Partial<SnapshotInput>> = {
       ratingChange: { before: 1587, after: 1571, rdAfter: 50 },
     }),
   },
-  // Profile photos spec: a stored Telegram photo covers the initial; the other side has none.
+  // A stored Telegram photo covers the initial; the other side has none.
   photo: {
     board: replay(['e4', 'e5']),
     ply: 2,

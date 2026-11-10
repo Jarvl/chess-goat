@@ -2,7 +2,7 @@ import { expect, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { clickBack, openApp, seed, test } from './support';
 
-// Game switcher spec: the strip sits at the bottom, where a thumb reaches it.
+// The strip sits at the bottom, where a thumb reaches it.
 
 /** Saves a screenshot for a person to look at when SCREENS_DIR is set, as screens.spec.ts does. */
 async function shot(page: Page, name: string): Promise<void> {

@@ -5,7 +5,7 @@ import { signal } from '@preact/signals';
 export type StripGame = MeGamesDto['items'][number];
 
 /**
- * The game switcher strip's games, in the order they are drawn (game switcher spec). Each switch
+ * The game switcher strip's games, in the order they are drawn. Each switch
  * replaces the game screen, so the order lives here rather than in the screen: it is fixed when the
  * viewer arrives at a game from anywhere else and kept while they hop between games, so a
  * thumbnail never moves while they reach for it. Null until the first list arrives.
@@ -34,7 +34,7 @@ export function loadStripMinimized(): boolean {
 
 /**
  * The strip minimized behind its chevron: one choice for every game, remembered on this device
- * until the viewer opens it again (game switcher spec). Telegram has no setting for it, and it is
+ * until the viewer opens it again. Telegram has no setting for it, and it is
  * a convenience, so blocked storage only shortens it to this visit.
  */
 export const stripMinimized = signal(loadStripMinimized());

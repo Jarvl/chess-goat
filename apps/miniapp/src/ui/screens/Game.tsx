@@ -15,7 +15,7 @@ export function Game(props: { gameId: string; hop?: boolean }) {
   if (game.error) return <ErrorScreen onRetry={() => void game.reload()} />;
   if (!game.data) {
     // A game opened from the switcher strip keeps the strip on screen while it loads, so it never
-    // blinks out from under the thumb that tapped it (game switcher spec).
+    // blinks out from under the thumb that tapped it.
     const strip = props.hop ? stripGames.value : null;
     return (
       <>

@@ -4,13 +4,13 @@ export type PendingMove = {
   uci: string;
   expectedPly: number;
   clientMoveId: string;
-  /** The premove tree sent with the move (conditional premoves spec): `''` for none. */
+  /** The premove tree sent with the move: `''` for none. */
   premoveTree: string;
 };
 
 export type MoveState =
   | { kind: 'idle' }
-  /** Dropped and shown on the board, waiting for Confirm move or Cancel (move confirmations spec). */
+  /** Dropped and shown on the board, waiting for Confirm move or Cancel. */
   | { kind: 'pendingConfirm'; move: PendingMove }
   | { kind: 'sending'; move: PendingMove; attempt: number }
   | { kind: 'retry'; move: PendingMove; attempt: number; nextAt: number };
