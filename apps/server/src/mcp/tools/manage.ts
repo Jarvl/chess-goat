@@ -12,11 +12,10 @@ import {
 import { addBotToGroup, ownerGroups, removeBotFromGroup } from '../../domain/botGroups';
 import { PERSONA_MAX } from '../../domain/botNotes';
 import { requireGroupByPublicId } from '../../domain/groups';
-import { onlineBotIds } from '../../domain/runners';
+import { listRunners, onlineBotIds } from '../../domain/runners';
 import { pendingTurns } from '../../domain/turns';
 import { failingTurns } from '../../domain/turnLeases';
 import type { McpServer } from '@modelcontextprotocol/server';
-import { BOT_DOCS_URL } from '../../links';
 import { registerTool, resolveAndTouch } from '../tool';
 
 /** A bot by name (case-insensitive) or numeric id. */
@@ -90,10 +89,6 @@ const botLine = (bot: BotOut): string => {
 
 const NO_RUNNER = 'No runner is connected, so your bots are not playing. Call link_runner.';
 
-const NEXT_STEPS =
-  "Your bot exists but isn't in any group yet. Call list_my_groups, then add_bot_to_group. People challenge bots from the group; bots can challenge other bots with find_bots and challenge_bot." +
-  ` Docs: ${BOT_DOCS_URL}.`;
-
 export const READ_ONLY = { readOnlyHint: true, openWorldHint: false } as const;
 const WRITE = { readOnlyHint: false, destructiveHint: false, openWorldHint: false } as const;
 
@@ -117,29 +112,88 @@ function registerListBots(server: McpServer): void {
   });
 }
 
+const PERSONA_GUIDE =
+  'The persona is the system prompt for every session that plays this bot. Write it in the second person and settle: how the bot plays; which challenges it accepts; when it offers, accepts or declines a draw; whether it challenges other bots after a game ends; what it keeps in its notes.';
+
+/** The next-step lines of a created bot: where it is, who runs it, and what it lacks. */
+function createdLines(
+  added: readonly { title: string }[],
+  ownerGroupCount: number,
+  runner: string | null,
+  hasPersona: boolean,
+): string {
+  const where =
+    added.length > 0
+      ? `It is in ${added.map((g) => g.title).join(', ')}.`
+      : ownerGroupCount > 0
+        ? 'It is in no group yet. Ask your owner which group, then call add_bot_to_group.'
+        : 'It is in no group yet: your owner is in no group with Chess Goat. They must add Chess Goat to a Telegram group first.';
+  return [
+    where,
+    runner === null
+      ? 'No runner serves this bot yet. Next: call link_runner.'
+      : `Served by runner ${runner}, connected. Next: call test_runner.`,
+    hasPersona
+      ? null
+      : 'It has no persona yet, so its sessions will play with no instructions. Call update_bot with a persona.',
+  ]
+    .filter((line) => line !== null)
+    .join('\n');
+}
+
 function registerCreateBot(server: McpServer): void {
   registerTool(server, {
     name: 'create_bot',
-    description:
-      'Create a bot of yours (up to 20). Names are unique across Chess Goat, case-insensitive: letters, digits, spaces, dots, dashes and underscores, up to 32 characters. The tagline is optional, up to 80 characters.',
+    description: `Create a bot of yours (up to 20). Names are unique across Chess Goat, case-insensitive: letters, digits, spaces, dots, dashes and underscores, up to 32 characters. The tagline is optional, up to 80 characters. ${PERSONA_GUIDE} Pass \`groups\` (ids from list_my_groups) to put the bot where people can challenge it; with none given and exactly one group, that group is used.`,
     input: z.object({
       name: z.string().max(100),
       tagline: z.string().max(200).optional(),
       persona: personaInput(
         "Optional. What the bot's agent is told it is: its character and style. At most 4,000 characters.",
       ).optional(),
+      groups: z
+        .array(groupRef)
+        .min(1)
+        .max(20)
+        .optional()
+        .describe('Groups to put the bot in, as list_my_groups gives their ids.'),
     }),
-    output: z.object({ bot: botSchema, nextSteps: z.string() }),
+    output: z.object({
+      bot: botSchema,
+      groups: z.array(z.object({ groupId: z.string(), title: z.string() })),
+      runner: z.enum(['connected', 'none']),
+      nextSteps: z.string(),
+    }),
     annotations: WRITE,
-    run: async ({ deps, owner }, input) => ({
-      // `bot_name_taken` aborts the transaction and propagates; it is never caught inside it.
-      bot: await deps.db.transaction(async (tx) => {
-        const bot = await createBot(tx, owner.id, input);
-        return (await botsWithStatus(tx, [bot]))[0]!;
+    // One transaction: a bad group id creates nothing. `bot_name_taken` aborts it and propagates.
+    run: ({ deps, owner }, input) =>
+      deps.db.transaction(async (tx) => {
+        const { groups: given, ...fields } = input;
+        const bot = await createBot(tx, owner.id, fields);
+        const mine = await ownerGroups(tx, owner.id);
+        const wanted = given ?? (mine.length === 1 ? [mine[0]!.groupId] : []);
+        const added = new Map<number, { groupId: string; title: string }>();
+        for (const groupId of wanted) {
+          const group = await requireGroupByPublicId(tx, groupId);
+          if (added.has(group.id)) continue;
+          await addBotToGroup(tx, owner.id, bot.id, group.id);
+          added.set(group.id, { groupId: group.publicId, title: group.title });
+        }
+        const now = new Date();
+        const served = (await onlineBotIds(tx, [bot.id], now)).has(bot.id);
+        const label = served
+          ? ((await listRunners(tx, owner.id, now)).find(
+              (r) => r.connected && (r.bots === 'all' || r.bots.includes(bot.firstName)),
+            )?.label ?? 'unnamed')
+          : null;
+        return {
+          bot: (await botsWithStatus(tx, [bot]))[0]!,
+          groups: [...added.values()],
+          runner: served ? ('connected' as const) : ('none' as const),
+          nextSteps: createdLines([...added.values()], mine.length, label, bot.persona !== null),
+        };
       }),
-      nextSteps: NEXT_STEPS,
-    }),
-    text: ({ bot, nextSteps }) => `Created ${bot.label}. ${nextSteps}`,
+    text: ({ bot, nextSteps }) => `Created ${bot.label}.\n${nextSteps}`,
   });
 }
 

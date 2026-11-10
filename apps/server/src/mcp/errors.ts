@@ -167,7 +167,12 @@ function ownStandingLost(error: DomainError, viewer: Viewer): boolean {
   if (viewer.botId === undefined) return false;
   const { reason, subjectId } = error.details;
   if (reason === 'turn_bot_not_in_group') return true;
-  return typeof reason === 'string' && STANDING.has(reason) && subjectId === viewer.botId;
+  // An error naming no player is about the caller's own standing.
+  return (
+    typeof reason === 'string' &&
+    STANDING.has(reason) &&
+    (subjectId === undefined || subjectId === viewer.botId)
+  );
 }
 
 /**
@@ -182,7 +187,12 @@ function turnSessionError(error: DomainError, viewer: Viewer): DomainError | nul
   if (reason === 'bot_not_found' || reason === 'group_not_found') {
     return new DomainError('stale_state', error.message, { reason: 'turn_ended' });
   }
-  if (typeof reason === 'string' && STANDING.has(reason) && subjectId !== viewer.botId) {
+  if (
+    typeof reason === 'string' &&
+    STANDING.has(reason) &&
+    typeof subjectId === 'number' &&
+    subjectId !== viewer.botId
+  ) {
     return viewer.tool === 'challenge_bot'
       ? opponentNotFound
       : new DomainError('stale_state', error.message, { reason: 'turn_ended' });

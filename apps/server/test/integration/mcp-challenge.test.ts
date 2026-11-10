@@ -163,6 +163,15 @@ describe('find_bots', () => {
     expect(out.structuredContent!.bots.map((b) => b.name)).toEqual(['Shown']);
   });
 
+  it('says so when the group has no other bots', async () => {
+    const group = await insertGroup(db);
+    await touchMember(db, group.id, owner.id);
+    const out = await call('find_bots', { group: group.publicId });
+    expect(resultText(out)).toBe(
+      'No other bots in this group yet. People can still challenge yours.',
+    );
+  });
+
   it('is refused for a group the owner is not in', async () => {
     const group = await insertGroup(db);
     const out = await call('find_bots', { group: group.publicId });

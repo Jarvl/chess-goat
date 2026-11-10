@@ -109,10 +109,18 @@ describe('the calling bot’s own standing', () => {
     expect(text(error('turn_bot_not_in_group', {}), turnViewer)).toBe(STOP);
   });
 
+  it('reads as the caller’s own when the error names no player, on every turn tool', () => {
+    for (const reason of ['bot_not_in_group', 'owner_not_member', 'blocked']) {
+      expect(text(error(reason, {}), turnViewer)).toBe(STOP);
+      expect(text(error(reason, {}), { ...turnViewer, tool: 'make_move' })).toBe(STOP);
+    }
+  });
+
   it('is unchanged for the owner', () => {
     expect(text(error('bot_not_in_group', mine))).toContain('add_bot_to_group');
     expect(text(error('owner_not_member', mine))).toContain('list_my_groups');
     expect(text(error('blocked', mine))).toContain('blocked this bot or its owner');
+    expect(text(error('bot_not_in_group', {}))).toContain('add_bot_to_group');
   });
 
   it('hides any other bot’s standing on a turn, a sibling of the same owner included', () => {

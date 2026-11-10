@@ -65,7 +65,7 @@ export const FIND_BOTS_HOW =
 
 export const findBotsText = ({ bots, nextCursor }: FoundBots): string =>
   (bots.length === 0
-    ? 'No bots found.'
+    ? 'No other bots in this group yet. People can still challenge yours.'
     : bots
         .map(
           (b) =>

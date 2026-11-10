@@ -2,6 +2,8 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { groupMembers, users, type UserRow } from '../../src/db/schema';
 import { createBot } from '../../src/domain/bots';
+import { createLinkCode, redeemLinkCode } from '../../src/domain/runners';
+import { runners } from '../../src/db/schema';
 import { createOwnerToken } from '../../src/domain/ownerTokens';
 import { touchMember } from '../../src/domain/members';
 import type { TestApi } from '../helpers/api';
@@ -45,14 +47,12 @@ const listed = async () => (await call<{ bots: BotOut[] }>('list_bots')).structu
 
 describe('create_bot and list_bots', () => {
   it('creates a bot and lists it, with the exact next steps', async () => {
-    const created = await call<{ bot: BotOut; nextSteps: string }>('create_bot', {
+    const created = await call<{ bot: BotOut }>('create_bot', {
       name: '  Rook   Roller ',
       tagline: 'Pushes pawns',
     });
     expect(created.isError).toBeFalsy();
-    expect(created.structuredContent!.nextSteps).toBe(
-      "Your bot exists but isn't in any group yet. Call list_my_groups, then add_bot_to_group. People challenge bots from the group; bots can challenge other bots with find_bots and challenge_bot. Docs: https://github.com/Jarvl/chess-goat/blob/main/docs/bots.md.",
-    );
+    expect(created.structuredContent).toMatchObject({ groups: [], runner: 'none' });
     expect(created.structuredContent!.bot).toMatchObject({
       name: 'Rook Roller',
       label: '🤖 Rook Roller (@alice)',
@@ -156,6 +156,129 @@ describe('update_bot and delete_bot', () => {
     });
     expect(result.structuredContent).toEqual({ deleted: bot.firstName, resignedGames: 1 });
     expect(await listed()).toEqual([]);
+  });
+});
+
+type Created = {
+  bot: BotOut;
+  groups: { groupId: string; title: string }[];
+  runner: 'connected' | 'none';
+};
+const botCount = async () => (await listed()).length;
+const memberGroup = async (title: string) => {
+  const group = await insertGroup(db, { title });
+  await touchMember(db, group.id, owner.id);
+  return group;
+};
+/** A runner of the owner that is connected now, serving `botIds` (all bots when omitted). */
+async function connectedRunner(label: string, botIds?: number[]) {
+  const now = new Date();
+  const { code } = await createLinkCode(db, owner.id, botIds ? { botIds } : {}, now);
+  const { runner } = await redeemLinkCode(db, code, { label }, now);
+  await db.update(runners).set({ lastSeenAt: now }).where(eq(runners.id, runner.id));
+}
+const NO_GROUP_YET_ASK =
+  'It is in no group yet. Ask your owner which group, then call add_bot_to_group.';
+const NO_RUNNER_LINE = 'No runner serves this bot yet. Next: call link_runner.';
+const NO_PERSONA_LINE =
+  'It has no persona yet, so its sessions will play with no instructions. Call update_bot with a persona.';
+
+describe('create_bot puts the bot in groups and names the next step', () => {
+  it('adds the bot to each group given, ignoring duplicates', async () => {
+    const a = await memberGroup('Alpha');
+    const b = await memberGroup('Beta');
+    const created = await call<Created>('create_bot', {
+      name: 'Gambit',
+      persona: 'You play wild gambits.',
+      groups: [a.publicId, b.publicId, a.publicId],
+    });
+    expect(created.isError).toBeFalsy();
+    expect(created.structuredContent!.groups).toEqual([
+      { groupId: a.publicId, title: 'Alpha' },
+      { groupId: b.publicId, title: 'Beta' },
+    ]);
+    expect((await listed())[0]!.groups.map((g) => g.groupId).sort()).toEqual(
+      [a.publicId, b.publicId].sort(),
+    );
+    expect(resultText(created)).toBe(
+      `Created ${created.structuredContent!.bot.label}.\nIt is in Alpha, Beta.\n${NO_RUNNER_LINE}`,
+    );
+  });
+
+  it('uses the one group the owner is in when none are given', async () => {
+    const only = await memberGroup('Only');
+    const created = await call<Created>('create_bot', { name: 'Solo', persona: 'You play.' });
+    expect(created.structuredContent!.groups).toEqual([{ groupId: only.publicId, title: 'Only' }]);
+    expect(resultText(created)).toContain('\nIt is in Only.\n');
+  });
+
+  it('adds it to neither of two groups and says to ask', async () => {
+    await memberGroup('One');
+    await memberGroup('Two');
+    const created = await call<Created>('create_bot', { name: 'Duo', persona: 'You play.' });
+    expect(created.structuredContent!.groups).toEqual([]);
+    expect(resultText(created)).toContain(`\n${NO_GROUP_YET_ASK}\n`);
+    expect((await listed())[0]!.groups).toEqual([]);
+  });
+
+  it('says so when the owner is in no group at all', async () => {
+    const created = await call<Created>('create_bot', { name: 'Lone', persona: 'You play.' });
+    expect(resultText(created)).toContain(
+      '\nIt is in no group yet: your owner is in no group with Chess Goat. They must add Chess Goat to a Telegram group first.\n',
+    );
+  });
+
+  it('creates nothing when one group id is bad', async () => {
+    const good = await memberGroup('Good');
+    const refused = await call('create_bot', { name: 'Nope', groups: [good.publicId, 'nope'] });
+    expect(refused.isError).toBe(true);
+    expect(resultText(refused)).toBe('Group not found. Use a groupId from list_my_groups.');
+    expect(await botCount()).toBe(0);
+  });
+
+  it('creates nothing when the owner is not in a group named', async () => {
+    const good = await memberGroup('Good');
+    const foreign = await insertGroup(db, { title: 'Foreign' });
+    const refused = await call('create_bot', {
+      name: 'Nope',
+      groups: [good.publicId, foreign.publicId],
+    });
+    expect(refused.isError).toBe(true);
+    expect(resultText(refused)).toContain('You must be a member of that group');
+    expect(await botCount()).toBe(0);
+  });
+
+  it('names the runner that serves the bot', async () => {
+    await connectedRunner('laptop');
+    const created = await call<Created>('create_bot', { name: 'Served', persona: 'You play.' });
+    expect(created.structuredContent!.runner).toBe('connected');
+    expect(resultText(created)).toContain(
+      '\nServed by runner laptop, connected. Next: call test_runner.',
+    );
+  });
+
+  it('says no runner serves the bot when the connected one is scoped to other bots', async () => {
+    const other = await insertBot(db, owner, { firstName: 'Other' });
+    await connectedRunner('laptop', [other.id]);
+    const created = await call<Created>('create_bot', { name: 'Unserved', persona: 'You play.' });
+    expect(created.structuredContent!.runner).toBe('none');
+    expect(resultText(created)).toContain(NO_RUNNER_LINE);
+  });
+
+  it('flags a missing persona, and only then', async () => {
+    const without = await call<Created>('create_bot', { name: 'Blank' });
+    expect(resultText(without).endsWith(`\n${NO_PERSONA_LINE}`)).toBe(true);
+    const withPersona = await call<Created>('create_bot', { name: 'Told', persona: 'You play.' });
+    expect(resultText(withPersona)).not.toContain('no persona');
+  });
+
+  it('describes the persona and groups', async () => {
+    const { mcpCall } = await import('../helpers/mcp');
+    const list = await mcpCall(api.app, token, 'tools/list');
+    const tools = list.response?.result?.tools as { name: string; description: string }[];
+    const description = tools.find((t) => t.name === 'create_bot')!.description;
+    expect(description).toContain('system prompt for every session');
+    expect(description).toContain('Pass `groups` (ids from list_my_groups)');
   });
 });
 

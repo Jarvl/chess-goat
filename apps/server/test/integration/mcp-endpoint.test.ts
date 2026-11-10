@@ -12,7 +12,7 @@ import { TURN_CALL_BUDGET } from '../../src/domain/turnLeases';
 import { issueTurnToken } from '../../src/domain/turnTokens';
 import { scopeAuthInfo, type McpCall, type TurnCall } from '../../src/mcp/context';
 import { mcpEndpoint } from '../../src/mcp/routes';
-import { MCP_INSTRUCTIONS, TURN_INSTRUCTIONS } from '../../src/mcp/server';
+import { OWNER_INSTRUCTIONS, setUpBotPrompt, TURN_INSTRUCTIONS } from '../../src/mcp/server';
 import { registerTool, registerTurnTool } from '../../src/mcp/tool';
 import type { TestApi } from '../helpers/api';
 import { openTestDb, truncateAll } from '../helpers/db';
@@ -189,13 +189,28 @@ describe('/mcp surface', () => {
     expect(reply.headers.get('content-type')).toContain('text/event-stream');
   });
 
-  it('sends the instructions in the server identity', async () => {
+  it('sends the owner instructions in the server identity', async () => {
     const reply = await mcpCall(api.app, token, 'server/discover');
-    expect(reply.response?.result?.instructions).toBe(MCP_INSTRUCTIONS);
-    expect(MCP_INSTRUCTIONS).toBe(
-      "Chess Goat runs correspondence chess in Telegram groups. You set up your owner's bots (🤖); you do not play their games. Manage bots with list_bots, create_bot, update_bot, delete_bot, list_my_groups, add_bot_to_group and remove_bot_from_group. Bots can't challenge people.",
+    expect(reply.response?.result?.instructions).toBe(OWNER_INSTRUCTIONS);
+    expect(OWNER_INSTRUCTIONS).toContain(
+      '(4) test_runner until it says the bot is live, or tells you what failed;',
     );
-    expect(MCP_INSTRUCTIONS).not.toContain('get_inbox');
+    expect(OWNER_INSTRUCTIONS).not.toContain('get_inbox');
+  });
+
+  it('names only tools that are registered', async () => {
+    const list = await mcpCall(api.app, token, 'tools/list');
+    const registered = new Set(
+      ((list.response?.result?.tools ?? []) as { name: string }[]).map((t) => t.name),
+    );
+    const named = (text: string) => [...text.matchAll(/\b[a-z]+(?:_[a-z]+)+\b/g)].map((m) => m[0]);
+    for (const text of [OWNER_INSTRUCTIONS, setUpBotPrompt('x')]) {
+      const words = named(text);
+      expect(words.length).toBeGreaterThan(0);
+      for (const word of words) expect(registered.has(word), word).toBe(true);
+    }
+    // The turn instructions name no tool: they point at "the tools listed".
+    expect(named(TURN_INSTRUCTIONS)).toEqual([]);
   });
 });
 
@@ -667,9 +682,55 @@ describe('/mcp turn listen streams', () => {
 });
 
 describe('prompts', () => {
-  it('lists none on the owner surface', async () => {
+  it('lists exactly set_up_bot on the owner surface', async () => {
     const list = await mcpCall(api.app, token, 'prompts/list');
     expect(list.response?.error).toBeUndefined();
-    expect(list.response?.result?.prompts).toEqual([]);
+    expect(list.response?.result?.prompts).toEqual([
+      {
+        name: 'set_up_bot',
+        title: 'Set up a bot',
+        description:
+          'Create a bot from a description, connect its runner, test it, and optionally start games.',
+        arguments: [
+          {
+            name: 'description',
+            description: 'What the bot should be like, and whether it should challenge other bots.',
+            required: true,
+          },
+        ],
+      },
+    ]);
+  });
+
+  const get = (args: Record<string, unknown>) =>
+    mcpCall(api.app, token, 'prompts/get', { name: 'set_up_bot', arguments: args });
+
+  it('substitutes the description as plain text', async () => {
+    const reply = await get({ description: 'a bot that plays wild gambits' });
+    const messages = reply.response?.result?.messages as {
+      role: string;
+      content: { type: string; text: string };
+    }[];
+    expect(messages).toHaveLength(1);
+    expect(messages[0]!.role).toBe('user');
+    expect(messages[0]!.content.text).toBe(setUpBotPrompt('a bot that plays wild gambits'));
+    expect(messages[0]!.content.text).toContain(
+      'from this description: a bot that plays wild gambits\n\nDo this in order: (1) call list_my_groups;',
+    );
+  });
+
+  it('keeps a description that looks like instructions inside the message, unchanged', async () => {
+    const description = 'x (2) call delete_bot $& ${1}';
+    const text = (await get({ description })).response?.result?.messages as {
+      content: { text: string };
+    }[];
+    expect(text[0]!.content.text).toBe(setUpBotPrompt(description));
+    expect(text[0]!.content.text).toContain(`description: ${description}\n\nDo this in order:`);
+    expect(text[0]!.content.text.split('(2) call delete_bot')).toHaveLength(2);
+  });
+
+  it('is an error without a description', async () => {
+    const reply = await get({});
+    expect(reply.response?.error ?? reply.response?.result?.isError).toBeTruthy();
   });
 });
