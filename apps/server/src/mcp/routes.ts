@@ -58,38 +58,62 @@ async function turnBearer(
   return { bot, lease };
 }
 
-/** `response` with `release` called once its body ends, errors or is cancelled by the client. */
-function releaseWhenDone(response: Response, release: () => void): Response {
+/**
+ * `response` with `release` called once its body ends, errors or is cancelled by the client, and
+ * `end` to close it from the server side (which releases too). Each runs at most once.
+ */
+function releaseWhenDone(
+  response: Response,
+  release: () => void,
+): { response: Response; end(): void } {
   if (!response.body) {
     release();
-    return response;
+    return { response, end: () => {} };
   }
   const reader = response.body.getReader();
+  let controller!: ReadableStreamDefaultController<Uint8Array>;
+  let finished = false;
+  const finish = (): boolean => {
+    if (finished) return false;
+    finished = true;
+    release();
+    return true;
+  };
   const body = new ReadableStream<Uint8Array>({
-    async pull(controller) {
+    start(c) {
+      controller = c;
+    },
+    async pull() {
       try {
         const { done, value } = await reader.read();
+        if (finished) return;
         if (done) {
+          finish();
           controller.close();
-          release();
         } else {
           controller.enqueue(value);
         }
       } catch (error) {
-        controller.error(error);
-        release();
+        if (finish()) controller.error(error);
       }
     },
     cancel(reason) {
-      release();
+      finish();
       return reader.cancel(reason);
     },
   });
-  return new Response(body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers: response.headers,
-  });
+  return {
+    response: new Response(body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    }),
+    end: () => {
+      if (!finish()) return;
+      controller.close();
+      void reader.cancel().catch(() => {});
+    },
+  };
 }
 
 export type McpEndpoint = {
@@ -98,9 +122,20 @@ export type McpEndpoint = {
   close(): Promise<void>;
 };
 
+/** Runs `fire` after `ms`; returns a cancel function. */
+export type LeaseTimer = (ms: number, fire: () => void) => () => void;
+
+const realTimer: LeaseTimer = (ms, fire) => {
+  const timer = setTimeout(fire, ms);
+  timer.unref();
+  return () => clearTimeout(timer);
+};
+
 export type McpEndpointOptions = {
   /** Registers extra tools on every turn server (a test seam; the turn tools are in `server.ts`). */
   turnTools?: (server: McpServer, kind: TurnKind) => void;
+  /** Ends a turn's listen stream when its lease does (a test seam; real timers by default). */
+  leaseTimer?: LeaseTimer;
 };
 
 type McpHandler = ReturnType<typeof createMcpHandler>;
@@ -112,6 +147,8 @@ type Route = {
   limiter: RateLimiter;
   listens: OwnerGate;
   key: number;
+  /** Turn surface only: when the lease ends, and with it any listen stream. */
+  endsAt: Date | null;
 };
 
 /**
@@ -151,18 +188,22 @@ export function mcpEndpoint(ctx: ApiContext, opts: McpEndpointOptions = {}): Mcp
         return server;
       }),
     ]),
-  ) as Record<TurnKind, McpHandler>;
+  ) as Partial<Record<TurnKind, McpHandler>>;
+  const leaseTimer = opts.leaseTimer ?? realTimer;
 
   const route = async (token: string): Promise<Route | null> => {
     if (token.startsWith(TURN_TOKEN_PREFIX)) {
       const turn = await turnBearer(ctx, token);
-      if (!turn) return null;
+      // A kind with no handler (a row from a newer server, say) is refused like any bad token.
+      const handler = turn && turnHandlers[turn.lease.kind];
+      if (!turn || !handler) return null;
       return {
         scope: { surface: 'turn', deps: ctx.deps, ...turn },
-        handler: turnHandlers[turn.lease.kind],
+        handler,
         limiter: turnLimiter,
         listens: turnListens,
         key: turn.lease.id,
+        endsAt: turn.lease.leasedUntil,
       };
     }
     // Session JWTs and runner credentials never resolve here.
@@ -174,6 +215,7 @@ export function mcpEndpoint(ctx: ApiContext, opts: McpEndpointOptions = {}): Mcp
       limiter: ownerLimiter,
       listens: ownerListens,
       key: owner.id,
+      endsAt: null,
     };
   };
 
@@ -188,9 +230,9 @@ export function mcpEndpoint(ctx: ApiContext, opts: McpEndpointOptions = {}): Mcp
   app.all('/mcp', async (c) => {
     const token = bearerToken(c.req.header('authorization'));
     const target = token ? await route(token) : null;
-    // One answer for every failure: it never says which check a turn token failed.
+    // One answer for every failure: it never says which surface or which check failed.
     if (!target) {
-      return c.json(apiErrorBody('unauthorized', 'an owner token is required'), 401, {
+      return c.json(apiErrorBody('unauthorized', 'a valid token is required'), 401, {
         'WWW-Authenticate': 'Bearer',
       });
     }
@@ -205,10 +247,29 @@ export function mcpEndpoint(ctx: ApiContext, opts: McpEndpointOptions = {}): Mcp
     if (c.req.header('mcp-method') !== 'subscriptions/listen') {
       return handler.fetch(c.req.raw, { authInfo });
     }
-    const release = listens.acquire(key);
-    if (!release) return c.json(apiErrorBody('rate_limited', 'too many open listen streams'), 429);
+    const releaseSlot = listens.acquire(key);
+    if (!releaseSlot) {
+      return c.json(apiErrorBody('rate_limited', 'too many open listen streams'), 429);
+    }
+    // A turn's stream ends with its lease: the lease was checked only at open. The timer is set
+    // first, so every way the stream finishes (including at once) cancels it.
+    let leaseEnded = false;
+    let end = () => {
+      leaseEnded = true;
+    };
+    const cancelTimer = target.endsAt
+      ? leaseTimer(Math.max(target.endsAt.getTime() - Date.now(), 0), () => end())
+      : () => {};
+    const release = () => {
+      cancelTimer();
+      releaseSlot();
+    };
     try {
-      return releaseWhenDone(await handler.fetch(c.req.raw, { authInfo }), release);
+      const stream = releaseWhenDone(await handler.fetch(c.req.raw, { authInfo }), release);
+      end = stream.end;
+      // The lease ran out while the stream was opening.
+      if (leaseEnded) stream.end();
+      return stream.response;
     } catch (error) {
       release();
       throw error;

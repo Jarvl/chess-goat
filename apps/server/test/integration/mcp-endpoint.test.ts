@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { apiErrorBody, HTTP_STATUS_BY_ERROR_CODE } from '@chess-goat/shared';
+import { apiErrorBody, HTTP_STATUS_BY_ERROR_CODE, type TurnKind } from '@chess-goat/shared';
 import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
@@ -392,7 +392,7 @@ describe('/mcp turn surface', () => {
     await db.delete(runners).where(eq(runners.id, runner.id));
     const reply = await mcpCall(api.app, turnToken, 'tools/list');
     expectBearerChallenge(reply);
-    expect(reply.body).toEqual(apiErrorBody('unauthorized', 'an owner token is required'));
+    expect(reply.body).toEqual(apiErrorBody('unauthorized', 'a valid token is required'));
   });
 
   it('refuses a turn token for a deleted bot', async () => {
@@ -438,6 +438,16 @@ describe('/mcp turn surface', () => {
       exp: Math.floor(lease.leasedUntil!.getTime() / 1000),
     });
     expectBearerChallenge(await mcpCall(api.app, forged, 'tools/list'));
+  });
+
+  it('refuses a turn token whose lease kind has no surface with 401, not 500', async () => {
+    const { bot } = await botOnMove();
+    const { token: turnToken, lease } = await claimFor(api, bot);
+    await db
+      .update(turnLeases)
+      .set({ kind: 'unknown_kind' as TurnKind })
+      .where(eq(turnLeases.id, lease.id));
+    expectBearerChallenge(await mcpCall(api.app, turnToken, 'tools/list'));
   });
 
   it('refuses a turn token signed with another secret', async () => {
@@ -513,7 +523,9 @@ describe('registerTurnTool', () => {
 
   it('refuses a call after the turn resolved as a tool error, unless the tool allows it', async () => {
     const { app, runs } = probeEndpoint();
-    const { bot, game, token: turnToken } = await onMove();
+    const { bot, game, lease, token: turnToken } = await onMove();
+    const callsUsed = async () =>
+      (await db.select().from(turnLeases).where(eq(turnLeases.id, lease.id)))[0]?.callsUsed;
     await playMove(api.deps, { gameId: game.publicId, userId: bot.id, move: 'e4', expectedPly: 0 });
     const reply = await mcpCall(app, turnToken, 'tools/call', { name: 'probe', arguments: {} });
     expect(reply.status).toBe(200);
@@ -521,6 +533,8 @@ describe('registerTurnTool', () => {
     expect(refused.isError).toBe(true);
     expect(resultText(refused)).toBe('This turn has ended; stop.');
     expect(runs).toHaveLength(0);
+    // The lease check runs before spendCall: the refused call spent nothing.
+    expect(await callsUsed()).toBe(0);
     const allowed = await callTool(app, turnToken, 'probe_after');
     expect(allowed.isError).toBeFalsy();
     expect(runs).toHaveLength(1);
@@ -554,6 +568,97 @@ describe('registerTurnTool', () => {
     expect(
       ((reply.response?.result?.tools ?? []) as { name: string }[]).map((t) => t.name),
     ).not.toContain('probe');
+  });
+});
+
+describe('/mcp turn listen streams', () => {
+  type Timer = { ms: number; fire: () => void; cancelled: boolean };
+
+  /** An endpoint whose lease timers fire only when the test says so. */
+  const timedEndpoint = () => {
+    const timers: Timer[] = [];
+    const endpoint = mcpEndpoint(api.ctx, {
+      leaseTimer: (ms, fire) => {
+        const timer = { ms, fire, cancelled: false };
+        timers.push(timer);
+        return () => {
+          timer.cancelled = true;
+        };
+      },
+    });
+    return { app: endpoint.routes, timers, close: () => endpoint.close() };
+  };
+
+  /** Opens a listen stream and reads its acknowledgement. */
+  const listen = async (app: Parameters<typeof openListen>[0], who: string) => {
+    const res = await openListen(app, who);
+    expect(res.status).toBe(200);
+    const reader = res.body!.getReader();
+    const first = await reader.read();
+    expect(new TextDecoder().decode(first.value)).toContain('subscriptions/acknowledged');
+    return reader;
+  };
+
+  const drained = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
+    for (;;) if ((await reader.read()).done) return true;
+  };
+
+  const turnFor = async () => {
+    const group = await insertGroup(db);
+    const bot = await insertBot(db, owner);
+    const human = await insertUser(db);
+    await insertGame(db, group.id, bot.id, human.id);
+    return claimFor(api, bot);
+  };
+
+  it("ends a turn's listen stream when its lease does, and frees its slot", async () => {
+    const { app, timers, close: closeEndpoint } = timedEndpoint();
+    const { token: turnToken, lease } = await turnFor();
+    const untilEnd = lease.leasedUntil!.getTime() - Date.now();
+    const one = await listen(app, turnToken);
+    const two = await listen(app, turnToken);
+    expect((await openListen(app, turnToken)).status).toBe(HTTP_STATUS_BY_ERROR_CODE.rate_limited);
+    expect(timers).toHaveLength(2);
+    for (const timer of timers) {
+      expect(timer.ms).toBeLessThanOrEqual(untilEnd);
+      expect(timer.ms).toBeGreaterThan(untilEnd - 10_000);
+    }
+
+    timers[0]!.fire();
+    expect(await drained(one)).toBe(true);
+    // Its slot is free again (the lease in the database is still live).
+    const three = await listen(app, turnToken);
+    timers[1]!.fire();
+    timers[2]!.fire();
+    expect(await drained(two)).toBe(true);
+    expect(await drained(three)).toBe(true);
+    await closeEndpoint();
+  });
+
+  it('cancels the lease timer when the client closes the stream', async () => {
+    const { app, timers, close: closeEndpoint } = timedEndpoint();
+    const { token: turnToken } = await turnFor();
+    const reader = await listen(app, turnToken);
+    await reader.cancel();
+    expect(timers.map((t) => t.cancelled)).toEqual([true]);
+    await closeEndpoint();
+  });
+
+  it('sets no lease timer on an owner listen stream', async () => {
+    const { app, timers, close: closeEndpoint } = timedEndpoint();
+    const { token: turnToken } = await turnFor();
+    const ownerStream = await listen(app, token);
+    expect(timers).toHaveLength(0);
+    const turnStream = await listen(app, turnToken);
+    timers[0]!.fire();
+    expect(await drained(turnStream)).toBe(true);
+    // Still open: a frame arrives only when the endpoint closes it.
+    let ownerDone = false;
+    const reading = drained(ownerStream).then(() => (ownerDone = true));
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(ownerDone).toBe(false);
+    await closeEndpoint();
+    await reading;
   });
 });
 
