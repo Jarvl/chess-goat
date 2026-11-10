@@ -57,7 +57,7 @@ const wornOf = async (user: Pick<UserRow, 'id'>) =>
   (await db.select({ worn: users.flairWorn }).from(users).where(eq(users.id, user.id)))[0]!.worn;
 
 /**
- * An award in flight (flair spec §3.2). Like `awardFlairForGame` it takes the player's row lock
+ * An award in flight. Like `awardFlairForGame` it takes the player's row lock
  * (`for no key update`) first and holds it until `commit()` is called, then stores `flairId` as
  * earned in `gameId`, appends it to the worn list it read under the lock, and commits.
  */
@@ -196,7 +196,7 @@ describe('DELETE /api/me', () => {
 
 // The blocks below add what the tests above leave open: the join names the other player for either
 // colour, the order of the row lock and the reads and writes in `setWornFlair` and `deleteMyData`,
-// and the strength of that lock (flair spec §3.2, §3.4, §4 and §6).
+// and the strength of that lock.
 
 describe('GET /api/me/flair for a game played with either colour', () => {
   it('names the other player of each earning game, whichever colour the player had', async () => {

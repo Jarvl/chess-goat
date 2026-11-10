@@ -33,7 +33,7 @@ function sanitiseError(error: unknown): Record<string, unknown> {
   return safe;
 }
 
-/** JSON logs with numeric and public ids only (spec §12, §14). */
+/** JSON logs with numeric and public ids only. */
 export function createLogger(
   level: Config['LOG_LEVEL'] = 'info',
   destination?: pino.DestinationStream,

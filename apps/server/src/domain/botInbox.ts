@@ -11,7 +11,7 @@ import { kindOf } from './playerKind';
 const InboxBotSchema = z.object({ id: z.number().int(), name: z.string() });
 
 /**
- * What one of an owner's bots has to act on (bots spec §7; MCP plan, Task 5). The schema is the
+ * What one of an owner's bots has to act on. The schema is the
  * source of truth for get_inbox's output and for the type.
  */
 export const InboxEntrySchema = z.discriminatedUnion('kind', [

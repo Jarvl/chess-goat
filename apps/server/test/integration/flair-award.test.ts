@@ -378,7 +378,7 @@ describe('award_flair', () => {
     await Promise.all([put.done, ...awards]);
     expect(await earned(db, alice.id)).toEqual([['queenside_castle_win', first.id]]);
     expect(await earned(db, bob.id)).toEqual([['en_passant_win', second.id]]);
-    // The award fills slots from the list the change left (spec §6).
+    // The award fills slots from the list the change left.
     expect(await worn(db, alice.id)).toEqual(['rank_1500', 'queenside_castle_win']);
   });
 

@@ -1,6 +1,6 @@
 import type { TimePerMove } from './protocol/enums';
 
-/** Reminders exist only for controls of eight hours or more (spec §5.7, §7.3). */
+/** Reminders exist only for controls of eight hours or more. */
 export const REMINDER_MIN_TIME_PER_MOVE = 28800;
 
 export const REMINDER_FRACTION = 0.1;

@@ -31,9 +31,9 @@ const checkNewPairs = (fen: string, tree: readonly PremoveNode[], stored: Uint8A
   requireLegalTree(fen, tree, decodePremoveBytes(stored));
 
 /**
- * Compare-and-set of the caller's premove tree (conditional premoves spec, API). The new pairs
+ * Compare-and-set of the caller's premove tree. The new pairs
  * are checked before the lock, against the stored tree read without it; the locked row is then
- * re-checked in the spec's order, and a tree that does not decode is refused only after those
+ * re-checked in a fixed order, and a tree that does not decode is refused only after those
  * checks. The tree is never checked under the lock. Never bumps the version; an edit is pushed to
  * the owner's streams only, so nothing reaches the opponent.
  */

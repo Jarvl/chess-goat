@@ -19,7 +19,7 @@ const STRIP_ID = 'switcher-games';
 const SCROLL_MARGIN = 12;
 
 /**
- * The strip of the viewer's games, docked above the tab bar (game switcher spec): one tap opens
+ * The strip of the viewer's games, docked above the tab bar: one tap opens
  * another game in place of this one, so Back still leads to wherever the viewer came from. A
  * chevron on its top edge minimizes it, for every game, until it is opened again. It leaves with
  * the tab bar, so a move or premoves waiting for Confirm are never left by a tap.

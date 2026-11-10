@@ -103,7 +103,7 @@ describe('the bot in the picker and the engine-games endpoint', () => {
   });
 
   it('refuses to start a game when the engine is switched off, whatever the picker said', async () => {
-    // Spec §6.5: the flag stops *new engine games*, not just the picker row. A client holding a
+    // The flag stops *new engine games*, not just the picker row. A client holding a
     // picker from before the flip must not be able to create a game that can only abort itself.
     const disabled = await startTestApi(db, undefined, { ENGINE_ENABLED: false });
     try {

@@ -111,7 +111,7 @@ export const GameDtoSchema = z.object({
   engineLevel: EngineLevelSchema.nullable(),
   /** The viewer's own premove tree while it is not their turn; `''` for everyone else. */
   premoveTree: PremoveTreeTextSchema.default(''),
-  /** Only present once the game is finished (spec §7.6). */
+  /** Only present once the game is finished. */
   lichessUrl: z.url().optional(),
   analysisUrl: z.url().optional(),
 });
@@ -325,7 +325,7 @@ export const MeGameSummarySchema = GameSummarySchema.extend({ group: GroupRefSch
 export type MeGameSummary = z.infer<typeof MeGameSummarySchema>;
 
 export const MeGamesDtoSchema = z.object({
-  /** The viewer's active games across every group, their own turn first (spec §9 `GET /me/games`). */
+  /** The viewer's active games across every group, their own turn first. */
   items: z.array(MeGameSummarySchema),
 });
 
@@ -343,7 +343,7 @@ export const GroupSettingsDtoSchema = z.object({
 
 export type GroupSettingsDto = z.infer<typeof GroupSettingsDtoSchema>;
 
-/** Where the app lands after `POST /launch`, with that screen's data (spec §6.1 step 3). */
+/** Where the app lands after `POST /launch`, with that screen's data. */
 export const LaunchRouteSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('game'), game: GameDtoSchema }),
   z.object({ kind: z.literal('lobby'), lobby: LobbyDtoSchema }),
@@ -371,7 +371,7 @@ export const LaunchResponseSchema = z.object({
     username: z.string().nullable(),
   }),
   prefs: PrefsSchema,
-  /** True when the write-access prompt has never been shown to this user (spec §6.1 step 4). */
+  /** True when the write-access prompt has never been shown to this user. */
   askWriteAccess: z.boolean(),
   /**
    * Active games across every visible group that are waiting on this user: the Games tab badge.
@@ -390,7 +390,7 @@ export const LaunchResponseSchema = z.object({
 
 export type LaunchResponse = z.infer<typeof LaunchResponseSchema>;
 
-/** A short-lived download link for a game's PGN; its token opens nothing else (spec §9). */
+/** A short-lived download link for a game's PGN; its token opens nothing else. */
 export const PgnLinkDtoSchema = z.object({ url: z.string().min(1) });
 
 export type PgnLinkDto = z.infer<typeof PgnLinkDtoSchema>;
@@ -399,12 +399,12 @@ export const OkDtoSchema = z.object({ ok: z.literal(true) });
 
 export type OkDto = z.infer<typeof OkDtoSchema>;
 
-/** Tip jar spec §2.1: the invoice link the Mini App hands to `WebApp.openInvoice`. */
+/** The invoice link the Mini App hands to `WebApp.openInvoice`. */
 export const TipInvoiceDtoSchema = z.object({ url: z.string().min(1) });
 
 export type TipInvoiceDto = z.infer<typeof TipInvoiceDtoSchema>;
 
-/** One flair the viewer has earned (flair spec §4). */
+/** One flair the viewer has earned. */
 export const FlairEarnedSchema = z.object({
   /** A catalog id; the server leaves out rows whose id the catalog no longer has. */
   id: z.string(),
@@ -416,7 +416,7 @@ export const FlairEarnedSchema = z.object({
 
 export type FlairEarned = z.infer<typeof FlairEarnedSchema>;
 
-/** The viewer's own flair (flair spec §4): what they wear, in slot order, and what they have earned. */
+/** The viewer's own flair: what they wear, in slot order, and what they have earned. */
 export const FlairDtoSchema = z.object({
   worn: z.array(z.string()).max(MAX_WORN_FLAIR),
   /** In catalog order. */
@@ -425,7 +425,7 @@ export const FlairDtoSchema = z.object({
 
 export type FlairDto = z.infer<typeof FlairDtoSchema>;
 
-/** Bots spec: whether the viewer has an owner token, and when it was made and last used. */
+/** Whether the viewer has an owner token, and when it was made and last used. */
 export const OwnerTokenStatusDtoSchema = z.object({
   token: z.object({ createdAt: IsoDateSchema, lastUsedAt: IsoDateSchema.nullable() }).nullable(),
 });

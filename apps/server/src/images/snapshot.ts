@@ -9,7 +9,7 @@ import { GOAT_MARK_PNG } from './goatMark';
 import { PIECE_VIEWBOX, PIECES, type PieceCode } from './pieces';
 import type { SnapshotAvatar, SnapshotBar, SnapshotModel, SnapshotOutcome } from './snapshotModel';
 
-/** Share image spec, "Canvas": a player bar, the board, a player bar, then the brand footer. */
+/** A player bar, the board, a player bar, then the brand footer. */
 export const CARD_WIDTH = IMAGE_SIZE;
 const BAR_HEIGHT = 128;
 const FOOTER_HEIGHT = 64;
@@ -89,7 +89,7 @@ function avatar(value: SnapshotAvatar): El {
     },
     [
       value.initial,
-      // Profile photos spec: the Telegram photo covers the initial, which shows without one.
+      // The Telegram photo covers the initial, which shows without one.
       ...(value.photo
         ? [picture(value.photo, AVATAR, { position: 'absolute', left: 0, top: 0, ...round })]
         : []),
@@ -98,7 +98,7 @@ function avatar(value: SnapshotAvatar): El {
 }
 
 /**
- * The player's worn flair (flair spec §5.1), one picture per emoji, spaced by a gap as in the Mini
+ * The player's worn flair, one picture per emoji, spaced by a gap as in the Mini
  * App. It never shrinks, so a long name is cut short before it.
  */
 function flair(bar: SnapshotBar): El[] {
@@ -269,7 +269,7 @@ function board(model: SnapshotModel): El {
   );
 }
 
-/** Share image spec, "Brand footer": says where the image came from once it is forwarded. */
+/** Says where the image came from once it is forwarded. */
 function footer(model: SnapshotModel): El {
   return el(
     'div',

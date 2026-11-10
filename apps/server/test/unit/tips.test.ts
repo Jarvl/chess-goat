@@ -56,7 +56,7 @@ describe('createTipInvoiceLink', () => {
     fake = null;
   });
 
-  // Spec §4: a hung createInvoiceLink must still fail fast, so the card can answer 500 instead
+  // A hung createInvoiceLink must still fail fast, so the card can answer 500 instead
   // of spinning for however long grammY's default timeout (minutes) would otherwise allow.
   it('rejects once the timeout elapses, instead of hanging', async () => {
     fake = await FakeTelegram.start();

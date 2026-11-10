@@ -68,7 +68,7 @@ export async function groupSettingsDto(tx: DbOrTx, group: GroupRow): Promise<Gro
   };
 }
 
-/** Settings write with the cross-field rule and an audit row (spec §7.11, §12). */
+/** Settings write with the cross-field rule and an audit row. */
 export async function adminUpdateSettings(
   deps: Deps,
   group: GroupRow,

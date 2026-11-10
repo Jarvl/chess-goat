@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 
-/** Served by the server under /app/ (spec §4.4); hashed assets are immutable there. */
+/** Served by the server under /app/; hashed assets are immutable there. */
 export default defineConfig({
   base: '/app/',
   esbuild: { jsx: 'automatic', jsxImportSource: 'preact' },

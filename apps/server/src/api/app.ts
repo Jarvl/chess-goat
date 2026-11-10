@@ -28,13 +28,13 @@ export function createApiApp(ctx: ApiContext, extra: RegisterRoutes[] = []): Hon
       );
     }
     if (error instanceof HTTPException) {
-      // Framework rejections (the body limit above all) keep their status in the spec's error shape.
+      // Framework rejections (the body limit above all) keep their status in the API's error shape.
       c.status(error.status);
       const code = error.status === 413 ? 'validation' : 'internal';
       return c.json(apiErrorBody(code, error.message || 'request rejected'));
     }
     ctx.deps.log.error({ err: error, path: c.req.path }, 'unhandled request error');
-    // Spec §14 wants launch failures counted; the client has no session to report one with, so
+    // Launch failures are counted; the client has no session to report one with, so
     // the API-side half is counted here.
     if (c.req.path === '/api/launch') ctx.metrics.miniappLoadErrors.inc();
     c.status(500);

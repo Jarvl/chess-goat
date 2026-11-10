@@ -39,7 +39,7 @@ export interface ApiClient {
   url(path: string, query?: Record<string, string>): string;
 }
 
-/** Spec §6.1 step 6 and §9: bearer token in memory, spec error bodies, one relaunch on 401. */
+/** Bearer token in memory, the API's error bodies, one relaunch on 401. */
 export function createApiClient(options: ApiClientOptions = {}): ApiClient {
   const baseUrl = (options.baseUrl ?? '').replace(/\/$/, '');
   const fetchImpl = options.fetch ?? ((input, init) => fetch(input, init));

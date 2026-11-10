@@ -15,7 +15,7 @@ export type Feature =
   | 'invoice'
   | 'backButton';
 
-/** Spec §6.6: the first Bot API version that has each capability. */
+/** The first Bot API version that has each capability. */
 export const FEATURE_MIN_VERSION: Record<Feature, string> = {
   haptics: '6.1',
   writeAccess: '6.9',

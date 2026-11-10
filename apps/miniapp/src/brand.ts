@@ -1,7 +1,7 @@
 import bannerUrl from './assets/goat-banner.jpg';
 import markUrl from './assets/goat-mark.png';
 
-/** Who and what the app is; the one place these names are spelled out (redesign spec §1). */
+/** Who and what the app is; the one place these names are spelled out. */
 export const BRAND = {
   name: 'Chess Goat',
   author: 'Jarvl',

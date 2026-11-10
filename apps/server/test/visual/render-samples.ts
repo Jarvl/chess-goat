@@ -1,4 +1,4 @@
-// Snapshot spec §6 "By eye": writes sample cards to compare with the Claude Design prototype.
+// "By eye": writes sample cards to compare with the Claude Design prototype.
 // Usage: pnpm --filter @chess-goat/server exec tsx test/visual/render-samples.ts <out-dir>
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -106,7 +106,7 @@ const samples: Record<string, Partial<SnapshotInput>> = {
     plyCount: 1,
     white: side('white', { name: 'Chess Goat', kind: 'engine', rating: null, engineLevel: 'club' }),
   },
-  // Flair spec §5.1: worn flair after the name; with a long name, the name is cut short first.
+  // Worn flair after the name; with a long name, the name is cut short first.
   flair: {
     ...finishedAt(KASPAROV_TOPALOV),
     result: '1-0',
@@ -120,7 +120,7 @@ const samples: Record<string, Partial<SnapshotInput>> = {
       ratingChange: { before: 1587, after: 1571, rdAfter: 50 },
     }),
   },
-  // Profile photos spec: a stored Telegram photo covers the initial; the other side has none.
+  // A stored Telegram photo covers the initial; the other side has none.
   photo: {
     board: replay(['e4', 'e5']),
     ply: 2,

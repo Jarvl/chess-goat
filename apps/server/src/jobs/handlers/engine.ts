@@ -38,7 +38,7 @@ function pieceOn(fen: string, square: string): string | undefined {
 }
 
 /**
- * A uniformly random legal move, used only to recover from an illegal engine reply (spec §9, E7).
+ * A uniformly random legal move, used only to recover from an illegal engine reply.
  * Exported so its promotion-suffix logic can be pinned by a deterministic unit test without going
  * through `Math.random`.
  */
@@ -56,7 +56,7 @@ export function randomLegalMove(fen: string): string | null {
 }
 
 /**
- * Spec §9: a sustained outage must not leave the game dead — but it must not become a random mover
+ * A sustained outage must not leave the game dead — but it must not become a random mover
  * either, since the player was told which level they chose. The engine is one of the game's two
  * players, so it may end its own game this way; `abortGame` itself is not used because its
  * player-facing guard (no abort past ply 1) exists to stop a *player* from dodging a bad position,
@@ -81,7 +81,7 @@ async function abortForUnavailableEngine(
 /**
  * How a single run of the handler failed to make progress. Nothing inside the handler decides what
  * to do about it: every one of these reaches the one attempts-exhausted decision below, which is
- * what keeps spec §9's invariant (never leave the game `active` with the engine to move) true of
+ * what keeps the invariant (never leave the game `active` with the engine to move) true of
  * *all* the ways out of this handler rather than of the ones somebody remembered to guard.
  */
 type Escape = { error: string; delayMs?: number };
@@ -135,7 +135,7 @@ export function engineJobHandlers(ctx: EngineHandlerContext): JobHandlers {
         } finally {
           metrics.engineMoveDuration.observe(Number(process.hrtime.bigint() - started) / 1e9);
         }
-        // Spec §9's `(none)` row: the position is supposed to be terminal. Whether it really is, is
+        // The `(none)` case: the position is supposed to be terminal. Whether it really is, is
         // not this function's business — the status re-check below settles it either way.
         if ('none' in reply) return null;
 
@@ -151,10 +151,10 @@ export function engineJobHandlers(ctx: EngineHandlerContext): JobHandlers {
         } catch (error) {
           if (!isDomainError(error) || error.code !== 'illegal_move') throw error;
           // Stockfish does not emit illegal moves, so this is almost certainly a bug in our own UCI
-          // parsing. Recover so the game survives, but make sure it is visible (spec §9).
+          // parsing. Recover so the game survives, but make sure it is visible.
           metrics.engineIllegalMoves.inc();
           log.error({ gameId, fen: game.fen, bestmove: uci }, 'engine returned an illegal move');
-          // Spec §9: with no legal move to substitute, fall through to the `(none)` row — which is
+          // With no legal move to substitute, fall through to the `(none)` row — which is
           // the status re-check below, not silence.
           const fallback = randomLegalMove(game.fen);
           if (!fallback) return null;
@@ -189,8 +189,8 @@ export function engineJobHandlers(ctx: EngineHandlerContext): JobHandlers {
           // is owed, reaching here means Stockfish and the arbiter disagree — an error, not noise.
           const fresh = await requireGameById(deps.db, gameId);
           // A premove the human queued can answer the engine inside its own move, leaving the
-          // engine to move again at a later ply; that ply's job is already enqueued (conditional
-          // premoves spec, Firing). Only the same ply still owing a move is a stall.
+          // engine to move again at a later ply; that ply's job is already enqueued.
+          // Only the same ply still owing a move is a stall.
           if (
             fresh.status === 'active' &&
             fresh.plyCount === game.plyCount &&

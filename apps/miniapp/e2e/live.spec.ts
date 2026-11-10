@@ -55,7 +55,7 @@ test('shows the latest position after the connection drops and comes back', asyn
   await bob.waitForTimeout(500);
   await expect(bob.locator('.move-list [data-ply="1"]')).toHaveCount(0);
 
-  // Back online: the `online` handler refreshes the state (spec §6.4) and reopens the stream.
+  // Back online: the `online` handler refreshes the state and reopens the stream.
   await bobContext.setOffline(false);
   await expect(bob.locator('.move-list [data-ply="1"]')).toHaveText('e4', { timeout: 10_000 });
   await expect.poll(refreshes).toBeGreaterThan(refreshesBefore);

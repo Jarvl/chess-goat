@@ -13,7 +13,7 @@ import type { ApiContext, ApiEnv } from '../context';
 import { publicIdParam, userIdParam } from '../middleware';
 import { validate } from '../validate';
 
-/** Spec §7.11/§12: every read and write re-checks admin rights through the cached ladder. */
+/** Every read and write re-checks admin rights through the cached ladder. */
 export function adminRoutes(api: Hono<ApiEnv>, ctx: ApiContext): void {
   const { db } = ctx.deps;
   type Ctx = Context<ApiEnv>;

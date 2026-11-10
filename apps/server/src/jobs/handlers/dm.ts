@@ -59,7 +59,7 @@ async function forgetIfBlocked(
 }
 
 /**
- * DM notifications spec §2.2–2.3: deletes a replaced DM while Telegram still allows it, otherwise
+ * Deletes a replaced DM while Telegram still allows it, otherwise
  * leaves its one-line stub; or applies the silent waiting edit after the player moved.
  */
 export const retireDm =
@@ -153,7 +153,7 @@ async function challengeDm(
   };
 }
 
-/** DM notifications spec §4: what the user's DM for this game says now, or null if none applies. */
+/** What the user's DM for this game says now, or null if none applies. */
 async function gameDm(
   tx: DbOrTx,
   ctx: TelegramHandlerContext,
@@ -243,7 +243,7 @@ async function waitingLine(tx: DbOrTx, game: GameRow, user: UserRow): Promise<st
 }
 
 /**
- * Spec §2.1 step 3: under the game (or challenge) row lock that every trigger takes, makes the
+ * Under the game (or challenge) row lock that every trigger takes, makes the
  * sent message the live row — or, when state moved on while it was in flight, the waiting line
  * or a retired message.
  */
@@ -342,7 +342,7 @@ export const sendDm =
     try {
       await recordSent(ctx, user, payload, { ...dm, kind: dm.kind }, chatId, messageId);
     } catch (error) {
-      // Spec §3: the message is out but untracked, and the retry sends another. Take this one
+      // The message is out but untracked, and the retry sends another. Take this one
       // back so the chat is not left with two.
       await call(ctx, null, () => ctx.api.deleteMessage(chatId, messageId));
       throw error;

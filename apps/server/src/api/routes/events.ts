@@ -8,7 +8,7 @@ import { publicIdParam } from '../middleware';
 
 const PING_MS = 20_000;
 
-/** Spec §6.4/§9: `state` snapshots keyed by version, `ping` every 20 s, token in the query string. */
+/** `state` snapshots keyed by version, `ping` every 20 s, token in the query string. */
 export function eventsRoutes(api: Hono<ApiEnv>, ctx: ApiContext): void {
   api.get('/games/:id/events', async (c) => {
     const user = c.get('user');
@@ -73,7 +73,7 @@ export function eventsRoutes(api: Hono<ApiEnv>, ctx: ApiContext): void {
         release();
       },
     );
-    // Hono's helper sets no-cache; spec §9 wants no-store on every response.
+    // Hono's helper sets no-cache; every response here wants no-store.
     response.headers.set('Cache-Control', 'no-store');
     return response;
   });

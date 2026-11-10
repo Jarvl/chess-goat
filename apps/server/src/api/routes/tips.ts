@@ -6,7 +6,7 @@ import type { ApiContext, ApiEnv } from '../context';
 import { validate } from '../validate';
 
 /**
- * Tip jar spec §2.1: one Stars invoice link per tap. A Bot API failure is left to the app's error
+ * One Stars invoice link per tap. A Bot API failure is left to the app's error
  * handler, which logs it and answers `internal`.
  */
 export function tipRoutes(api: Hono<ApiEnv>, ctx: ApiContext): void {

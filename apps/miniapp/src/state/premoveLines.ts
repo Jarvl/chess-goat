@@ -33,7 +33,7 @@ function step(fen: string, uci: string) {
 }
 
 /**
- * The tree as blocks of standard notation, one per line (spec, The game screen, item 5). A line
+ * The tree as blocks of standard notation, one per line. A line
  * runs on while a reply has exactly one continuation; where a reply has two or more, each one
  * starts a block a level deeper. An opponent move without a reply ends its line.
  */

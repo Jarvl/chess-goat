@@ -77,7 +77,7 @@ function advance(
 }
 
 /**
- * Applies one rated result as its own rating period for both players (spec §7.5), inflating each
+ * Applies one rated result as its own rating period for both players, inflating each
  * player's deviation for the days they were idle first. Mutates `states` (except a `frozen` side,
  * which is neither changed nor created); returns the snapshots the game row stores.
  */

@@ -23,7 +23,7 @@ function positionKey(position: BoardPosition): string {
 /**
  * Mounts the adapter once and pushes position, movable set and view-only flag from the store.
  * While premoves are built, the side to move in the shown position is the one that moves
- * (conditional premoves spec, Mini App: Board), and the selected premove is highlighted.
+ *, and the selected premove is highlighted.
  */
 export function Board(props: {
   store: GameStore;

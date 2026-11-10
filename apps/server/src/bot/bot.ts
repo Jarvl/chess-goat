@@ -156,7 +156,7 @@ export async function createBot(deps: Deps, config: Config): Promise<Bot> {
       // sender_chat set. The link needs nobody's identity, so they get it too.
       const anonymous = ctx.msg.sender_chat !== undefined;
       if (!ctx.from || (ctx.from.is_bot && !anonymous) || ctx.msg.is_automatic_forward) return;
-      // /chess and /settings share 20 links per person per group per minute (spec §7.8); anonymous
+      // /chess and /settings share 20 links per person per group per minute; anonymous
       // senders share one budget per chat they post as.
       const sender = ctx.msg.sender_chat?.id ?? ctx.from.id;
       if (!linkLimiter.allow(`link:${ctx.chat.id}:${sender}`)) return;

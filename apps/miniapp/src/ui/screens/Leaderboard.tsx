@@ -5,7 +5,7 @@ import { useResource } from '../hooks';
 import { PlayerRow } from '../rows';
 import { ErrorScreen, Loading } from './Status';
 
-/** The group's rated table; it loads the lobby itself so it is always current (spec §3.3). */
+/** The group's rated table; it loads the lobby itself so it is always current. */
 export function Leaderboard(props: { groupId: string }) {
   const { client, router } = useApp();
   const lobby = useResource(`leaderboard:${props.groupId}`, () =>

@@ -1,5 +1,5 @@
 /**
- * The flair catalog (flair spec §1): the emoji a player can earn and the rule that earns each one.
+ * The flair catalog: the emoji a player can earn and the rule that earns each one.
  * It is data only, so it adds almost nothing to the Mini App bundle.
  *
  * - A new flair built from existing rules is one entry in `FLAIR` plus one `flair.<id>` string in
@@ -7,7 +7,7 @@
  * - A new kind of condition is a move-pattern detector or a rule evaluator, with unit tests.
  * - Ids are permanent and never reused: awards and backfill versions are keyed by id.
  * - Editing a rule only affects future awards; raise `backfill` to apply a loosened rule to past
- *   games (backfill spec §1). Flair already earned is kept.
+ *   games. Flair already earned is kept.
  */
 import type { MessageKey } from '../i18n';
 import type { EndReason } from '../protocol/enums';
@@ -22,7 +22,7 @@ export const FLAIR_CATEGORIES = ['rank', 'feat', 'dubious'] as const;
 
 export type FlairCategory = (typeof FLAIR_CATEGORIES)[number];
 
-/** Things a side can do in a game, found by the server in the game's stored moves (spec §1.8). */
+/** Things a side can do in a game, found by the server in the game's stored moves. */
 export type MovePattern =
   | 'en_passant'
   | 'castle_queenside'
@@ -40,7 +40,7 @@ export type MovePattern =
 export type PlayerResult = 'win' | 'draw' | 'loss';
 
 /**
- * What earns a flair (spec §1.4), evaluated for one player at one of their counted games:
+ * What earns a flair, evaluated for one player at one of their counted games:
  * - `held`: their rating after a rated game, rounded as displayed, is in `[min, max]`; a null bound
  *   is open.
  * - `made`: they made `pattern`, whatever the result.
@@ -54,7 +54,7 @@ export type PlayerResult = 'win' | 'draw' | 'loss';
  * - `total`: at least `count` games that pass the filter have `result`.
  *
  * With `rated`, `total` skips casual games. A rule's answer at a game may depend only on that
- * game and the player's earlier counted games (§1.6), which is what lets each game be evaluated
+ * game and the player's earlier counted games, which is what lets each game be evaluated
  * once, as it ends.
  */
 export type FlairRule =
@@ -74,7 +74,7 @@ export type FlairDefinition = {
   emoji: string;
   category: FlairCategory;
   rule: FlairRule;
-  /** The backfill version (backfill spec §1). Absent means 1; bump it to backfill this flair again. */
+  /** The backfill version. Absent means 1; bump it to backfill this flair again. */
   backfill?: number;
 };
 
@@ -130,7 +130,7 @@ export function total(
   return { kind: 'total', result, count, rated: options?.rated ?? false };
 }
 
-/** Every flair, in display order (spec §1.2). */
+/** Every flair, in display order. */
 export const FLAIR = [
   { id: 'rank_under_1200', emoji: '🦍', category: 'rank', rule: held(null, 1199) },
   { id: 'rank_1200', emoji: '🧑‍🦼', category: 'rank', rule: held(1200, 1299) },
@@ -171,7 +171,7 @@ export type FlairEntry = (typeof FLAIR)[number];
 
 export type FlairId = FlairEntry['id'];
 
-/** The version a flair is backfilled at (backfill spec §1): its `backfill`, or 1 when absent. */
+/** The version a flair is backfilled at: its `backfill`, or 1 when absent. */
 export function flairBackfillVersion(flair: FlairDefinition): number {
   return flair.backfill ?? 1;
 }

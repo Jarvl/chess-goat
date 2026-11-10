@@ -53,7 +53,7 @@ describe('loadCountedGames', () => {
       ['draw_agreement', bob.id],
       ['resignation', bob.id],
     ]);
-    // With no game to stop at, the whole counted history (backfill spec §4.2).
+    // With no game to stop at, the whole counted history.
     expect((await loadCountedGames(db, alice.id)).map((r) => r.id)).toEqual([
       first.id,
       win.id,

@@ -13,7 +13,7 @@ function scopeFor(path: string): string | null {
 }
 
 /**
- * Bearer session token everywhere (spec §9). Two routes take `?token=` because the client cannot
+ * Bearer session token everywhere. Two routes take `?token=` because the client cannot
  * set headers there: the SSE stream takes the session token (it never leaves the web view), and the
  * PGN download takes only a short-lived token scoped to that game (it goes to the system browser or
  * Telegram's downloader).
@@ -40,7 +40,7 @@ export function requireSession(ctx: ApiContext): MiddlewareHandler<ApiEnv> {
   };
 }
 
-/** Spec §7.8: 120 API requests per user per minute, counted on the shared limiter. */
+/** 120 API requests per user per minute, counted on the shared limiter. */
 export function userRateLimit(ctx: ApiContext): MiddlewareHandler<ApiEnv> {
   return async (c, next) => {
     if (!ctx.rateLimiter.allow(String(c.get('user').id)))

@@ -18,12 +18,12 @@ export type MoveHandler = (orig: string, dest: string, meta: { captured: boolean
 
 export type SelectHandler = (square: string) => void;
 
-/** The viewed premove's two squares, as chessground custom highlights (conditional premoves spec, The game screen). */
+/** The viewed premove's two squares, as chessground custom highlights. */
 export function highlightSquares(squares: string[]): Map<Key, string> {
   return new Map(squares.map((square) => [square as Key, 'premove-sq']));
 }
 
-/** Spec §6.3: the seam around chessground; nothing else imports it. */
+/** The seam around chessground; nothing else imports it. */
 export interface BoardAdapter {
   setPosition(position: BoardPosition): void;
   setMovable(movable: Movable): void;

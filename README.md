@@ -58,16 +58,13 @@ The whole server runs as one Node process with four roles (`api`, `bot`, `jobs`,
 
 ## Documentation
 
-| Read this                                                                             | For                                             |
-| ------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| [Running it in Telegram](docs/running.md)                                             | Setting up BotFather and trying it out          |
-| [Self-hosting on Dokploy](docs/deploy-dokploy.md)                                     | A step-by-step deploy on your own VPS           |
-| [Bots and the MCP server](docs/bots.md)                                               | Letting an AI agent run bots                    |
-| [Operations](docs/operations.md)                                                      | Deployment checklist, metrics and alerts        |
-| [Testing](docs/testing.md)                                                            | How it is tested, and what is left before alpha |
-| [Product requirements](docs/PRD.md)                                                   | What the product does and deliberately does not |
-| [Technical design](docs/superpowers/specs/2026-09-20-group-chess-technical-design.md) | Architecture, data model and protocols          |
-| [Specs](docs/superpowers/specs) and [implementation plans](docs/superpowers/plans)    | The design record of each feature               |
+| Read this                                         | For                                             |
+| ------------------------------------------------- | ----------------------------------------------- |
+| [Running it in Telegram](docs/running.md)         | Setting up BotFather and trying it out          |
+| [Self-hosting on Dokploy](docs/deploy-dokploy.md) | A step-by-step deploy on your own VPS           |
+| [Bots and the MCP server](docs/bots.md)           | Letting an AI agent run bots                    |
+| [Operations](docs/operations.md)                  | Deployment checklist, metrics and alerts        |
+| [Testing](docs/testing.md)                        | How it is tested, and what is left before alpha |
 
 ## Layout
 
@@ -103,7 +100,7 @@ Telegram must load the Mini App over public HTTPS: point BotFather's app URL at 
 ```bash
 pnpm lint && pnpm format:check && pnpm typecheck
 pnpm test                        # unit + integration, on this worktree's own database (pnpm test:unit skips integration)
-pnpm build && pnpm check:budget  # Mini App bundle inside the §6.5 budget
+pnpm build && pnpm check:budget  # Mini App bundle inside the bundle budget
 pnpm check:licences              # every dependency inside the licence allow-list
 pnpm e2e                         # builds the app and runs Playwright against the real server + a fake Bot API
 ```

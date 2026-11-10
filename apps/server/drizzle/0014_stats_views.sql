@@ -1,4 +1,4 @@
--- Usage dashboard spec: anonymised read-only views for Metabase. A later migration that alters or drops a column one of these views reads must `create or replace` (or drop and recreate) the view in the same migration; Postgres refuses to drop a column a view depends on.
+-- Anonymised read-only views for Metabase. A later migration that alters or drops a column one of these views reads must `create or replace` (or drop and recreate) the view in the same migration; Postgres refuses to drop a column a view depends on.
 CREATE SCHEMA IF NOT EXISTS "stats";
 --> statement-breakpoint
 CREATE OR REPLACE VIEW "stats"."users" AS

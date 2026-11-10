@@ -1,7 +1,7 @@
 import { flairById, flairDescriptionKey, t } from '@chess-goat/shared';
 
 /**
- * The emoji a player wears beside their name (flair spec §5.1), or nothing. An id this build's
+ * The emoji a player wears beside their name, or nothing. An id this build's
  * catalog does not know is skipped, since the server can be a deploy ahead of an app still open.
  * Each emoji is its own span, spaced by a flex gap in the stylesheet, so a ZWJ sequence stays whole.
  */

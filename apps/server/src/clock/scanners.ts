@@ -10,7 +10,7 @@ import { enqueue } from '../jobs/queue';
 import { pollBackoffMs } from '../jobs/worker';
 import { mixFilter } from '../domain/gameMix';
 
-/** Spec §7.3 forfeit scanner: rows are the state; the transaction re-checks each deadline against now(). */
+/** Forfeit scanner: rows are the state; the transaction re-checks each deadline against now(). */
 export async function forfeitOverdueGames(deps: Deps, limit = 100): Promise<number> {
   const finished = await deps.db.transaction(async (tx) => {
     const due = await tx
@@ -66,7 +66,7 @@ export async function abortStaleBotGames(deps: Deps, limit = 100): Promise<numbe
   return finished.length;
 }
 
-/** Spec §7.3 reminder scanner: one DM per turn, then the column is cleared. */
+/** Reminder scanner: one DM per turn, then the column is cleared. */
 export async function sendDueReminders(deps: Deps, limit = 100): Promise<number> {
   return deps.db.transaction(async (tx) => {
     const due = await tx
@@ -109,7 +109,7 @@ export async function runScannersOnce(deps: Deps): Promise<{
   return { forfeits, reminders, expiries, staleBotGames };
 }
 
-/** The `clock` role: every 5 s by default (spec §7.3). Errors are logged and the loop continues. */
+/** The `clock` role: every 5 s by default. Errors are logged and the loop continues. */
 export function startScanners(
   deps: Deps,
   options: { intervalMs?: number } = {},

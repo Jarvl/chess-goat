@@ -47,9 +47,9 @@ export const users = pgTable(
     writeAccessAskedAt: tz(),
     prefs: jsonb().$type<Partial<Prefs>>().notNull().default({}),
     isEngine: boolean().notNull().default(false),
-    /** `user_photos.hash` of the current Telegram photo; null without one (profile photos spec). */
+    /** `user_photos.hash` of the current Telegram photo; null without one. */
     photoHash: text(),
-    /** Worn flair ids in slot order, at most three (flair spec §2). */
+    /** Worn flair ids in slot order, at most three. */
     flairWorn: text()
       .array()
       .notNull()
@@ -81,7 +81,7 @@ export const users = pgTable(
   ],
 );
 
-/** Bot accounts spec §1: one hashed owner token per human; deleting the user deletes it. */
+/** One hashed owner token per human; deleting the user deletes it. */
 export const ownerTokens = pgTable('owner_tokens', {
   userId: bigint({ mode: 'number' })
     .primaryKey()
@@ -92,7 +92,7 @@ export const ownerTokens = pgTable('owner_tokens', {
 });
 
 /**
- * Profile photos spec: the small Telegram photo, or an all-null row meaning "checked, none".
+ * The small Telegram photo, or an all-null row meaning "checked, none".
  * `hash` is not unique: two users can have byte-identical photos.
  */
 export const userPhotos = pgTable(
@@ -262,7 +262,7 @@ export const games = pgTable(
       .default(sql`'{}'::text[]`),
     /**
      * The premove tree of the side not to move, in the premove tree codec's bytes; empty for none
-     * (conditional premoves spec, Data).
+     *.
      */
     premoveTree: bytea()
       .notNull()
@@ -274,7 +274,7 @@ export const games = pgTable(
      */
     premoveTreePly: integer().notNull().default(0),
     /**
-     * A premove reply found illegal as it fired (bots spec §3): the tree was discarded at `ply`,
+     * A premove reply found illegal as it fired: the tree was discarded at `ply`,
      * where `botId` is to move. Cleared when that side next moves, which it must before it can set a
      * new tree.
      */
@@ -303,7 +303,7 @@ export type PremoveFailure = { ply: number; opponentMove: string; reply: string;
 export type DmKind = 'turn' | 'reminder' | 'draw_offer' | 'waiting' | 'challenge';
 
 /**
- * DM notifications spec §1: a DM that is still live — the bot will later replace, edit or retire
+ * A DM that is still live — the bot will later replace, edit or retire
  * it. At most one per user and game, or user and challenge. Result DMs are final and get no row.
  */
 export const dmMessages = pgTable(
@@ -335,7 +335,7 @@ export const dmMessages = pgTable(
 );
 
 /**
- * Flair spec §2: one row per flair a user has earned. `earnedAt` is the finish time of the game
+ * One row per flair a user has earned. `earnedAt` is the finish time of the game
  * in `gameId`, the game that earned it.
  */
 export const userFlair = pgTable(
@@ -354,7 +354,7 @@ export const userFlair = pgTable(
 );
 
 /**
- * No longer read (backfill spec §2). Kept until a later release drops it, because the previous
+ * No longer read. Kept until a later release drops it, because the previous
  * image still writes it at boot and must be able to start after a rollback.
  */
 export const flairIntroductions = pgTable('flair_introductions', {
@@ -363,7 +363,7 @@ export const flairIntroductions = pgTable('flair_introductions', {
 });
 
 /**
- * Backfill spec §2: the highest backfill version completed for each flair id. A catalog flair
+ * The highest backfill version completed for each flair id. A catalog flair
  * whose version is above its row, or that has no row, is pending.
  */
 export const flairBackfills = pgTable('flair_backfills', {
@@ -500,7 +500,7 @@ export const adminActions = pgTable('admin_actions', {
 });
 
 /**
- * Tip jar spec §1: one row per successful Stars payment. Kept when the payer deletes their data —
+ * One row per successful Stars payment. Kept when the payer deletes their data —
  * the charge id and Telegram user id are what `refundStarPayment` needs.
  */
 export const tips = pgTable('tips', {

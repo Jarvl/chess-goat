@@ -102,7 +102,7 @@ export function nodeAt(
   };
 }
 
-/** Plays `uci` at the end of `path` (spec, Building it). Never mutates `tree`. */
+/** Plays `uci` at the end of `path`. Never mutates `tree`. */
 export function playAt(tree: readonly DraftNode[], path: Path, uci: string): PlayResult {
   const trail = walk(tree, path);
   if (!trail) throw new Error('Path is not in the tree');

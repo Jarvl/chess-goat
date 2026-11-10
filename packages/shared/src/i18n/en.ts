@@ -1,4 +1,4 @@
-/** Every user-facing string the server sends to Telegram (spec §5.4, §5.5, §5.7, §11). */
+/** Every user-facing string the server sends to Telegram. */
 export const en = {
   'time.per_move.3600': '1 hour per move',
   'time.per_move.28800': '8 hours per move',

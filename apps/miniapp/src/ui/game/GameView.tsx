@@ -100,14 +100,14 @@ export function GameView(props: {
   } | null>(null);
   const [slowSend, setSlowSend] = useState(false);
   // True from a drop that waits for Confirm move until that move settles (sent, cancelled or
-  // rejected): the bar stays up through the send, and the tab bar stays hidden (move confirmations spec).
+  // rejected): the bar stays up through the send, and the tab bar stays hidden.
   const [confirming, setConfirming] = useState(false);
   // Which of Confirm and Cancel this client has no Telegram button for, so the page draws them.
   const [inPage, setInPage] = useState(NO_IN_PAGE);
   // Confirm premoves is on its way to the server.
   const [confirmingPremoves, setConfirmingPremoves] = useState(false);
   const confirmingPremovesRef = useRef(false);
-  // A save with confirmations off is running (conditional premoves spec, Sending it).
+  // A save with confirmations off is running.
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const now = useClock(store);
@@ -170,7 +170,7 @@ export function GameView(props: {
       }
       noteTurnChange(previous, next);
       for (const notice of diffNotices(previous, next, { discardedDraft })) notify(notice);
-      // Spec §6.3: a check buzzes, whichever side gave it.
+      // A check buzzes, whichever side gave it.
       if (next.plyCount > previous.plyCount && positionAt(next, next.plyCount).check)
         tg.hapticNotify('warning');
       // A move waiting for Confirm move is void once the game has moved on (the server would
@@ -181,7 +181,7 @@ export function GameView(props: {
     [store, notify, tg],
   );
 
-  // Live updates for running games (spec §6.4); finished games are static.
+  // Live updates for running games; finished games are static.
   useEffect(() => {
     if (dto.status !== 'active') return;
     const stream = new GameStream({
@@ -226,7 +226,7 @@ export function GameView(props: {
     }
   };
 
-  // Confirmations off (conditional premoves spec, Sending it): every completed change saves at
+  // Confirmations off: every completed change saves at
   // once, one save at a time. Each save names the tree its draft builds on (the last tree the
   // server confirmed for it), so another device's tree is refused, never overwritten. A change
   // made while a save runs is saved as soon as that one settles; one made on a draft that started
@@ -247,7 +247,7 @@ export function GameView(props: {
         const text = sendable(wanted.tree);
         if (text === base.tree) break;
         if (text === null) {
-          // Kept on screen, never sent (spec, The tree).
+          // Kept on screen, never sent.
           toast(t('app.game.premove_too_big'));
           break;
         }
@@ -442,7 +442,7 @@ export function GameView(props: {
     return () => clearTimeout(timer);
   }, [moveState.kind, slowSend]);
 
-  // The bottom bar (conditional premoves spec, Sending it: confirmations on): Confirm move with the
+  // The bottom bar: Confirm move with the
   // premoves on top of it, or Confirm premoves on the opponent's turn, each beside Cancel.
   const confirmOn = needsConfirmation(prefs.value.moveConfirmations, dto);
   const premoveDraftOpen =
@@ -494,7 +494,7 @@ export function GameView(props: {
     dispatch,
   ]);
   // Telegram's bar takes about the space the tab bar frees, so the board keeps its size while a
-  // draft is open; and no tab tap can leave it unsent (move confirmations spec).
+  // draft is open; and no tab tap can leave it unsent.
   const hideTabs = confirming || confirmingPremoves || (confirmOn && store.draftDirty.value);
   useEffect(() => {
     router.suppressTabs.value = hideTabs;
@@ -553,7 +553,7 @@ export function GameView(props: {
       store.selected.value.join(','),
     ].join('|');
 
-  /** Replace a reply in the tree (spec, Building it): previewed, then asked. */
+  /** Replace a reply in the tree: previewed, then asked. */
   const replaceInTree = async (
     path: readonly string[],
     uci: string,
@@ -586,7 +586,7 @@ export function GameView(props: {
     completed();
   };
 
-  /** Replace the waiting move from the position before it (spec, Building it). */
+  /** Replace the waiting move from the position before it. */
   const replaceWaiting = async (uci: string): Promise<void> => {
     const waiting = store.waiting.value;
     if (!waiting || moveRef.current.kind !== 'pendingConfirm') {
@@ -728,7 +728,7 @@ export function GameView(props: {
     });
     tg.hapticSelection();
   };
-  /** ✕ on the selected premove (spec, Building it): asks, then removes it and what follows. */
+  /** ✕ on the selected premove: asks, then removes it and what follows. */
   const removeSelected = async (): Promise<void> => {
     const path = store.selected.value;
     // A draft on its way to the server is what it sends; removing from it now would change nothing.
@@ -838,7 +838,7 @@ export function GameView(props: {
     if (url) tg.openLink(url);
   };
   // The download goes to Telegram's downloader or the system browser, so it carries a short-lived
-  // link token from the server, never the session token (spec §9).
+  // link token from the server, never the session token.
   const pgn = async (): Promise<void> => {
     try {
       const link = await client.post(`/api/games/${gameId}/pgn-link`, {}, PgnLinkDtoSchema);
@@ -861,7 +861,7 @@ export function GameView(props: {
   const playing = isPlayer && dto.status === 'active';
   const finished = dto.status === 'finished';
   // Draw waits for the second move, when the last slot turns from Abort to Resign, and the bot
-  // never takes one (spec §8).
+  // never takes one.
   const early = dto.plyCount < 2;
   const drawOpen = canOffer && !early && dto.engineLevel === null;
   // Unconfirmed changes: with confirmations on, the waiting move, premove edits and an opponent
@@ -1119,7 +1119,7 @@ export function GameView(props: {
           </button>
         </div>
       )}
-      {/* Docked just above the tab bar, where a thumb reaches it (game switcher spec). */}
+      {/* Docked just above the tab bar, where a thumb reaches it. */}
       {strip ? <GameSwitcher games={strip} currentId={dto.id} live={dto} /> : null}
     </div>
   );

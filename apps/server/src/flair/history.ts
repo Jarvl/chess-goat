@@ -4,9 +4,9 @@ import type { DbOrTx } from '../db/client';
 import { games, type GameRow } from '../db/schema';
 import type { CountedGame } from './rules';
 
-// `finishGame` uses `isCountedGame` (flair spec §3.2), so nothing here may import `domain/games.ts`.
+// `finishGame` uses `isCountedGame`, so nothing here may import `domain/games.ts`.
 
-/** The results that decide a game (flair spec §1.3); an abort ends `*`. */
+/** The results that decide a game; an abort ends `*`. */
 const DECIDED_RESULTS = ['1-0', '0-1', '1/2-1/2'] as const;
 
 type DecidedResult = (typeof DECIDED_RESULTS)[number];
@@ -16,7 +16,7 @@ function isDecided(result: GameResult | null): result is DecidedResult {
 }
 
 /**
- * Flair spec §1.3: a counted game is finished, not voided, decided, and not against the bot. Keep
+ * A counted game is finished, not voided, decided, and not against the bot. Keep
  * `COUNTED` below in step with it. It cannot see the players, so it does not rule out a game against
  * an owned bot: `COUNTED` does, and the award job checks both player rows.
  */
@@ -32,7 +32,7 @@ export function isCountedGame(
 }
 
 /**
- * `isCountedGame` as a condition on `games`; the backfill lists players by it (backfill spec §4.2).
+ * `isCountedGame` as a condition on `games`; the backfill lists players by it.
  */
 export const COUNTED = and(
   eq(games.status, 'finished'),
@@ -50,11 +50,11 @@ function resultFor(result: DecidedResult, white: boolean): PlayerResult {
 }
 
 /**
- * The player's counted games (flair spec §1.3), oldest first: all of them, or with `through` those
+ * The player's counted games, oldest first: all of them, or with `through` those
  * up to and including that game. The order and the cut both use `(finished_at, id)`, so of games
  * that finished at the same instant the lower ids come first and any above `through` are left out.
  * A rule therefore sees no game after the one it is scored at, and that game, when it counts, is
- * the last entry (spec §1.6). Every earlier game counts, however long ago (backfill spec §5).
+ * the last entry. Every earlier game counts, however long ago.
  */
 export async function loadCountedGames(
   tx: DbOrTx,

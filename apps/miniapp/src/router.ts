@@ -49,7 +49,7 @@ type Stacks = Record<TabName, Route[]>;
 
 /**
  * A game resumed from another section is arrived at, not hopped to: the switcher strip takes a
- * fresh order (game switcher spec), not whatever the other section's games left behind.
+ * fresh order, not whatever the other section's games left behind.
  */
 function arrival(route: Route): Route {
   return route.name === 'game' && route.hop ? { name: 'game', gameId: route.gameId } : route;
@@ -58,7 +58,7 @@ function arrival(route: Route): Route {
 /**
  * A tabbed in-memory router (Telegram owns the URL fragment). Tabs carry lateral movement and
  * never deepen a stack; the BackButton carries depth only, so it stays a single tap from the
- * way out (nav spec, superseding technical design §6.1 step 5).
+ * way out.
  *
  * `closeFromRoot` is set for a launch that came from a chat link: there the BackButton also
  * shows at the root, where it closes, so "back to the chat I came from" keeps costing one tap.

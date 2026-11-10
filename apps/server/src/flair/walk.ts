@@ -3,9 +3,9 @@ import type { StoredMove } from './patterns';
 import { ruleHolds, type CountedGame } from './rules';
 
 /**
- * Backfill spec §4.2 steps 3–4: walks a player's counted games, oldest first, and finds the first
+ * Steps 3–4: walks a player's counted games, oldest first, and finds the first
  * game at which each candidate's rule holds. Scoring each game on the history up to it is correct
- * because a rule depends only on the game and earlier ones (flair spec §1.6).
+ * because a rule depends only on the game and earlier ones.
  *
  * Moves are read only for a game where a candidate that reads them could hold: any game for `made`,
  * a win for `won` and `quickMate`, a loss for `lost`. They are read at most once per game, and the walk stops as soon as every candidate is found.

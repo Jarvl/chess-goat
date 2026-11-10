@@ -8,7 +8,7 @@ const VERDICT_TTL_MS = 10 * 60_000;
 const DENIAL_TTL_MS = 60_000;
 const ADMIN_TTL_MS = 60_000;
 
-/** The verification ladder of spec §5.6 and the admin check used on every settings request. */
+/** The verification ladder and the admin check used on every settings request. */
 export class Membership {
   private readonly admins = new Map<number, { until: number; ids: Set<number> }>();
 

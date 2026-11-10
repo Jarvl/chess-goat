@@ -6,7 +6,7 @@ import { refundTip, type RefundableTip } from '../domain/tipRefunds';
 import { createTelegramApi } from '../telegram/client';
 
 /**
- * Refunds a Stars tip (tip jar spec §2.4). Run it inside the app container, from apps/server:
+ * Refunds a Stars tip. Run it inside the app container, from apps/server:
  *
  *   pnpm run refund-tip <transaction id>
  *

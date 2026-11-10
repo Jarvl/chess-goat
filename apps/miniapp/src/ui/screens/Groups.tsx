@@ -7,7 +7,7 @@ import { ErrorScreen, Loading } from './Status';
 export function Groups() {
   const { client, router } = useApp();
   // Not prefetched: the launch response paints the Games home, and reaching this tab is a
-  // lateral move, so one fetch here costs nothing against the first-paint budget (spec §6.5).
+  // lateral move, so one fetch here costs nothing against the first-paint budget.
   const groups = useResource('groups', () => client.get('/api/me/groups', MeGroupsDtoSchema));
   if (groups.error) return <ErrorScreen onRetry={() => void groups.reload()} />;
   if (!groups.data) return <Loading />;

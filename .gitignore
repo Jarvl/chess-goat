@@ -18,3 +18,6 @@ apps/miniapp/playwright-report/
 apps/server/fonts/*.ttf
 apps/server/fonts/*.otf
 apps/server/fonts/*.part
+
+# Local working notes written by the superpowers skills; never committed (see AGENTS.md).
+docs/superpowers/

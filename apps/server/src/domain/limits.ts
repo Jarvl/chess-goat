@@ -7,7 +7,7 @@ import { and, eq, or, sql, type SQL } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client';
 import { challenges, games } from '../db/schema';
 
-/** Spec §7.8. */
+/** */
 export const MAX_PENDING_CHALLENGES = 3;
 
 async function count(tx: DbOrTx, query: Promise<{ n: number }[]>): Promise<number> {
@@ -52,7 +52,7 @@ export function countLiveGames(tx: DbOrTx, userId: number): Promise<number> {
   );
 }
 
-/** `deadline_at − 0.1·T` expressed against the database clock; null when no reminder applies (spec §7.3). */
+/** `deadline_at − 0.1·T` expressed against the database clock; null when no reminder applies. */
 export function reminderExpression(timePerMove: TimePerMove, wantsDms: boolean): SQL | null {
   if (timePerMove === null || timePerMove < REMINDER_MIN_TIME_PER_MOVE || !wantsDms) return null;
   return sql`now() + make_interval(secs => ${timePerMove * (1 - REMINDER_FRACTION)})`;

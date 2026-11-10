@@ -1,7 +1,7 @@
 import type { ThemeParams } from './types';
 import type { Tg } from './webapp';
 
-/** Spec §6.7: Telegram's colours with a fixed palette per scheme when a key is missing. */
+/** Telegram's colours with a fixed palette per scheme when a key is missing. */
 export const FALLBACK_THEME = {
   light: {
     bg: '#ffffff',
@@ -25,7 +25,7 @@ export const FALLBACK_THEME = {
   },
 } as const;
 
-/** The Chess Goat accents (redesign spec §1), fixed per scheme on top of Telegram's neutrals. */
+/** The Chess Goat accents, fixed per scheme on top of Telegram's neutrals. */
 export const ACCENTS = {
   light: {
     '--acc': '#2e7d4f',

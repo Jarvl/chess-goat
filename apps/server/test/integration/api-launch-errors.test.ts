@@ -27,7 +27,7 @@ afterAll(async () => {
 });
 
 describe('POST /api/launch when the server fails', () => {
-  it('answers 500 and counts the failure as a Mini App load error (spec §14)', async () => {
+  it('answers 500 and counts the failure as a Mini App load error', async () => {
     const res = await api.request('POST', '/api/launch', {
       body: {
         initData: signInitData(api.config.BOT_TOKEN, {

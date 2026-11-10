@@ -5,7 +5,7 @@ import type { DbOrTx } from '../db/client';
 import { groupMembers, ratings, users, type GroupMemberRow, type UserRow } from '../db/schema';
 import { toPlayerRef } from './players';
 
-/** Membership evidence from the user's own activity in the group (spec §5.6 step 4). */
+/** Membership evidence from the user's own activity in the group. */
 export async function touchMember(
   tx: DbOrTx,
   groupId: number,
@@ -101,7 +101,7 @@ export async function unblockUser(tx: DbOrTx, groupId: number, userId: number): 
     .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)));
 }
 
-/** The opponent picker: members the bot has seen here, newest first (spec §5.6, PRD §7.2). */
+/** The opponent picker: members the bot has seen here, newest first. */
 export async function listKnownPlayers(
   tx: DbOrTx,
   groupId: number,

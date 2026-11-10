@@ -1042,7 +1042,7 @@ describe('Game premove board and status line', () => {
   });
 });
 
-// Leaving with an unconfirmed draft (Move confirmations spec, Sending it).
+// Leaving with an unconfirmed draft.
 
 describe('Game premove replay slider', () => {
   // After 1.f3 (Black to move), White premoves: e5 -> Nh3 { d5 -> Ng5 | Nc6 -> Nc3 }.

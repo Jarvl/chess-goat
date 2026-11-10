@@ -38,7 +38,7 @@ import { Metrics } from './metrics';
 import { createTelegramApi, instrumentTelegramApi } from './telegram/client';
 import { Membership } from './telegram/membership';
 
-/** Spec §5.1 step 4; `chat_member` only arrives where the bot is an administrator. Tip jar spec §2.3. */
+/** `chat_member` only arrives where the bot is an administrator. */
 export const ALLOWED_UPDATES = [
   'message',
   'callback_query',
@@ -48,7 +48,7 @@ export const ALLOWED_UPDATES = [
 ] as const;
 
 /**
- * Spec §5.1 step 3: three group commands, two private commands, nothing in the default scope.
+ * Three group commands, two private commands, nothing in the default scope.
  * All three are ephemeral (Bot API 10.2): only the sender sees them and the answer.
  */
 export const BOT_COMMANDS = {
@@ -80,16 +80,16 @@ function listen(app: Hono<ApiEnv>, port: number): Promise<ServerType> {
 }
 
 /**
- * Boots the roles in `config.ROLES` (spec §4.2, §4.4): migrations first, then the HTTP app (health,
+ * Boots the roles in `config.ROLES`: migrations first, then the HTTP app (health,
  * metrics, API when `api`, webhook when `bot`, the Mini App when `MINI_APP_DIR`), the job worker
  * when `jobs`, the scanners when `clock`, and finally the webhook registration or long polling.
  */
 export async function startServer(
   config: Config,
   /**
-   * Spec §6.2's seam, handed in rather than constructed. Production passes nothing and gets the
-   * real binary; the end-to-end harness passes `fakeEngine`, which is what lets spec §11's "one
-   * engine game seeded in the existing harness and played through" exist without a Stockfish
+   * The engine seam, handed in rather than constructed. Production passes nothing and gets the
+   * real binary; the end-to-end harness passes `fakeEngine`, which is what lets the "one
+   * engine game seeded in the existing harness and played through" test exist without a Stockfish
    * anywhere near a test runner.
    */
   injectedEngine?: Engine,
@@ -101,7 +101,7 @@ export async function startServer(
   });
   if (reset) log.warn('the database had migrations this build lacks, so it was wiped and rebuilt');
   const { db, close } = createDb(config.DATABASE_URL);
-  // Backfill spec §3: flair not yet backfilled at this build's versions is queued; boot does not
+  // Flair not yet backfilled at this build's versions is queued; boot does not
   // wait for it.
   await enqueueFlairBackfill(db);
   const deps: Deps = { db, bus: new LocalBus(), log };
@@ -110,7 +110,7 @@ export async function startServer(
   const bot: Bot | null = has('bot') ? await createBot(deps, config) : null;
   const api = bot ? bot.api : createTelegramApi(config, { apiRoot: config.TELEGRAM_API_ROOT });
   instrumentTelegramApi(api, metrics);
-  // Membership lookups get their own client without the message throttler (spec §4.3, §5.8).
+  // Membership lookups get their own client without the message throttler.
   const lookupApi = createTelegramApi(config, {
     apiRoot: config.TELEGRAM_API_ROOT,
     throttle: false,
@@ -142,7 +142,7 @@ export async function startServer(
     const probed = await engine.probe();
     metrics.engineAvailable.set(probed.available ? 1 : 0);
     if (!probed.available) {
-      // Spec §9: a missing binary must not take down human correspondence games.
+      // A missing binary must not take down human correspondence games.
       log.error('the engine binary did not answer; bot games will queue and then abort');
     } else {
       log.info({ version: probed.version }, 'engine available');
@@ -153,7 +153,7 @@ export async function startServer(
   if (has('jobs')) {
     await ensurePruneScheduled(db);
     await ensureBotRoundupScheduled(db);
-    // Snapshot spec §2.3: a missing font stops the boot here, not the first share.
+    // A missing font stops the boot here, not the first share.
     const fonts = await loadFonts();
     worker = new JobWorker({
       db,
@@ -180,7 +180,7 @@ export async function startServer(
   let polling: Promise<void> | null = null;
   if (bot) {
     // Command registration is idempotent and not needed to serve traffic: a Telegram outage or a
-    // 429 during a rolling restart must not keep the process from starting (spec §4.3 holds — the
+    // 429 during a rolling restart must not keep the process from starting (the
     // one-off boot calls are not per-update traffic).
     try {
       await api.setMyCommands(BOT_COMMANDS.group, { scope: { type: 'all_group_chats' } });

@@ -21,7 +21,7 @@ export async function ensurePruneScheduled(db: DbOrTx): Promise<void> {
 }
 
 /**
- * Spec §10 daily prune: `telegram_updates` older than 7 days, done jobs older than 30 days. Re-arming
+ * Daily prune: `telegram_updates` older than 7 days, done jobs older than 30 days. Re-arming
  * moves this very row's `run_at` to tomorrow, which the worker then leaves pending instead of done.
  */
 export function pruneHandler(deps: Deps): JobHandler {

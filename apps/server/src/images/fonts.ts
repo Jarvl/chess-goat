@@ -8,7 +8,7 @@ export type SnapshotFonts = Font[];
 /** Where `pnpm fonts` puts them (`scripts/fetch-fonts.mjs`). */
 export const FONTS_DIR = fileURLToPath(new URL('../../fonts/', import.meta.url));
 
-/** Spec §2.1, in Satori's fallback order: the first font with a glyph draws it. */
+/** In Satori's fallback order: the first font with a glyph draws it. */
 const FONTS = [
   { file: 'NotoSans-Regular.ttf', name: 'Noto Sans', weight: 400 },
   { file: 'NotoSans-SemiBold.ttf', name: 'Noto Sans', weight: 600 },
@@ -22,7 +22,7 @@ const FONTS = [
 /** Test seam: what the renderer loads, checked against the download manifest. */
 export const FONT_FILES: readonly string[] = FONTS.map((font) => font.file);
 
-/** Spec §2.3: read once at boot; a missing file stops the process with the fix in the message. */
+/** Read once at boot; a missing file stops the process with the fix in the message. */
 export async function loadFonts(dir: string = FONTS_DIR): Promise<SnapshotFonts> {
   return Promise.all(
     FONTS.map(async ({ file, name, weight }) => {

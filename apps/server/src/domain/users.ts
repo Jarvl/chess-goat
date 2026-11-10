@@ -20,7 +20,7 @@ export type TelegramUserInfo = {
   languageCode?: string | null;
 };
 
-/** Upsert keyed by Telegram id; refreshes the display fields and `last_seen_at` (spec §8). */
+/** Upsert keyed by Telegram id; refreshes the display fields and `last_seen_at`. */
 export async function ensureUser(tx: DbOrTx, info: TelegramUserInfo): Promise<UserRow> {
   const fields = {
     firstName: info.firstName,
@@ -77,7 +77,7 @@ export async function requireUser(tx: DbOrTx, id: number): Promise<UserRow> {
 /**
  * Stored preferences over the defaults; keys no longer in the schema are dropped. A
  * `confirmMoves: false` stored before #16 reads as `moveConfirmations: 'never'`, and a stored
- * `moveConfirmations` always wins over it (move confirmations spec).
+ * `moveConfirmations` always wins over it.
  */
 export function prefsOf(user: Pick<UserRow, 'prefs'>): Prefs {
   const stored = user.prefs as Partial<Prefs> & { confirmMoves?: unknown };
@@ -87,7 +87,7 @@ export function prefsOf(user: Pick<UserRow, 'prefs'>): Prefs {
 }
 
 /**
- * PRD §7.7: DMs go only to users who allowed them in Telegram and keep notifications on. A bot
+ * DMs go only to users who allowed them in Telegram and keep notifications on. A bot
  * never gets one, whatever its row says, so it is never reminded either.
  */
 export function wantsDms(

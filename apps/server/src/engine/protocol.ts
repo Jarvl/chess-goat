@@ -4,9 +4,9 @@ import type { BestMove } from './engine';
 export type UciOption = { name: string; value: string | number };
 
 /**
- * Spec §7. The two Skill Level values and the two UCI_Elo values are chosen, not measured: this
+ * The two Skill Level values and the two UCI_Elo values are chosen, not measured: this
  * project runs no calibration matches. `beginner` is the weakest setting Stockfish offers natively,
- * which is still well above a new player — see the spec's §14.
+ * which is still well above a new player.
  */
 const LEVELS: Record<EngineLevel, UciOption[]> = {
   beginner: [{ name: 'Skill Level', value: 0 }],
@@ -31,7 +31,7 @@ export function optionsForLevel(level: EngineLevel): readonly UciOption[] {
 
 /**
  * The option names the engine rejected, in the order they appear. Stockfish answers an unknown
- * `setoption` with `No such option: <name>` and then plays on at full strength, which is spec §13's
+ * `setoption` with `No such option: <name>` and then plays on at full strength, which is the
  * named risk: a renamed or missing `Skill Level`/`UCI_LimitStrength`/`UCI_Elo` would make two levels
  * play identically, and nothing else in the session output would say so.
  */
@@ -48,7 +48,7 @@ export function unsupportedOptions(output: string): string[] {
 
 /**
  * Reads the `bestmove` line out of a UCI session. The promotion suffix must survive: without it the
- * arbiter rejects the move and the caller falls back to a random one (spec §9), which would turn a
+ * arbiter rejects the move and the caller falls back to a random one, which would turn a
  * parser bug into permanently bad play.
  */
 export function parseBestMove(output: string): BestMove | null {

@@ -35,11 +35,11 @@ export function Settings() {
   const current = prefs.value;
   const flair = myFlair.value;
   // Fills in the Flair row's share unlocked and worn emojis. A failed load leaves the row as it
-  // is: it keeps working, and the Flair screen shows its own error (flair spec §5.2).
+  // is: it keeps working, and the Flair screen shows its own error.
   useEffect(() => {
     void loadMyFlair(client).catch(() => undefined);
   }, [client]);
-  // Turn notifications are DMs, which need the user's leave (spec §6.1 step 4).
+  // Turn notifications are DMs, which need the user's leave.
   const askToMessage = async () => {
     const granted = await tg.requestWriteAccess();
     if (granted === null) return;

@@ -5,7 +5,7 @@ import type { Metrics } from '../metrics';
 
 export type TelegramApi = Api;
 
-/** One outbound client per process; the throttler implements Telegram's published limits (spec §5.8). */
+/** One outbound client per process; the throttler implements Telegram's published limits. */
 export function createTelegramApi(
   config: Pick<Config, 'BOT_TOKEN'>,
   options: { apiRoot?: string; throttle?: boolean } = {},
@@ -25,7 +25,7 @@ export type TelegramFailure =
   | { kind: 'migrated'; newChatId: number }
   | { kind: 'other'; description: string };
 
-/** Maps Bot API failures to the handling table of spec §11. Non-Telegram errors return null. */
+/** Maps Bot API failures to the handling table Non-Telegram errors return null. */
 export function classifyTelegramError(error: unknown): TelegramFailure | null {
   if (!(error instanceof GrammyError)) return null;
   const description = error.description;
@@ -59,7 +59,7 @@ export function classifyTelegramError(error: unknown): TelegramFailure | null {
   }
   return { kind: 'other', description };
 }
-/** Counts every Bot API call by method and status, and every 429 (spec §14). */
+/** Counts every Bot API call by method and status, and every 429. */
 export function instrumentTelegramApi(api: Api, metrics: Metrics): void {
   api.config.use(async (prev, method, payload, signal) => {
     const response = await prev(method, payload, signal);

@@ -24,7 +24,7 @@ describe('fillFreeSlots', () => {
       'win_streak_5',
     ]);
     // The draws are promotion_win, win_streak_5, en_passant_win; they are stored in catalog order
-    // (spec §3.3).
+    //.
     expect(fillFreeSlots([], many, () => 0.99)).toEqual([
       'en_passant_win',
       'win_streak_5',

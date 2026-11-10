@@ -89,7 +89,7 @@ export function groupsRoutes(api: Hono<ApiEnv>, ctx: ApiContext): void {
 
   api.post('/groups/:g/engine-games', validate('json', EngineGameRequestSchema), async (c) => {
     const group = await memberGroup(c);
-    // Spec §6.5: the flag hides the bot *and* stops new engine games. Hiding it in the picker above
+    // The flag hides the bot *and* stops new engine games. Hiding it in the picker above
     // is not enough — a client whose picker predates the flip, or any direct call, would otherwise
     // create a real game that the disabled handler can only retry and then abort.
     if (!ctx.config.ENGINE_ENABLED) {

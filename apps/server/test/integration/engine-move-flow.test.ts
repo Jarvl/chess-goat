@@ -56,7 +56,7 @@ describe('playMove and finishGame with an engine opponent', () => {
       clientMoveId: 'e1',
     });
     const after = await requireGameByPublicId(db, game.publicId);
-    // Spec §8: a bot game has no clock, so the human gets no deadline back, and nothing to be
+    // A bot game has no clock, so the human gets no deadline back, and nothing to be
     // reminded about.
     expect(after.deadlineAt).toBeNull();
     expect(after.reminderAt).toBeNull();
@@ -199,7 +199,7 @@ describe('the PGN of an engine game', () => {
   };
 
   it('names the level, because the PGN is the only permanent record the game gets', async () => {
-    // Spec §5: `Stockfish (Club)`. Engine games get no Lichess URL (spec §8), so a bare `Stockfish`
+    // `Stockfish (Club)`. Engine games get no Lichess URL, so a bare `Stockfish`
     // would leave nothing anywhere saying which level was played.
     const pgn = await pgnOf('club');
     expect(pgn).toContain('[Black "Stockfish (Club)"]');
@@ -208,8 +208,8 @@ describe('the PGN of an engine game', () => {
 
   it('uses the level copy rather than the stored enum value, and no rating numbers', async () => {
     const pgn = await pgnOf('beginner');
-    // `beginner` is shown as "Easiest" everywhere the player sees it (spec §7's honesty rule), and
-    // spec §7 forbids rating numbers in user-facing output — the PGN included.
+    // `beginner` is shown as "Easiest" everywhere the player sees it, and
+    // rating numbers are forbidden in user-facing output — the PGN included.
     expect(pgn).toContain(`[Black "Stockfish (${t('app.level.beginner')})"]`);
     expect(pgn).not.toContain('beginner');
     expect(pgn).not.toContain('Elo');

@@ -11,7 +11,7 @@ import {
   tgState,
 } from './support';
 
-// Move confirmations spec: Alice keeps the default, Only against people, and plays Bob.
+// Alice keeps the default, Only against people, and plays Bob.
 const openAsAlice = async (page: Parameters<typeof openApp>[0]) => {
   const world = await seed('fresh');
   await openApp(page, {
@@ -59,7 +59,7 @@ test('leaving the game with a move waiting asks first, then cancels it', async (
   await dragMove(page, 'e2', 'e4');
   await expect.poll(async () => (await tgState(page)).mainButton.visible).toBe(true);
   // The tab bar is hidden while the move waits; Telegram's Settings item still selects a tab, once
-  // the player agrees to leave (conditional premoves spec, Sending it).
+  // the player agrees to leave.
   await clickSettings(page);
   await expect
     .poll(async () => (await tgState(page)).popups.at(-1))

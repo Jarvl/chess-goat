@@ -2,10 +2,10 @@ import { expect } from '@playwright/test';
 import { clickMain, dragMove, openApp, seed, telegramCalls, test, tgState } from './support';
 
 /**
- * Spec §11's end-to-end row: one engine game created from the picker and played through the whole
+ * The end-to-end test for the engine opponent: one engine game created from the picker and played through the whole
  * composed stack — endpoint, job row, worker, handler, `playMove`, bus, SSE — on the fake engine the
  * harness injects into `startServer`. Nothing here asserts *which* move the bot played, only that it
- * played one (spec §11: liveness and legality, never choice).
+ * played one (liveness and legality, never choice).
  */
 test('creates a game against the bot and sees its reply arrive', async ({ page }) => {
   const world = await seed('none');
@@ -18,7 +18,7 @@ test('creates a game against the bot and sees its reply arrive', async ({ page }
   await page.locator('[data-testid="bot-level-casual"]').click();
   // White on purpose: the human moves first, so the second move can only be the engine's.
   await page.locator('[data-colour="white"]').click();
-  // Spec §8: the rated switch is forced off and disabled while the bot is selected.
+  // The rated switch is forced off and disabled while the bot is selected.
   await expect(page.locator('[data-rated]')).toBeDisabled();
   await clickMain(page);
 
@@ -34,6 +34,6 @@ test('creates a game against the bot and sees its reply arrive', async ({ page }
   // move enqueued reached the worker and the handler played through `playMove` like any player.
   await expect(page.locator('.move-list [data-ply="2"]')).not.toBeEmpty({ timeout: 20_000 });
   await expect(page.locator('.move-list [data-ply="3"]')).toHaveCount(0);
-  // Spec §8: an engine game posts nothing to the group chat — no card, not even a result.
+  // An engine game posts nothing to the group chat — no card, not even a result.
   expect((await telegramCalls()).filter((call) => call.method === 'sendMessage')).toHaveLength(0);
 });

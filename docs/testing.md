@@ -1,8 +1,7 @@
 # Testing
 
 How this project is tested, what each layer owns, and the work that still has to happen before the
-alpha can exit. The layers and their required cases come from the technical design §15; the alpha
-exit criteria come from PRD §13.
+alpha can exit. The alpha exit criteria are the table below.
 
 ## What runs where
 
@@ -57,7 +56,7 @@ image. **No test may assert a specific engine move, an evaluation, a mate score,
 plays at its labelled strength** — those are Stockfish's behaviour, not this project's, and they
 change between versions. What is ours to test, and what every layer above does test, is the UCI
 options this project sends for each level, engine games staying unrated and off the leaderboard,
-the illegal-move fallback, and the rest of spec §9's failure modes — all against the fake. The
+the illegal-move fallback, and the rest of the engine failure modes — all against the fake. The
 end-to-end suite plays one whole bot game through the composed stack (picker, endpoint, job row,
 worker, handler, `playMove`, SSE) because `startServer` takes the engine as an optional argument and
 the harness passes `fakeEngine`; it asserts that the bot answered, never what it answered.
@@ -70,7 +69,7 @@ option in the same session came back as `No such option: …`, which is what mak
 line for the real three meaningful. This is not a test and must not become one — it is Stockfish's
 behaviour, not ours, and it changes between versions. What guards it in production instead is a
 warning: `uciEngine` watches the session output for `No such option` and logs the option's name, so a
-renamed option degrades loudly rather than silently making two levels play alike (spec §13).
+renamed option degrades loudly rather than silently making two levels play alike.
 
 ## What each layer owns
 
@@ -196,7 +195,7 @@ missed drop on any device is a release blocker, not a known issue.
 
 ## Alpha exit criteria and how each is measured
 
-| Criterion (PRD §13) | Measured by |
+| Criterion | Measured by |
 |---|---|
 | 50 completed games | `games_finished_total` on the metrics endpoint |
 | No rule bugs | The arbiter suite, plus every finished game importing cleanly into Lichess. Lichess rejects illegal PGNs, so a successful import is an independent legality check on every real game played |
@@ -233,6 +232,6 @@ means a reviewer can tell what a change is supposed to do from its test.
 including the image smoke test, the device matrix run on at least iPhone and Android, and the
 metrics above checked on staging.
 
-**Coverage numbers are not collected.** The suite is organised around behaviour the spec names
+**Coverage numbers are not collected.** The suite is organised around behaviour the product promises
 rather than lines reached, and a percentage target would mostly reward testing the easy parts. If
 that changes, add `@vitest/coverage-v8` and set a floor per package rather than one global number.

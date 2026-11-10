@@ -19,7 +19,7 @@ export type LaunchRequest = z.infer<typeof LaunchRequestSchema>;
 export const MoveRequestSchema = z.object({
   uci: UciSchema,
   expectedPly: z.number().int().min(0),
-  /** Client-generated id reused on retries so a move is applied at most once (spec §7.4). */
+  /** Client-generated id reused on retries so a move is applied at most once. */
   clientMoveId: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/),
   /** The mover's premove tree for the position after this move, saved with the move; `''` when none. */
   premoveTree: PremoveTreeTextSchema.default(''),
@@ -48,9 +48,9 @@ export type ChallengeRequest = z.infer<typeof ChallengeRequestSchema>;
 
 /**
  * Starts a game against the bot. Two fields the challenge request has are deliberately absent:
- * `rated`, because the domain layer forces it false (spec §6.1), and `timePerMove`, because a bot
+ * `rated`, because the domain layer forces it false, and `timePerMove`, because a bot
  * game has no clock at all — the bot answers immediately, so a per-move deadline protects nobody and
- * could only lose a casual game to inattention (spec §8).
+ * could only lose a casual game to inattention.
  */
 export const EngineGameRequestSchema = z.object({
   level: EngineLevelSchema,
@@ -111,7 +111,7 @@ export type BotListQuery = z.infer<typeof BotListQuerySchema>;
 
 export type FinishedQuery = z.infer<typeof FinishedQuerySchema>;
 
-/** Tip jar spec §2.1: whole Stars, one invoice per tap. */
+/** Whole Stars, one invoice per tap. */
 export const TIP_MIN_STARS = 1;
 export const TIP_MAX_STARS = 10_000;
 
@@ -122,7 +122,7 @@ export const TipRequestSchema = z.object({
 export type TipRequest = z.infer<typeof TipRequestSchema>;
 
 /**
- * Flair spec §4: the worn ids in slot order. The server also refuses duplicates, ids the catalog
+ * The worn ids in slot order. The server also refuses duplicates, ids the catalog
  * does not have and ids the caller has not earned, all with `validation`.
  */
 export const FlairUpdateRequestSchema = z.object({

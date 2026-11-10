@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-/** Public identifier of a game, group or challenge: ten base62 characters (spec §5.3, §12). */
+/** Public identifier of a game, group or challenge: ten base62 characters. */
 export const PUBLIC_ID_PATTERN = /^[A-Za-z0-9]{10}$/;
 
 export const PublicIdSchema = z.string().regex(PUBLIC_ID_PATTERN);

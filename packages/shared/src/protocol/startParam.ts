@@ -1,6 +1,6 @@
 import type { PublicId } from './ids';
 
-/** What a Mini App direct link opens (spec §5.3). */
+/** What a Mini App direct link opens. */
 export type StartParam =
   | { kind: 'game'; gameId: PublicId }
   | { kind: 'lobby'; groupId: PublicId }

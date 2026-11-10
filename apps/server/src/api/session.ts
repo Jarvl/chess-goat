@@ -7,7 +7,7 @@ export const LINK_TTL_SECONDS = 300;
 
 export type VerifiedToken = { userId: number; scope: string | null };
 
-/** HS256 JWT with `sub`, `iat`, `exp` (spec D12, §12). */
+/** HS256 JWT with `sub`, `iat`, `exp`. */
 export async function issueSessionToken(
   secret: string,
   userId: number,

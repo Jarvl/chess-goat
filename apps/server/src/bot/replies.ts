@@ -3,7 +3,7 @@ import type { Deps } from '../domain/deps';
 import { isDomainError } from '../domain/errors';
 import { displayName, getUserById } from '../domain/users';
 
-/** The one-line command replies of spec §5.5, chosen from a DomainError's reason. */
+/** The one-line command replies, chosen from a DomainError's reason. */
 export function replyFor(error: unknown): { key: MessageKey; params: MessageParams } | null {
   if (!isDomainError(error)) return null;
   const count = Number(error.details.count ?? 0);
@@ -36,7 +36,7 @@ export function replyFor(error: unknown): { key: MessageKey; params: MessagePara
   }
 }
 
-/** Private toasts for callback taps (spec §11); null means "answer silently, rethrow". */
+/** Private toasts for callback taps; null means "answer silently, rethrow". */
 export async function alertFor(
   deps: Deps,
   error: unknown,

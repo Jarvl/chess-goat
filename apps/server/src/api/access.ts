@@ -4,7 +4,7 @@ import { colourOf } from '../domain/gameDto';
 import { requireGroup } from '../domain/groups';
 import type { ApiContext } from './context';
 
-/** Spec §12 authorization matrix, membership half. */
+/** Authorization matrix, membership half. */
 export async function requireMember(
   ctx: ApiContext,
   group: GroupRow,

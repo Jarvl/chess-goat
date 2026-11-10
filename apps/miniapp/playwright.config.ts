@@ -12,7 +12,7 @@ if (!process.env.E2E_APP_PORT || !process.env.E2E_HARNESS_PORT) {
 const APP = `http://127.0.0.1:${process.env.E2E_APP_PORT}`;
 const HARNESS = `http://127.0.0.1:${process.env.E2E_HARNESS_PORT}`;
 
-/** Spec §15: Chromium with touch emulation against the server plus the fake WebApp harness. */
+/** Chromium with touch emulation against the server plus the fake WebApp harness. */
 export default defineConfig({
   testDir: 'e2e',
   timeout: 30_000,

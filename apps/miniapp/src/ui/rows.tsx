@@ -77,7 +77,7 @@ export function PlayerRow(props: {
   const { entry } = props;
   const activity = botActivityLabel(entry, props.now ?? new Date());
   // "(you)" is part of the name's text, as in the prototype, so the two ellipsise together and the
-  // flair and rating beside them stay whole (flair spec §5.1).
+  // flair and rating beside them stay whole.
   const name = props.you ? `${entry.name} ${t('app.leaderboard.you')}` : entry.name;
   return (
     <button

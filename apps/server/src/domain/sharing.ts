@@ -6,12 +6,12 @@ import { requireGameByPublicId } from './games';
 import { enqueue } from '../jobs/queue';
 
 /**
- * Spec §7.8: enough for a user to share a run of positions at once, while one user still cannot
+ * Enough for a user to share a run of positions at once, while one user still cannot
  * post more than a minute's worth of the group's ~20 messages per minute.
  */
 export const MAX_SHARES_PER_MINUTE = 20;
 
-/** PRD §7.6 / spec §7.8: shared positions are limited per user per minute; the photo itself is a job. */
+/** shared positions are limited per user per minute; the photo itself is a job. */
 export async function sharePosition(
   deps: Deps,
   input: { gameId: string; userId: number; ply: number },

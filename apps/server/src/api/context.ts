@@ -13,11 +13,11 @@ export type ApiContext = {
   membership: Membership;
   metrics: Metrics;
   streams: StreamGate;
-  /** Spec §7.8: 120 API requests per user per minute; one instance per process. */
+  /** 120 API requests per user per minute; one instance per process. */
   rateLimiter: RateLimiter;
-  /** The throttled Bot API client, for the calls a request makes itself (tip jar spec §2.1). */
+  /** The throttled Bot API client, for the calls a request makes itself. */
   api: Api;
-  /** Tip jar spec §2.1: ten invoice links per user per minute. */
+  /** Ten invoice links per user per minute. */
   tipLimiter: RateLimiter;
 };
 

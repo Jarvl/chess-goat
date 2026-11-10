@@ -15,7 +15,7 @@ const RolesSchema = z
   )
   .pipe(z.array(z.enum(ROLES)).min(1));
 
-/** Environment variables (spec §4.4). Validated once at startup; the process refuses to boot otherwise. */
+/** Environment variables. Validated once at startup; the process refuses to boot otherwise. */
 export const ConfigSchema = z.object({
   BOT_TOKEN: z.string().min(1),
   BOT_USERNAME: z.string().min(1),
@@ -40,7 +40,7 @@ export const ConfigSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   /** Bot API base for tests and local fakes; unset means api.telegram.org. */
   TELEGRAM_API_ROOT: z.url().optional(),
-  /** `true` runs long polling (dev); otherwise updates arrive on the webhook (spec §4.4). */
+  /** `true` runs long polling (dev); otherwise updates arrive on the webhook. */
   TELEGRAM_POLLING: z
     .enum(['true', 'false'])
     .default('false')
@@ -55,7 +55,7 @@ export const ConfigSchema = z.object({
     .transform((value) => value === 'true'),
   /** Path to the Stockfish binary, or a bare name resolved on PATH. */
   ENGINE_PATH: z.string().min(1).default('stockfish'),
-  /** Per-move thinking budget in milliseconds (spec §6.2). */
+  /** Per-move thinking budget in milliseconds. */
   ENGINE_MOVETIME_MS: z.coerce.number().int().min(1).max(60_000).default(200),
 });
 

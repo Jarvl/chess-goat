@@ -68,7 +68,7 @@ describe('parseBestMove', () => {
 });
 
 describe('unsupportedOptions', () => {
-  // Spec §13: an option the packaged build ignores would make two levels play identically. Stockfish
+  // An option the packaged build ignores would make two levels play identically. Stockfish
   // says so in its session output, and nothing else in the protocol does.
   it('names an option the engine rejected', () => {
     const output = 'id name Stockfish 15.1\nNo such option: UCI_Elo\nuciok\nbestmove e2e4\n';

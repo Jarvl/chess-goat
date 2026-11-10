@@ -70,7 +70,7 @@ describe('engine_move job handler', () => {
   });
 
   it('completes without moving when the game ended while the engine was thinking', async () => {
-    // Spec §9's `(none)` row: the game really did end between the job being enqueued and the reply
+    // The `(none)` case: the game really did end between the job being enqueued and the reply
     // arriving, so the job is a success and writes nothing.
     const game = await gameAwaitingEngine(deps, { groupId: group.id, userId: alice.id });
     const engine = fakeEngine({
@@ -86,7 +86,7 @@ describe('engine_move job handler', () => {
   });
 
   it('does not fall silent when the engine reports a terminal position the arbiter disagrees with', async () => {
-    // Spec §9's `(none)` row requires the status to be re-checked. Still active with the engine to
+    // The `(none)` case requires the status to be re-checked. Still active with the engine to
     // move means Stockfish and our arbiter disagree — and an engine game carries no deadline, so
     // completing the job here would strand the game for good.
     const engine = fakeEngine({ replies: [{ none: true }] });
@@ -111,8 +111,8 @@ describe('engine_move job handler', () => {
 
   it('does not fall silent when there is no legal move to substitute for an illegal one', async () => {
     // Black is stalemated (the same position the `randomLegalMove` unit test verifies has no legal
-    // moves), so the illegal-move recovery has nothing to play. Spec §9 sends that case to the
-    // `(none)` row, which is the status re-check — not a quietly completed job.
+    // moves), so the illegal-move recovery has nothing to play. That case goes to the
+    // `(none)` path, which is the status re-check — not a quietly completed job.
     const engineUser = await getEngineUser(db);
     const game = await insertGame(db, group.id, alice.id, engineUser.id, {
       fen: '7k/5Q2/6K1/8/8/8/8/8 b - - 0 1',

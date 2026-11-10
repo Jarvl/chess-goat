@@ -7,7 +7,7 @@ import { MiniBoard } from './MiniBoard';
 import { pillFor, roleOf } from './pill';
 import { useNow } from './useNow';
 
-/** One game in a list: thumbnail, opponent, terms and status (redesign spec §3.1). */
+/** One game in a list: thumbnail, opponent, terms and status. */
 export function GameCard(props: {
   game: GameSummary;
   onOpen: (id: string) => void;

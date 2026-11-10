@@ -8,9 +8,9 @@ import { can } from '../domain/playerKind';
 import { displayName, requireUser } from '../domain/users';
 
 /**
- * Flair spec §4: what the player wears, in slot order, and what they have earned, in catalog order
+ * What the player wears, in slot order, and what they have earned, in catalog order
  * and with the other player of the earning game. Stored ids the catalog no longer has are left
- * out of both (spec §1.7), so the app never has to skip one, and no more than three worn are sent,
+ * out of both, so the app never has to skip one, and no more than three worn are sent,
  * which the app would refuse.
  */
 export async function loadFlairDto(tx: DbOrTx, userId: number): Promise<FlairDto> {
@@ -54,12 +54,11 @@ export async function loadFlairDto(tx: DbOrTx, userId: number): Promise<FlairDto
 }
 
 /**
- * Flair spec §4: replaces the worn list, in slot order, and answers with the player's flair. The
+ * Replaces the worn list, in slot order, and answers with the player's flair. The
  * route has already refused a list longer than `MAX_WORN_FLAIR`. Run it in a transaction.
  *
- * The player's row is locked before anything is read or written, as the award job locks it (spec
- * §3.2): an award for the same player waits for this to commit and then fills the free slots from
- * the list left here, and this reads the flair the player holds after any award before it (spec §6).
+ * The player's row is locked before anything is read or written, as the award job locks it: an award for the same player waits for this to commit and then fills the free slots from
+ * the list left here, and this reads the flair the player holds after any award before it.
  * Like the award's, the lock is `for no key update`, which lets through the `for key share` locks
  * of foreign-key checks, so rows that refer to the player can still be written meanwhile.
  */

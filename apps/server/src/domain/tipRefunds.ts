@@ -16,7 +16,7 @@ export type TipRefund =
   | { outcome: 'not_found' };
 
 /**
- * Tip jar spec §2.4: refunds one tip by its transaction id, the payment's charge id that the payer
+ * Refunds one tip by its transaction id, the payment's charge id that the payer
  * sees on their receipt. Nothing reaches Telegram until `confirm` has seen the tip and said yes.
  * `refunded_at` is left to the bot's `refunded_payment` handler, which runs when Telegram confirms
  * the refund. A Telegram refusal is thrown as grammY's `GrammyError`.

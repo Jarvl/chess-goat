@@ -26,7 +26,7 @@ const CLOSED = 2;
 const BACKOFF_START_MS = 2_000;
 const BACKOFF_MAX_MS = 30_000;
 
-/** Spec §6.4: state snapshots over SSE, reconnect on visibility and network changes, refresh each time. */
+/** State snapshots over SSE, reconnect on visibility and network changes, refresh each time. */
 export class GameStream {
   private source: EventSourceLike | null = null;
   private opened = false;

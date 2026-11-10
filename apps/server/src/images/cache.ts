@@ -4,7 +4,7 @@ import type { DbOrTx } from '../db/client';
 import { boardImages } from '../db/schema';
 
 /**
- * Snapshot spec §3.3: identical cards share a Telegram file id, and anything the card shows (the
+ * Identical cards share a Telegram file id, and anything the card shows (the
  * theme included) changes the key. Rows keyed the old per-position way are simply never hit again.
  */
 export function snapshotImageKey(svg: string): string {

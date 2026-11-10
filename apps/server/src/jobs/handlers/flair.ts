@@ -9,7 +9,7 @@ import type { JobHandler } from '../types';
 const Payload = z.object({ gameId: z.number().int() });
 
 /**
- * Flair spec §3.2: scores the players of a finished game. It runs outside the transaction that
+ * Scores the players of a finished game. It runs outside the transaction that
  * ended the game, so a rule that throws fails only this job, never the game ending.
  */
 export function awardFlairHandler(deps: Deps): JobHandler {
@@ -26,11 +26,11 @@ const BackfillPayload = z.object({
 });
 
 /**
- * Backfill spec §4: backfills the payload's flair for every player, `chunk` players per run. The
+ * Backfills the payload's flair for every player, `chunk` players per run. The
  * worker runs its jobs one at a time, so between chunks the job saves its place in its payload and
  * asks to run again at once: other due jobs (bot moves, messages) run in between, a retry resumes
  * where it stopped, and no attempt is counted. A job from a newer build, naming flair or versions
- * this one lacks, waits for a newer worker instead (§4.1).
+ * this one lacks, waits for a newer worker instead.
  */
 export function backfillFlairHandler(
   deps: Deps,

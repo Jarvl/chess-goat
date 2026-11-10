@@ -140,7 +140,7 @@ export async function dropAll(r: Rendered, moves: readonly [string, string][]): 
   }
 }
 
-// Conditional premoves (spec, Behaviour and The game screen). Dana plays Black against the viewer.
+// Conditional premoves. Dana plays Black against the viewer.
 export const DANA = { ...gameDto().black, name: 'Dana' };
 
 /** A game after `ucis`, with consistent moves, fen, plyCount and version; Black is Dana. */

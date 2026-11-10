@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-/** Time per move in seconds (PRD §7.2). `null` means the game has no clock. */
+/** Time per move in seconds. `null` means the game has no clock. */
 export const TIME_PER_MOVE_OPTIONS = [3600, 28800, 86400, 259200, 604800] as const;
 
 export type TimePerMoveSeconds = (typeof TIME_PER_MOVE_OPTIONS)[number];
@@ -56,7 +56,7 @@ export const EndReasonSchema = z.enum([
 
 export type EndReason = z.infer<typeof EndReasonSchema>;
 
-/** End reasons that change ratings (spec §7.1). Aborts and voids never do. */
+/** End reasons that change ratings. Aborts and voids never do. */
 const RATED_END_REASONS: ReadonlySet<EndReason> = new Set<EndReason>([
   'checkmate',
   'stalemate',
@@ -96,14 +96,14 @@ export const ViewerRoleSchema = z.enum(['white', 'black', 'spectator']);
 
 export type ViewerRole = z.infer<typeof ViewerRoleSchema>;
 
-/** Engine opponent strength, weakest first (spec §6.2). No rating numbers here — see the engine config. */
+/** Engine opponent strength, weakest first. No rating numbers here — see the engine config. */
 export const ENGINE_LEVELS = ['beginner', 'casual', 'club', 'strong'] as const;
 
 export type EngineLevel = (typeof ENGINE_LEVELS)[number];
 
 export const EngineLevelSchema = z.enum(ENGINE_LEVELS);
 
-/** When a dropped move waits for Confirm move (move confirmations spec). */
+/** When a dropped move waits for Confirm move. */
 export const MOVE_CONFIRMATIONS = ['always', 'people', 'never'] as const;
 
 export type MoveConfirmations = (typeof MOVE_CONFIRMATIONS)[number];

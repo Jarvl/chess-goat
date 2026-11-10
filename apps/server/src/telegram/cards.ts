@@ -93,7 +93,7 @@ export function label(person: PersonView): string {
 
 /**
  * Renders a template whose `{opponent}` slot is a mention: `@username`, else a text_mention entity
- * (spec §5.4). Flair follows the mention, outside the entity, which covers only the name.
+ *. Flair follows the mention, outside the entity, which covers only the name.
  */
 function withMention(
   key: MessageKey,

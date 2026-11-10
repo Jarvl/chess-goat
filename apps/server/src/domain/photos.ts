@@ -5,7 +5,7 @@ import { userPhotos, users, type UserPhotoRow, type UserRow } from '../db/schema
 import { enqueue } from '../jobs/queue';
 import { can } from './playerKind';
 
-/** Profile photos spec: a user seen again after this long has their photo checked again. */
+/** A user seen again after this long has their photo checked again. */
 export const PHOTO_REFRESH_SECONDS = 86_400;
 
 export function photoHash(bytes: Buffer): string {
@@ -22,7 +22,7 @@ export async function getPhotoRow(tx: DbOrTx, userId: number): Promise<UserPhoto
   return row ?? null;
 }
 
-/** Queues a photo check for a person the bot has not checked within a day (profile photos spec). */
+/** Queues a photo check for a person the bot has not checked within a day. */
 export async function queuePhotoRefresh(
   tx: DbOrTx,
   user: Pick<UserRow, 'id' | 'isEngine' | 'ownerId' | 'deletedAt'>,

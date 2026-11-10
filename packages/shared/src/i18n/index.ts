@@ -42,7 +42,7 @@ export function ratedLabel(rated: boolean): string {
   return t(rated ? 'game.rated' : 'game.casual');
 }
 
-/** Provisional ratings carry a `?` suffix (spec §5.4). */
+/** Provisional ratings carry a `?` suffix. */
 export function ratingLabel(rating: number, provisional: boolean): string {
   return `${Math.round(rating)}${provisional ? '?' : ''}`;
 }

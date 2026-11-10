@@ -4,7 +4,7 @@ import { loadFlairDto, setWornFlair } from '../../flair/profile';
 import type { ApiContext, ApiEnv } from '../context';
 import { validate } from '../validate';
 
-/** Flair spec §4: the caller's own flair, read and chosen. Both routes sit behind the session. */
+/** The caller's own flair, read and chosen. Both routes sit behind the session. */
 export function flairRoutes(api: Hono<ApiEnv>, ctx: ApiContext): void {
   api.get('/me/flair', async (c) => {
     const body: FlairDto = await loadFlairDto(ctx.deps.db, c.get('user').id);

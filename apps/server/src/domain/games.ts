@@ -127,12 +127,12 @@ export async function finishGame(
   endedBy: Colour | null = null,
 ): Promise<GameRow> {
   // A voided game is not worth an import; the fallback analysis link still works (review finding 10).
-  // Spec §8: engine games post no card and are never imported — the Lichess quota is shared across
+  // Engine games post no card and are never imported — the Lichess quota is shared across
   // the deployment and these games have no human opponent.
   const inChat = audienceOf(game).chat;
   // An abort is never imported: it covers the 30-day stale abort of bot-vs-bot games (a human abort
   // happens before both players have moved, so it has nothing to import anyway). Nor is any game
-  // with an owned bot in it (bot accounts spec §3): bots could play thousands of games against the
+  // with an owned bot in it: bots could play thousands of games against the
   // deployment's shared Lichess quota. Their Analyse button opens the analysis board instead.
   const importable =
     game.plyCount > 0 &&
@@ -183,7 +183,7 @@ export async function finishGame(
     });
   }
   if (inChat) await endGameDms(tx, game, end.endReason, endedBy);
-  // Flair spec §3.2: a decided game against a person is scored; aborts, voids and bot games are not.
+  // A decided game against a person is scored; aborts, voids and bot games are not.
   if (isCountedGame(updated)) {
     await enqueue(tx, {
       kind: 'award_flair',
@@ -195,7 +195,7 @@ export async function finishGame(
 }
 
 /**
- * DM notifications spec §2.4 and §4.2: every live DM for the game is retired — a waiting line
+ * Every live DM for the game is retired — a waiting line
  * keeps its own text, anything else says the game ended — and the result DM is queued for each
  * player who did not end it. A bot gets none.
  */
@@ -232,7 +232,7 @@ export function flairAwardDedupKey(gamePublicId: string): string {
   return `flair:g:${gamePublicId}`;
 }
 
-/** Spec §7.1: `timeout_abort` when the player to move never moved, otherwise a loss on time (FIDE 6.9). */
+/** `timeout_abort` when the player to move never moved, otherwise a loss on time (FIDE 6.9). */
 export function timeoutEnd(game: Pick<GameRow, 'fen' | 'plyCount'>): EndInput {
   const flagged = sideToMove(game.fen);
   const neverMoved =
@@ -257,7 +257,7 @@ export type LockedGame = {
 /**
  * Locks an active game for one of its players. A deadline that passed before this transaction is
  * applied right here, so no action (move, resign, abort, draw offer, acceptance or claim) can beat
- * the forfeit scanner (spec §7.3, §7.4).
+ * the forfeit scanner.
  */
 export async function lockActiveGame(
   tx: DbOrTx,
@@ -302,15 +302,14 @@ export type PlayMoveInput = {
   expectedPly: number;
   /**
    * Optional: a retry is recognised without it, as the same player's same move at the same ply.
-   * Sent by the Mini App (spec §7.4) and the engine, and kept on the move row.
+   * Sent by the Mini App and the engine, and kept on the move row.
    */
   clientMoveId?: string;
   /**
    * The mover's premove tree for the position after the move: as the Mini App sends it (base64url,
    * `''` for none; a malformed one is refused after the game, ply and turn checks), or as nodes
    * already checked for shape. `ifIllegal` is the mover's rule: `'reject'` (people) refuses the
-   * move when a line in the tree is illegal, checked before the lock; `'record'` (bots, bots spec
-   * §3) stores it as it is, and a reply that turns out illegal is recorded as it fires.
+   * move when a line in the tree is illegal, checked before the lock; `'record'` (bots) stores it as it is, and a reply that turns out illegal is recorded as it fires.
    */
   premoves?: { tree: string | readonly PremoveNode[]; ifIllegal: 'reject' | 'record' };
 };
@@ -376,7 +375,7 @@ async function commitOne(
   const history = [...input.history, inserted];
   const opponent = await requireUser(tx, colour === 'white' ? game.blackId : game.whiteId);
   if (audienceOf(game).chat) {
-    // DM notifications spec §2.2: the mover's live DM quietly becomes the waiting line. A fired
+    // The mover's live DM quietly becomes the waiting line. A fired
     // premove comes through here too, for its owner. A bot has no DM to mark.
     await markWaiting(tx, {
       userId: colour === 'white' ? game.whiteId : game.blackId,
@@ -393,7 +392,7 @@ async function commitOne(
       plyCount: ply,
       version: sql`${games.version} + 1`,
       lastMoveAt: now,
-      // No engine special case: an engine game's time control is null (spec §8), so both of these
+      // No engine special case: an engine game's time control is null, so both of these
       // already yield null for it. That null clock is what makes the engine unforfeitable and
       // leaves the human nothing to be reminded about. An owned bot never wants DMs, so it is never
       // reminded, and a bot-vs-bot game never has a reminder.
@@ -415,7 +414,7 @@ async function commitOne(
 
 /**
  * Plays `uci` for `colour`, who is to move on the locked `game`, then fires premoves (conditional
- * premoves spec, Firing). Two trees are in play: `waiting`, the tree of the side that just moved,
+ * `waiting`, the tree of the side that just moved,
  * and `toMove`, the stored tree, which belongs to the side now to move. While `toMove` has a
  * branch for the move just played, its reply is played as a normal move and the trees swap. The
  * loop stops on a miss, which clears the stored tree (and flags its owner's turn DM if it held
@@ -497,10 +496,10 @@ async function commitMove(tx: DbOrTx, input: CommitInput): Promise<GameRow> {
 
   const { opponent } = committed;
   if (isEngine(opponent)) {
-    // Spec §8: engine games post no card, and the engine has no DM to receive.
+    // Engine games post no card, and the engine has no DM to receive.
     await enqueueEngineMove(tx, moved);
   } else if (audienceOf(moved).chat) {
-    // Spec §8: an engine game announces nothing when the engine moves — no card, and no turn DM to
+    // An engine game announces nothing when the engine moves — no card, and no turn DM to
     // the human. The whole branch is a no-op for it (`audienceOf(…).chat`), and for a bot-vs-bot game. An
     // owned bot to move in a game against a person gets the card edit but no DM.
     await enqueue(tx, {
@@ -527,9 +526,9 @@ async function commitMove(tx: DbOrTx, input: CommitInput): Promise<GameRow> {
 }
 
 /**
- * The move transaction of spec §7.4, step for step. A tree sent with the move is checked in full
- * before the lock, from the position after the move read without it (conditional premoves spec,
- * API); anything the locked checks refuse is left to them, so their error is the one reported.
+ * The move transaction, step for step. A tree sent with the move is checked in full
+ * before the lock, from the position after the move read without it;
+ * anything the locked checks refuse is left to them, so their error is the one reported.
  */
 /** The position before the move at `ply`: null when the game has not reached that ply. */
 function positionAt(game: GameRow, history: readonly MoveRow[], ply: number): string | null {
@@ -635,7 +634,7 @@ export async function resign(
   return dto;
 }
 
-/** PRD §7.3: abort is available before both players have moved; no rating change. */
+/** abort is available before both players have moved; no rating change. */
 export async function abortGame(
   deps: Deps,
   input: { gameId: string; userId: number },
@@ -657,7 +656,7 @@ export async function abortGame(
   return dto;
 }
 
-/** Spec §7.1/§7.5 void: caller has verified admin rights; ratings are rebuilt by the `rebuild_ratings` job. */
+/** Void: caller has verified admin rights; ratings are rebuilt by the `rebuild_ratings` job. */
 export async function voidGame(
   deps: Deps,
   input: { gameId: string; adminUserId: number },

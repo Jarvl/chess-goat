@@ -7,7 +7,7 @@ export type PromptTime = 86400 | 259200 | 604800;
 /** The game settings a private /challenge prompt carries in its buttons. */
 export type PromptSettings = { timePerMove: PromptTime; colour: ColourChoice; rated: boolean };
 
-/** Inline-button callback payloads; everything else on a card is a URL button (spec §5.3). */
+/** Inline-button callback payloads; everything else on a card is a URL button. */
 export type CallbackData =
   | { action: 'accept_challenge'; challengeId: PublicId }
   | { action: 'decline_challenge'; challengeId: PublicId }

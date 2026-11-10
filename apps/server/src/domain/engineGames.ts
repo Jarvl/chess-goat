@@ -17,7 +17,7 @@ import { generatePublicId } from '../db/ids';
 import { requireUser } from './users';
 import { isEngine } from './playerKind';
 
-/** The single engine user, created by migration 0002 (spec §5). */
+/** The single engine user, created by migration 0002. */
 export async function getEngineUser(tx: DbOrTx): Promise<UserRow> {
   const [row] = await tx.select().from(users).where(eq(users.isEngine, true)).limit(1);
   if (!row) throw new Error('the engine user is missing; migration 0002 did not run');
@@ -35,7 +35,7 @@ export type CreateEngineGameInput = {
   colour: ColourChoice;
 };
 
-/** Spec §6.1. No challenge, no card, no expiry: there is nothing to accept. */
+/** No challenge, no card, no expiry: there is nothing to accept. */
 export async function createEngineGame(deps: Deps, input: CreateEngineGameInput): Promise<GameRow> {
   if (!ENGINE_LEVELS.includes(input.level)) {
     throw new DomainError('validation', 'unknown engine level', {
@@ -61,16 +61,16 @@ export async function createEngineGame(deps: Deps, input: CreateEngineGameInput)
         groupId: group.id,
         whiteId: white.id,
         blackId: black.id,
-        // Spec §8: a bot game has no clock. The bot replies immediately, so a deadline measures
+        // A bot game has no clock. The bot replies immediately, so a deadline measures
         // nothing about it, and its only possible effect is losing a casual game to inattention.
         timePerMove: null,
         rated: false,
         engineLevel: input.level,
         fen: INITIAL_FEN,
-        // Spec §9: the engine never carries a deadline, so it can never be forfeited.
+        // The engine never carries a deadline, so it can never be forfeited.
         // Follows from the null clock above, and stated outright so it survives a later edit.
         deadlineAt: null,
-        // Spec §8: a bot game sends no move notifications, so it never carries a reminder —
+        // A bot game sends no move notifications, so it never carries a reminder —
         // not even on the human's turn.
         reminderAt: null,
       })

@@ -56,7 +56,7 @@ function SlotTile(props: {
   );
 }
 
-/** What a row shows on the right (flair spec §5.3): where it is worn, or that it is not yet yours. */
+/** What a row shows on the right: where it is worn, or that it is not yet yours. */
 function Badge(props: { earned: boolean; wornAt: number; slot: number }) {
   if (!props.earned) return <span class="tag">{t('app.flair.locked')}</span>;
   if (props.wornAt === props.slot) return <span class="flair-check">✓</span>;
@@ -96,7 +96,7 @@ function FlairRow(props: {
 }
 
 /**
- * Flair spec §5.3: the viewer's flair in three slots, and every flair with its state. It draws
+ * The viewer's flair in three slots, and every flair with its state. It draws
  * from the shared `myFlair` signal and refreshes it on mount; a tap wears the flair in the selected
  * slot at once and saves in the background.
  */

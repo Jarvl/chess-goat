@@ -39,7 +39,7 @@ export function uciEngine(config: EngineConfig, log?: Pick<Logger, 'warn'>): Eng
   // and the point is to make the fact visible, not to fill the log with it.
   const warned = new Set<string>();
   /**
-   * Spec §13: an option the packaged build silently ignores would make two levels play identically,
+   * An option the packaged build silently ignores would make two levels play identically,
    * "the one failure a user would notice and no test asserts". It stays a warning rather than a
    * failure — a future Stockfish that renames an option should degrade, not refuse to play.
    */

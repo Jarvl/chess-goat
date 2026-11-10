@@ -7,7 +7,7 @@ import { enqueue } from '../jobs/queue';
 import { COUNTED, loadCountedGames } from './history';
 import { earliestQualifying } from './walk';
 
-/** A flair to backfill and the catalog version it is backfilled at (backfill spec §1). */
+/** A flair to backfill and the catalog version it is backfilled at. */
 export type BackfillPair = { id: string; version: number };
 
 /**
@@ -22,7 +22,7 @@ export type BackfillSummary = {
 };
 
 /**
- * Backfill spec §2: the catalog flair not yet backfilled at their version, in catalog order. Rows
+ * The catalog flair not yet backfilled at their version, in catalog order. Rows
  * for ids no longer in the catalog are ignored.
  */
 export async function pendingBackfills(db: DbOrTx): Promise<BackfillPair[]> {
@@ -34,14 +34,14 @@ export async function pendingBackfills(db: DbOrTx): Promise<BackfillPair[]> {
   });
 }
 
-/** Backfill spec §3: `flair:backfill:` and the pairs as `id@version`, sorted by id. */
+/** `flair:backfill:` and the pairs as `id@version`, sorted by id. */
 export function backfillDedupKey(pairs: readonly BackfillPair[]): string {
   const sorted = [...pairs].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   return `flair:backfill:${sorted.map((pair) => `${pair.id}@${pair.version}`).join(',')}`;
 }
 
 /**
- * Backfill spec §4.1: whether this build can run a backfill of `pairs`. A job enqueued by a newer
+ * Whether this build can run a backfill of `pairs`. A job enqueued by a newer
  * build can name a flair this one lacks or a version above its own, and is left for a newer worker.
  */
 export function canRunBackfill(pairs: readonly BackfillPair[]): boolean {
@@ -52,7 +52,7 @@ export function canRunBackfill(pairs: readonly BackfillPair[]): boolean {
 }
 
 /**
- * Backfill spec §3: queues a backfill of whatever is pending, if anything. Boots of the same build
+ * Queues a backfill of whatever is pending, if anything. Boots of the same build
  * compute the same key and share one job; `rearm: false` leaves a job that is retrying as it is.
  */
 export async function enqueueFlairBackfill(db: DbOrTx): Promise<void> {
@@ -67,7 +67,7 @@ export async function enqueueFlairBackfill(db: DbOrTx): Promise<void> {
 }
 
 /**
- * Backfill spec §4.2: credits one player with each of `flair` at the first of their counted games
+ * Credits one player with each of `flair` at the first of their counted games
  * that earns it. A flair they hold moves to an earlier game if one qualifies, and never to a later
  * one. It takes no lock and leaves the worn list alone. Both lists come back in catalog order.
  */
@@ -104,7 +104,7 @@ export async function backfillPlayer(
 }
 
 /**
- * Backfill spec §4.2–§4.3: backfills `pairs` for the players who are not the bot, have not deleted
+ * Backfills `pairs` for the players who are not the bot, have not deleted
  * their data and have a counted game, one at a time in id order: those after `afterUserId`, at most
  * `limit` of them. When none remain after them, it sweeps the rows of players who deleted their
  * data meanwhile and records the pairs as done, so a backfill that did not finish leaves them

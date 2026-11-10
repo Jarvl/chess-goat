@@ -89,7 +89,7 @@ async function side(
 }
 
 /**
- * Snapshot spec §3.1: build the card for `ply`, reuse or upload it, and post it to the game's topic.
+ * Build the card for `ply`, reuse or upload it, and post it to the game's topic.
  * Shares and result photos both come through here, so the same position renders the same image.
  */
 async function postSnapshot(
