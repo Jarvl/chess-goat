@@ -91,15 +91,56 @@ describe('link codes', () => {
     await redeem(b.code.replace('-', ' '));
   });
 
-  it('refuses wrong, malformed and expired codes with one reason, and deletes an expired one', async () => {
+  it('refuses wrong, malformed and expired codes with one reason', async () => {
     const owner = await insertUser(db);
     expect(await reasonOf(redeem('AAAA-AAAA'))).toBe('link_code_invalid');
     expect(await reasonOf(redeem('nope'))).toBe('link_code_invalid');
     const { code } = await createLinkCode(db, owner.id, {}, T0);
-    // Outside a transaction, so the deletion is not rolled back with the refusal.
-    expect(await reasonOf(redeemLinkCode(db, code, {}, after(601)))).toBe('link_code_invalid');
-    expect(await db.select().from(runnerLinkCodes)).toHaveLength(0);
+    expect(await reasonOf(redeem(code, {}, after(601)))).toBe('link_code_invalid');
     expect(await db.select().from(runners)).toHaveLength(0);
+  });
+
+  it('refuses an expired code again, leaving its row for the purge', async () => {
+    const owner = await insertUser(db);
+    const { code } = await createLinkCode(db, owner.id, {}, T0);
+    expect(await reasonOf(redeem(code, {}, after(600)))).toBe('link_code_invalid');
+    expect(await db.select().from(runnerLinkCodes)).toHaveLength(1);
+    expect(await reasonOf(redeem(code, {}, after(700)))).toBe('link_code_invalid');
+    expect(await db.select().from(runnerLinkCodes)).toHaveLength(1);
+  });
+
+  it('createLinkCode purges a code expiring exactly now', async () => {
+    const owner = await insertUser(db);
+    await createLinkCode(db, owner.id, {}, T0);
+    await createLinkCode(db, owner.id, {}, after(600));
+    expect(await db.select().from(runnerLinkCodes)).toHaveLength(1);
+  });
+
+  it('a deleted owner’s code is refused like a wrong one', async () => {
+    const owner = await insertUser(db);
+    const { code } = await createLinkCode(db, owner.id, {}, T0);
+    await db.update(users).set({ deletedAt: T0 }).where(eq(users.id, owner.id));
+    expect(await reasonOf(redeem(code))).toBe('link_code_invalid');
+    expect(await db.select().from(runners)).toHaveLength(0);
+  });
+
+  it('redeems a dashless code and ignores input past 64 characters', async () => {
+    const owner = await insertUser(db);
+    const a = await createLinkCode(db, owner.id, {}, T0);
+    await redeem(a.code.replace('-', ''));
+    const b = await createLinkCode(db, owner.id, {}, T0);
+    expect(await reasonOf(redeem(`${b.code}${'-'.repeat(60)}${b.code}`))).toBe('no error');
+    expect(await reasonOf(redeem(`${'-'.repeat(64)}${b.code}`))).toBe('link_code_invalid');
+  });
+
+  it('too_many_runners leaves the code usable', async () => {
+    const owner = await insertUser(db);
+    for (let i = 0; i < 5; i += 1) await link(owner.id);
+    const { code } = await createLinkCode(db, owner.id, {}, T0);
+    expect(await reasonOf(redeem(code))).toBe('too_many_runners');
+    expect(await db.select().from(runnerLinkCodes)).toHaveLength(1);
+    await db.delete(runners).where(eq(runners.ownerId, owner.id));
+    expect(await reasonOf(redeem(code))).toBe('no error');
   });
 
   it('refuses a sixth unused code but first drops expired ones', async () => {

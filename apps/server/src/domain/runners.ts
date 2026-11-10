@@ -1,10 +1,10 @@
 import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { PRESETS, type Preset } from '@chess-goat/shared';
-import { and, asc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client';
 import { runnerLinkCodes, runners, users, type RunnerRow, type UserRow } from '../db/schema';
 import { requireOwnBot } from './bots';
-import { DomainError } from './errors';
+import { DomainError, isDomainError } from './errors';
 import { lockLiveHumanOwner } from './users';
 
 export { PRESETS };
@@ -69,7 +69,7 @@ export async function createLinkCode(
 
   await tx
     .delete(runnerLinkCodes)
-    .where(and(eq(runnerLinkCodes.ownerId, ownerId), lt(runnerLinkCodes.expiresAt, now)));
+    .where(and(eq(runnerLinkCodes.ownerId, ownerId), lte(runnerLinkCodes.expiresAt, now)));
   const [counted] = await tx
     .select({ count: sql<number>`count(*)::int` })
     .from(runnerLinkCodes)
@@ -107,7 +107,8 @@ export async function redeemLinkCode(
   input: { label?: string; harness?: string },
   now: Date,
 ): Promise<{ runner: RunnerRow; credential: string; preset: Preset | null }> {
-  const normalised = normaliseCode(code);
+  // Sliced first: nothing a person types is longer, and a huge input costs a scan.
+  const normalised = normaliseCode(code.slice(0, 64));
   if (!normalised) throw linkCodeInvalid();
   const label = cleanText(input.label, MAX_LABEL_LENGTH, 'label');
   const harness = cleanText(input.harness, MAX_HARNESS_LENGTH, 'harness');
@@ -118,11 +119,19 @@ export async function redeemLinkCode(
     .where(eq(runnerLinkCodes.codeHash, hashCode(normalised)))
     .for('update');
   if (!row) throw linkCodeInvalid();
-  await tx.delete(runnerLinkCodes).where(eq(runnerLinkCodes.codeHash, row.codeHash));
-  // An expired code is deleted too, though a caller that rolls back on the refusal keeps it.
+  // Refused without deleting: a caller that rolls back on the refusal would undo the delete anyway,
+  // and `createLinkCode` purges expired codes.
   if (row.expiresAt <= now) throw linkCodeInvalid();
 
-  await lockLiveHumanOwner(tx, row.ownerId);
+  // A deleted or non-human owner looks like any other wrong code.
+  try {
+    await lockLiveHumanOwner(tx, row.ownerId);
+  } catch (error) {
+    if (isDomainError(error) && error.details.reason === 'not_a_human_owner') {
+      throw linkCodeInvalid();
+    }
+    throw error;
+  }
   const [counted] = await tx
     .select({ count: sql<number>`count(*)::int` })
     .from(runners)
@@ -134,6 +143,7 @@ export async function redeemLinkCode(
     });
   }
 
+  await tx.delete(runnerLinkCodes).where(eq(runnerLinkCodes.codeHash, row.codeHash));
   const credential = RUNNER_PREFIX + randomBytes(32).toString('base64url');
   const [runner] = await tx
     .insert(runners)
@@ -147,6 +157,11 @@ export async function redeemLinkCode(
     .returning();
   const preset = PRESETS.find((p) => p === row.preset) ?? null;
   return { runner: runner!, credential, preset };
+}
+
+/** Marks the runner seen at `now`, unconditionally (a claim poll calls it as it starts and ends). */
+export async function touchRunner(tx: DbOrTx, runnerId: number, now: Date): Promise<void> {
+  await tx.update(runners).set({ lastSeenAt: now }).where(eq(runners.id, runnerId));
 }
 
 /** The runner owning `presented` and its live owner, or null. Touches `lastSeenAt` at most once a minute. */
