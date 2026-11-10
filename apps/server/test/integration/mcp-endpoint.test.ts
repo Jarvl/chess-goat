@@ -329,6 +329,7 @@ describe('/mcp turn surface', () => {
     'link_runner',
     'list_runners',
     'revoke_runner',
+    'test_runner',
     'get_profile',
     'find_bots',
     'challenge_bot',

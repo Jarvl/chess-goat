@@ -14,6 +14,7 @@ import {
 import type { Deps } from './deps';
 import { DomainError } from './errors';
 import { kindOf } from './playerKind';
+import { onlineBotIds } from './runners';
 import { pendingTurns, sameTurn, type PendingTurn } from './turns';
 
 export const LEASE_DEFAULT_SECONDS = 300;
@@ -40,6 +41,10 @@ const addSeconds = (date: Date, seconds: number): Date => new Date(date.getTime(
 const isLeased = (row: TurnLeaseRow, now: Date): boolean =>
   row.runnerId !== null && row.leasedUntil !== null && row.leasedUntil > now;
 
+/** A lease that ran out and is not yet settled. */
+const lapsed = (row: TurnLeaseRow, now: Date): boolean =>
+  row.leasedUntil !== null && row.leasedUntil <= now;
+
 /** Delay after failure `n` (1-based). */
 const retryDelay = (failures: number): number =>
   RETRY_DELAYS_SECONDS[Math.min(failures, RETRY_DELAYS_SECONDS.length) - 1]!;
@@ -63,7 +68,8 @@ async function deleteLease(tx: DbOrTx, row: TurnLeaseRow): Promise<void> {
 /**
  * Ends the row's lease, run out or given back: a still-pending derived turn counts a failure and
  * waits its retry delay from when the lease ended (its expiry, or `now` if given back before it);
- * a resolved one and a game-over turn go; a practice turn is freed.
+ * a resolved one and a game-over turn go; a practice turn gets one attempt: it counts a failure
+ * and is never claimable again (its retry time is its expiry, when it goes).
  */
 async function endLease(
   tx: DbOrTx,
@@ -72,12 +78,17 @@ async function endLease(
   now: Date,
 ): Promise<TurnLeaseRow | null> {
   if (row.kind === 'practice') {
-    const [freed] = await tx
+    const [failed] = await tx
       .update(turnLeases)
-      .set({ runnerId: null, leasedUntil: null })
+      .set({
+        runnerId: null,
+        leasedUntil: null,
+        failures: row.failures + 1,
+        claimableAt: row.expiresAt ?? addSeconds(now, 600),
+      })
       .where(eq(turnLeases.id, row.id))
       .returning();
-    return freed!;
+    return failed!;
   }
   if (!isDerived(row.kind) || !stillPending) {
     await deleteLease(tx, row);
@@ -410,4 +421,68 @@ export async function failingTurns(
     counts.set(row.botId, (counts.get(row.botId) ?? 0) + 1);
   }
   return counts;
+}
+
+export const PRACTICE_TTL_MINUTES = 10;
+
+export type PracticeStatus = 'no_runner' | 'not_claimed' | 'claimed' | 'working' | 'failed';
+
+/**
+ * The bot's practice row: the unexpired one unless it has failed (a test is over then), else a
+ * fresh one expiring in 10 minutes. A row that reached `hello` stays until `test_runner` reports it,
+ * so a hello between two calls is not lost. One row per bot, by the turn index.
+ */
+export async function startPractice(tx: DbOrTx, botId: number, now: Date): Promise<TurnLeaseRow> {
+  return tx.transaction(async (inner) => {
+    const [existing] = await inner
+      .select()
+      .from(turnLeases)
+      .where(and(eq(turnLeases.botId, botId), eq(turnLeases.kind, 'practice')))
+      .for('update');
+    if (existing) {
+      const over = existing.failures > 0 || lapsed(existing, now);
+      if (!over && existing.expiresAt !== null && existing.expiresAt > now) return existing;
+      await inner.delete(turnLeases).where(eq(turnLeases.id, existing.id));
+    }
+    const [fresh] = await inner
+      .insert(turnLeases)
+      .values({
+        botId,
+        kind: 'practice',
+        claimableAt: now,
+        expiresAt: addSeconds(now, PRACTICE_TTL_MINUTES * 60),
+      })
+      .onConflictDoNothing()
+      .returning();
+    if (fresh) return fresh;
+    // A concurrent call inserted it first.
+    const [raced] = await inner
+      .select()
+      .from(turnLeases)
+      .where(and(eq(turnLeases.botId, botId), eq(turnLeases.kind, 'practice')));
+    return raced!;
+  });
+}
+
+/** How the bot's test stands: see `PracticeStatus`. Reading settles nothing; a claim does. */
+export async function practiceStatus(
+  tx: DbOrTx,
+  botId: number,
+  now: Date,
+): Promise<PracticeStatus> {
+  const [row] = await tx
+    .select()
+    .from(turnLeases)
+    .where(and(eq(turnLeases.botId, botId), eq(turnLeases.kind, 'practice')));
+  if (row?.helloAt) return 'working';
+  if (row && (row.failures > 0 || lapsed(row, now))) return 'failed';
+  if (row && isLeased(row, now)) return 'claimed';
+  return (await onlineBotIds(tx, [botId], now)).has(botId) ? 'not_claimed' : 'no_runner';
+}
+
+/** Drops the bot's practice row once its result has been reported. */
+export async function endPractice(tx: DbOrTx, botId: number): Promise<void> {
+  await tx
+    .delete(turnLeases)
+    .where(and(eq(turnLeases.botId, botId), eq(turnLeases.kind, 'practice')));
 }

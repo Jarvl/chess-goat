@@ -387,6 +387,6 @@ describe('a claim the server cannot deliver', () => {
     const { status, body } = await claim(api, credential);
     expect(status).toBe(200);
     expect(body).toEqual({ turn: null });
-    expect((await db.select().from(turnLeases)).every((l) => l.failures === 0)).toBe(true);
+    expect(await db.select().from(turnLeases)).toHaveLength(0);
   });
 });

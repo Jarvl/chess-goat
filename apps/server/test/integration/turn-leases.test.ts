@@ -236,7 +236,7 @@ describe('claimTurn', () => {
     expect(kinds).toEqual(['practice', 'move', 'game_over']);
   });
 
-  it('frees a released practice turn and drops it once expired', async () => {
+  it('gives a practice turn one attempt: a release fails it for good, and it goes once expired', async () => {
     const { bot, runner } = await setup();
     await db
       .insert(turnLeases)
@@ -245,9 +245,30 @@ describe('claimTurn', () => {
     expect(claimed?.lease.kind).toBe('practice');
     await releaseTurn(db, runner.id, claimed!.lease.id, claimed!.lease.claimSeq, T0);
     const [practice] = await db.select().from(turnLeases).where(eq(turnLeases.kind, 'practice'));
-    expect(practice).toMatchObject({ runnerId: null, leasedUntil: null, failures: 0 });
-    expect((await claimTurn(deps, runner, { now: at(600) }))?.lease.kind).toBe('move');
+    expect(practice).toMatchObject({ runnerId: null, leasedUntil: null, failures: 1 });
+    expect(practice!.claimableAt).toEqual(at(600));
+    // Not claimable again, however long it waits, while the row stands.
+    expect((await claimTurn(deps, runner, { now: at(599) }))?.lease.kind).toBe('move');
+    expect(await claimTurn(deps, runner, { now: at(599) })).toBeNull();
+    expect(await claimTurn(deps, runner, { now: at(600) })).toBeNull();
     expect(await db.select().from(turnLeases).where(eq(turnLeases.kind, 'practice'))).toEqual([]);
+  });
+
+  it('fails a practice turn whose lease ran out, but not one the server could not deliver', async () => {
+    const { bot, runner } = await setup();
+    await db
+      .insert(turnLeases)
+      .values({ botId: bot.id, kind: 'practice', claimableAt: T0, expiresAt: at(600) });
+    const first = await claimTurn(deps, runner, { now: T0, leaseSeconds: 10 });
+    await unclaimTurn(db, runner.id, first!.lease.id, first!.lease.claimSeq);
+    const [freed] = await db.select().from(turnLeases).where(eq(turnLeases.kind, 'practice'));
+    expect(freed).toMatchObject({ runnerId: null, failures: 0 });
+    const second = await claimTurn(deps, runner, { now: T0, leaseSeconds: 10 });
+    expect(second?.lease.kind).toBe('practice');
+    expect((await claimTurn(deps, runner, { now: at(11) }))?.lease.kind).toBe('move');
+    const [failed] = await db.select().from(turnLeases).where(eq(turnLeases.kind, 'practice'));
+    expect(failed).toMatchObject({ runnerId: null, leasedUntil: null, failures: 1 });
+    expect(failed!.claimableAt).toEqual(at(600));
   });
 });
 

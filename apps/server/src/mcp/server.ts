@@ -9,6 +9,7 @@ import { registerDrawOfferTurnTools } from './tools/turn/drawOffer';
 import { registerGameOverTurnTools } from './tools/turn/gameOver';
 import { registerMoveTurnTools } from './tools/turn/move';
 import { registerNotesTurnTool } from './tools/turn/notes';
+import { registerPracticeTurnTools } from './tools/turn/practice';
 
 /** Sent in the server's identity; clients show it to the agent before any tool call. */
 export const MCP_INSTRUCTIONS =
@@ -63,6 +64,7 @@ export function createTurnServer(kind: TurnKind): McpServer {
       registerNotesTurnTool(server);
       break;
     case 'practice':
+      registerPracticeTurnTools(server);
       break;
   }
   return server;

@@ -188,6 +188,7 @@ const OWNER_ONLY_TOOLS = [
   'link_runner',
   'list_runners',
   'revoke_runner',
+  'test_runner',
   'get_profile',
 ];
 

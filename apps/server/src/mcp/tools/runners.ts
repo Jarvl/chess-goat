@@ -9,6 +9,12 @@ import {
   PRESETS,
   revokeRunner,
 } from '../../domain/runners';
+import {
+  endPractice,
+  practiceStatus,
+  startPractice,
+  type PracticeStatus,
+} from '../../domain/turnLeases';
 import { registerTool } from '../tool';
 import { botRef, READ_ONLY } from './manage';
 
@@ -132,8 +138,100 @@ function registerRevokeRunner(server: McpServer): void {
   });
 }
 
+const PRACTICE_STATUSES = ['no_runner', 'not_claimed', 'claimed', 'working', 'failed'] as const;
+const TEST_MAX_WAIT_SECONDS = 45;
+const TEST_REREAD_MS = 2_000;
+const TEST_PROGRESS_MS = 5_000;
+
+/** Resolves after `ms`, or as soon as `signal` fires. */
+function pause(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal.addEventListener('abort', done, { once: true });
+  });
+}
+
+const testText = (status: PracticeStatus, bot: string): string => {
+  switch (status) {
+    case 'no_runner':
+      return `No connected runner serves ${bot}. Call link_runner and run its command, then call test_runner again.`;
+    case 'not_claimed':
+      return 'A runner is connected but has not picked up the test yet. Call test_runner again in a moment.';
+    case 'claimed':
+      return `The runner started a session for ${bot}, but it has not answered yet. Slow models can take a few minutes: call test_runner again. If it stays here, run \`goat-runner logs\` on the runner's machine.`;
+    case 'working':
+      return `${bot} is live: its runner started a session and the session reached Chess Goat.`;
+    case 'failed':
+      return `The runner started a session for ${bot}, but it ended without reaching Chess Goat. Run \`goat-runner logs\` on the runner's machine to see why, fix it, then call test_runner again.`;
+  }
+};
+
+function registerTestRunner(server: McpServer): void {
+  registerTool(server, {
+    name: 'test_runner',
+    description: `Checks that a bot's runner works end to end: issues a harmless test turn and waits for the runner to start a session that calls back. Call it after link_runner's command has been run, and again if it says the test is still in progress. Waits up to wait_seconds (default ${TEST_MAX_WAIT_SECONDS}).`,
+    input: z.object({
+      bot: botRef,
+      wait_seconds: z
+        .number()
+        .int()
+        .min(0)
+        .max(TEST_MAX_WAIT_SECONDS)
+        .optional()
+        .describe(`Seconds to wait for the result, 0-${TEST_MAX_WAIT_SECONDS}.`),
+    }),
+    output: z.object({
+      bot: z.string(),
+      status: z.enum(PRACTICE_STATUSES),
+      waitedSeconds: z.number().int(),
+    }),
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    run: async ({ deps, owner, progress, signal }, input) => {
+      const started = Date.now();
+      const waitMs = (input.wait_seconds ?? TEST_MAX_WAIT_SECONDS) * 1000;
+      const { db } = deps;
+      const bot = await db.transaction((tx) => resolveOwnBot(tx, owner.id, input.bot));
+      await db.transaction((tx) => startPractice(tx, bot.id, new Date()));
+      // Each read is a short transaction of its own: no connection is held across a pause.
+      const read = () => db.transaction((tx) => practiceStatus(tx, bot.id, new Date()));
+      const elapsed = () => Date.now() - started;
+      let status = await read();
+      let nextProgress = TEST_PROGRESS_MS;
+      while (status !== 'working' && status !== 'failed' && !signal.aborted && elapsed() < waitMs) {
+        await pause(Math.min(TEST_REREAD_MS, waitMs - elapsed()), signal);
+        if (signal.aborted) break;
+        status = await read();
+        if (status === 'working' || status === 'failed') break;
+        if (elapsed() >= nextProgress && elapsed() < waitMs) {
+          nextProgress += TEST_PROGRESS_MS;
+          // A lost notification is no reason to end the wait; an abort ends it.
+          await progress(
+            `Waited ${Math.round(elapsed() / 1000)} of ${waitMs / 1000} s; status: ${status}.`,
+          ).catch(() => {});
+        }
+      }
+      if (status === 'working') await db.transaction((tx) => endPractice(tx, bot.id));
+      const spent = elapsed();
+      const timedOut =
+        status !== 'working' && status !== 'failed' && !signal.aborted && spent >= waitMs;
+      return {
+        bot: bot.firstName,
+        status,
+        waitedSeconds: timedOut ? waitMs / 1000 : Math.floor(spent / 1000),
+      };
+    },
+    text: (out) => testText(out.status, out.bot),
+  });
+}
+
 export const registerRunnerTools = (server: McpServer): void => {
   registerLinkRunner(server);
   registerListRunners(server);
   registerRevokeRunner(server);
+  registerTestRunner(server);
 };
