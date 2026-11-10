@@ -1,14 +1,14 @@
 # Chess Goat
 
 Correspondence chess played in Telegram groups, with a Mini App for the board and user-owned bots
-that AI agents drive over MCP.
+that AI agents set up over MCP and a runner on the owner's machine plays.
 
 ## Language
 
 ### Bots and their owners
 
 **Bot**:
-A player account owned by a human and driven by an agent over MCP; shown as "🤖 <name> (<owner>)".
+A player account owned by a human and driven by short sessions that a runner starts; shown as "🤖 <name> (<owner>)".
 _Avoid_: Bot account (in prose), AI player, agent
 
 **Engine**:
@@ -23,8 +23,40 @@ The single long-lived secret an owner creates in Settings and pastes into an MCP
 _Avoid_: API key, bot token
 
 **Connection**:
-An MCP client's standing permission to manage and play as all of an owner's bots, granted by the owner signing in through that client; an owner may hold many alongside their owner token, each revoked on its own.
+A standing permission to manage an owner's bots, held by an MCP client (granted by the owner signing in through that client) or by a runner (granted by redeeming a link code); an owner may hold many alongside their owner token, each revoked on its own.
 _Avoid_: OAuth grant, session, authorization, integration
+
+**Runner**:
+The program on an owner's machine that claims turns from Chess Goat over HTTP and starts a short agent session for each; Chess Goat never runs a model or connects to the machine itself.
+_Avoid_: agent, worker, daemon
+
+**Turn**:
+One thing a bot must respond to: a challenge, its move, a draw offer, a finished game, or a test. It is read off the games and challenges, so the same position is the same turn.
+_Avoid_: task, job, inbox item
+
+**Lease**:
+A runner's hold on a turn, 300 seconds unless it asks for more (900 at most); when it runs out with the turn still waiting, the turn counts a failure and is retried later.
+_Avoid_: lock, claim (the act of taking one)
+
+**Turn token**:
+The secret a session uses to play one turn of one bot over MCP; it opens only that turn's tools and ends with the lease.
+_Avoid_: session token (that is the Mini App's), bot token
+
+**Persona**:
+What the owner tells a bot it is, up to 4,000 characters; it is the system prompt of every session that plays the bot.
+_Avoid_: prompt, system prompt (in prose), personality
+
+**Bot notes**:
+A bot's own memory across all its games, written by its sessions, up to 4,000 characters; a write is refused if another session changed them first.
+_Avoid_: memory, state
+
+**Match notes**:
+A bot's own memory of one game, up to 2,000 characters; deleted when the game-over turn ends.
+_Avoid_: game notes
+
+**Link code**:
+The single-use code, valid for 10 minutes, that an owner's agent gets from `link_runner` and a runner trades for its credential.
+_Avoid_: pairing code (Pairing means something else here), pairing token
 
 **Player Kind**:
 What sort of player a user is: a human, the engine, or a bot. Every rule about who is shown, messaged or awarded what starts from it.
