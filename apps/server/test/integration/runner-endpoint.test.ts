@@ -4,7 +4,7 @@ import { runners, turnLeases, type UserRow } from '../../src/db/schema';
 import { DomainError } from '../../src/domain/errors';
 import { abortGame } from '../../src/domain/games';
 import { renderTurn } from '../../src/runner/routes';
-import { createLinkCode } from '../../src/domain/runners';
+import { createLinkCode, revokeRunner } from '../../src/domain/runners';
 import { loadTurnView, renderTurnPrompt } from '../../src/domain/turnPrompt';
 import { issueTurnToken } from '../../src/domain/turnTokens';
 import { touchMember } from '../../src/domain/members';
@@ -176,8 +176,11 @@ describe('POST /runner/claim', () => {
   it('waits, then returns the turn when the opponent moves', async () => {
     const { bot, human, game: g } = await game(false);
     const { credential } = await linkRunner(api, owner);
-    const pending = claim(api, credential, { wait_seconds: 5 });
+    let answered = false;
+    const pending = claim(api, credential, { wait_seconds: 5 }).finally(() => (answered = true));
     await new Promise((r) => setTimeout(r, 300));
+    // Still waiting: nothing was claimable before the move.
+    expect(answered).toBe(false);
     await playMoveDto(api.deps, {
       gameId: g.publicId,
       userId: human.id,
@@ -186,6 +189,19 @@ describe('POST /runner/claim', () => {
     });
     const { body } = await pending;
     expect(body.turn).toMatchObject({ kind: 'move', bot: { id: bot.id } });
+  });
+
+  it('answers 401 as soon as its runner is revoked mid-wait', async () => {
+    await game(false);
+    const { credential, runnerId } = await linkRunner(api, owner);
+    const started = Date.now();
+    const pending = claim(api, credential, { wait_seconds: 10 });
+    await new Promise((r) => setTimeout(r, 300));
+    await revokeRunner(db, owner.id, runnerId);
+    const { status, res } = await pending;
+    expect(status).toBe(401);
+    expect(res.headers.get('www-authenticate')).toBe('Bearer');
+    expect(Date.now() - started).toBeLessThan(5_000);
   });
 
   it('returns { turn: null } after wait_seconds with nothing to do', async () => {
@@ -235,13 +251,31 @@ describe('POST /runner/claim', () => {
     await Promise.all(open);
   });
 
-  it('throttles failed authentication by address, counting only failures', async () => {
-    const { credential } = await linkRunner(api, owner);
-    for (let i = 0; i < 60; i += 1) {
-      expect((await post('/runner/claim', { wait_seconds: 0 }, 'cgrun_nope')).status).toBe(401);
+  it('throttles failed authentication by address before any lookup, counting only failures', async () => {
+    const proxied = await startTestRunner(db, { TRUST_PROXY_HOPS: 1 });
+    try {
+      const { credential } = await linkRunner(proxied, owner);
+      const fake = `cgrun_${'x'.repeat(43)}`;
+      const from = async (address: string, token: string) =>
+        (
+          await proxied.request('POST', '/runner/claim', {
+            token,
+            body: { wait_seconds: 0 },
+            headers: { 'x-forwarded-for': address },
+          })
+        ).status;
+      // Successes spend none of the address's budget.
+      for (let i = 0; i < 5; i += 1) expect(await from('10.0.0.1', credential)).toBe(200);
+      for (let i = 0; i < 60; i += 1) expect(await from('10.0.0.1', fake)).toBe(401);
+      expect(await from('10.0.0.1', fake)).toBe(429);
+      // Over its budget the address is refused before the credential is looked up, so a real
+      // runner behind it waits out the minute too; one behind another address is unaffected.
+      expect(await from('10.0.0.1', credential)).toBe(429);
+      expect(await from('10.0.0.2', credential)).toBe(200);
+      expect(await from('10.0.0.2', fake)).toBe(401);
+    } finally {
+      await proxied.stop();
     }
-    expect((await post('/runner/claim', { wait_seconds: 0 }, 'cgrun_nope')).status).toBe(429);
-    expect((await claim(api, credential)).status).toBe(200);
   });
 
   it('rejects an invalid body with 400 and a body over 16 KB with 413', async () => {

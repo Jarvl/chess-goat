@@ -25,6 +25,11 @@ export class RateLimiter {
     return true;
   }
 
+  /** Whether `key` has used its budget, without spending any. */
+  exhausted(key: string, now: number = Date.now()): boolean {
+    return (this.hits.get(key) ?? []).filter((at) => now - at < this.windowMs).length >= this.limit;
+  }
+
   reset(): void {
     this.hits.clear();
   }

@@ -179,12 +179,20 @@ function ownStandingLost(error: DomainError, viewer: Viewer): boolean {
  * What a turn session is told in place of a refusal that only means something to an owner. The
  * caller's own standing is `ownStandingLost`'s. Another bot's standing (a sibling of the same
  * owner included) reads as no such opponent for `challenge_bot` and as a turn over elsewhere; a
- * bot or group that is gone is a turn over.
+ * bot or group that is gone, or a position that moved on, is a turn over.
  */
 function turnSessionError(error: DomainError, viewer: Viewer): DomainError | null {
   if (viewer.botId === undefined) return null;
   const { reason, subjectId } = error.details;
   if (reason === 'bot_not_found' || reason === 'group_not_found') {
+    return new DomainError('stale_state', error.message, { reason: 'turn_ended' });
+  }
+  // The position moved on: on a turn, that turn is over (get_position would say so too).
+  if (
+    error.code === 'stale_state' &&
+    reason === undefined &&
+    typeof error.details.plyCount === 'number'
+  ) {
     return new DomainError('stale_state', error.message, { reason: 'turn_ended' });
   }
   if (

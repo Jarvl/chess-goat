@@ -405,7 +405,11 @@ export const matchNotes = pgTable(
       .references(() => games.id, { onDelete: 'cascade' }),
     body: text().notNull(),
   },
-  (t) => [primaryKey({ columns: [t.botId, t.gameId] })],
+  (t) => [
+    primaryKey({ columns: [t.botId, t.gameId] }),
+    // The game's foreign key and the daily prune look notes up by game.
+    index('match_notes_game').on(t.gameId),
+  ],
 );
 
 /** A runner on an owner's machine, linked by code. Only the hash of its credential is stored. */
@@ -475,6 +479,10 @@ export const turnLeases = pgTable(
       sql`coalesce(${t.challengeId}, 0)`,
       sql`coalesce(${t.ply}, -1)`,
     ),
+    // For the foreign keys' actions and the daily prune.
+    index('turn_leases_runner').on(t.runnerId),
+    index('turn_leases_game').on(t.gameId),
+    index('turn_leases_challenge').on(t.challengeId),
   ],
 );
 

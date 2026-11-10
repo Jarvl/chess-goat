@@ -15,7 +15,7 @@ import type { ApiContext } from '../api/context';
 import { RateLimiter } from '../bot/rateLimit';
 import type { RunnerRow } from '../db/schema';
 import { DomainError, isDomainError } from '../domain/errors';
-import { redeemLinkCode, resolveRunner, touchRunner } from '../domain/runners';
+import { redeemLinkCode, resolveRunner, runnerLinked, touchRunner } from '../domain/runners';
 import {
   LEASE_DEFAULT_SECONDS,
   claimTurn,
@@ -148,19 +148,24 @@ export function runnerEndpoint(ctx: ApiContext, opts: RunnerEndpointOptions = {}
     }),
   );
 
+  /** The answer to a request with no valid credential, as on /mcp. */
+  const unauthorized = (c: Context): Response =>
+    c.json(apiErrorBody('unauthorized', 'a valid token is required'), 401, {
+      'WWW-Authenticate': 'Bearer',
+    });
+
   /** The runner a `cgrun_…` bearer names, or a 401 response. Counts the call against its budget. */
   const authenticate = async (c: Context): Promise<RunnerRow | Response> => {
+    const address = clientAddress(c, ctx.config.TRUST_PROXY_HOPS);
+    // Only failures count, so guessing credentials is throttled and real runners are not; an
+    // address over its budget is refused before any lookup, a real runner behind it included.
+    if (authFailures.exhausted(address)) throw new DomainError('rate_limited', 'too many requests');
     const token = bearerToken(c.req.header('authorization'));
     const found = token ? await resolveRunner(db, token, now()) : null;
     // One answer for every failure, as on /mcp.
     if (!found) {
-      // Only failures count, so guessing credentials is throttled and real runners are not.
-      if (!authFailures.allow(clientAddress(c, ctx.config.TRUST_PROXY_HOPS))) {
-        throw new DomainError('rate_limited', 'too many requests');
-      }
-      return c.json(apiErrorBody('unauthorized', 'a valid token is required'), 401, {
-        'WWW-Authenticate': 'Bearer',
-      });
+      if (!authFailures.allow(address)) throw new DomainError('rate_limited', 'too many requests');
+      return unauthorized(c);
     }
     if (!callLimiter.allow(String(found.runner.id))) {
       throw new DomainError('rate_limited', 'too many requests');
@@ -239,6 +244,8 @@ export function runnerEndpoint(ctx: ApiContext, opts: RunnerEndpointOptions = {}
           await releaseTurn(db, runner.id, lease.id, lease.claimSeq, now());
           if (!signal.aborted) continue;
         }
+        // Nothing to claim, or no runner to claim for: revoked mid-wait, it is answered as unknown.
+        if (!claimed && !(await runnerLinked(db, runner.id))) return unauthorized(c);
         const left = waitMs - (Date.now() - started);
         if (signal.aborted || left <= 0)
           return c.json({ turn: null } satisfies RunnerClaimResponse);

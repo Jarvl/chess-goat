@@ -169,6 +169,12 @@ export async function deleteExpiredLinkCodes(tx: DbOrTx, now: Date): Promise<num
   return gone.length;
 }
 
+/** Whether the runner is still linked (not revoked, its owner not deleted). */
+export async function runnerLinked(tx: DbOrTx, runnerId: number): Promise<boolean> {
+  const [row] = await tx.select({ id: runners.id }).from(runners).where(eq(runners.id, runnerId));
+  return row !== undefined;
+}
+
 /** Marks the runner seen at `now`, unconditionally (a claim poll calls it as it starts and ends). */
 export async function touchRunner(tx: DbOrTx, runnerId: number, now: Date): Promise<void> {
   await tx.update(runners).set({ lastSeenAt: now }).where(eq(runners.id, runnerId));

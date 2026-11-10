@@ -157,6 +157,15 @@ describe('the calling bot’s own standing', () => {
       );
   });
 
+  it('says the turn has ended when the position changed under it; the owner text stands', () => {
+    const stale = new DomainError('stale_state', 'the position has changed', { plyCount: 12 });
+    for (const tool of ['make_move', 'set_premoves', 'game_action'])
+      expect(text(stale, { ...turnViewer, tool })).toBe('This turn has ended; stop.');
+    expect(text(stale)).toBe(
+      'The position has changed; it is now ply 12. Call get_position and choose again.',
+    );
+  });
+
   it('says the turn has ended when the bot or the group is gone', () => {
     for (const reason of ['bot_not_found', 'group_not_found'])
       expect(text(new DomainError('not_found', 'gone', { reason }), turnViewer)).toBe(
