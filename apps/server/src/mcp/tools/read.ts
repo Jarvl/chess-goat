@@ -1,47 +1,14 @@
 import { and, desc, eq, isNull, or } from 'drizzle-orm';
-import { PlayerKindSchema } from '@chess-goat/shared';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/server';
-import { games, groups, users, type GameRow, type UserRow } from '../../db/schema';
-import type { DbOrTx } from '../../db/client';
-import { DomainError } from '../../domain/errors';
-import { listMoves } from '../../domain/games';
-import { buildGamePgn } from '../../domain/pgn';
+import { games, users } from '../../db/schema';
 import { displayName } from '../../domain/users';
 import { registerTool, resolveAndTouch } from '../tool';
-import { renderGame, type GameView } from '../render';
+import { GameViewSchema, loadGameView, type GameView } from '../../domain/botView';
 import { botViews } from '../../domain/bots';
 import { botRef, botSchema, READ_ONLY } from './manage';
 
-const colour = z.enum(['white', 'black']);
-const premoveNode: z.ZodType<{ move: string; reply: string; children: unknown[] }> = z.lazy(() =>
-  z.object({ move: z.string(), reply: z.string(), children: z.array(premoveNode) }),
-);
-
-export const gameViewSchema = z.object({
-  gameId: z.string(),
-  group: z.object({ groupId: z.string(), title: z.string() }),
-  you: colour,
-  opponent: z.object({ name: z.string(), kind: PlayerKindSchema }),
-  status: z.string(),
-  result: z.string().nullable(),
-  endReason: z.string().nullable(),
-  ply: z.number().int(),
-  toMove: colour,
-  yourTurn: z.boolean(),
-  fen: z.string(),
-  board: z.string(),
-  moves: z.array(z.string()),
-  legalMoves: z.array(z.object({ san: z.string(), uci: z.string() })),
-  timePerMove: z.number().nullable(),
-  deadlineAt: z.string().nullable(),
-  drawOffer: z.enum(['none', 'from_you', 'from_opponent']),
-  rated: z.boolean(),
-  premoveTree: z.array(premoveNode),
-  pgn: z.string().optional(),
-});
-
-export const gameText = (view: z.infer<typeof gameViewSchema>): string => {
+export const gameText = (view: GameView): string => {
   const head = view.yourTurn
     ? `Your move (${view.you}), ply ${view.ply}.`
     : view.status === 'active'
@@ -57,45 +24,6 @@ export const gameText = (view: z.infer<typeof gameViewSchema>): string => {
   return `${head} vs ${view.opponent.name} in ${view.group.title}.\n${view.board}\nFEN: ${view.fen}${legal}${draw}`;
 };
 
-/** The game as `bot` sees it. A game that does not exist, or that the bot is not in, is `not_found`. */
-export async function loadGameView(
-  tx: DbOrTx,
-  bot: UserRow,
-  publicId: string,
-  withPgn = false,
-): Promise<GameView> {
-  const row = await findBotGame(tx, bot, publicId);
-  return viewOf(tx, row, bot, withPgn);
-}
-
-export async function findBotGame(tx: DbOrTx, bot: UserRow, publicId: string): Promise<GameRow> {
-  const [row] = await tx.select().from(games).where(eq(games.publicId, publicId)).limit(1);
-  if (!row || (row.whiteId !== bot.id && row.blackId !== bot.id)) {
-    throw new DomainError('not_found', 'game not found', { reason: 'game_not_found' });
-  }
-  return row;
-}
-
-export async function viewOf(
-  tx: DbOrTx,
-  row: GameRow,
-  bot: UserRow,
-  withPgn = false,
-): Promise<GameView> {
-  const [moves, [group], [white], [black]] = await Promise.all([
-    listMoves(tx, row.id),
-    tx.select().from(groups).where(eq(groups.id, row.groupId)).limit(1),
-    tx.select().from(users).where(eq(users.id, row.whiteId)).limit(1),
-    tx.select().from(users).where(eq(users.id, row.blackId)).limit(1),
-  ]);
-  const view = renderGame(
-    { game: row, moves, group: group!, white: white!, black: black! },
-    bot.id,
-  );
-  if (withPgn) view.pgn = await buildGamePgn(tx, row);
-  return view;
-}
-
 function registerGetGame(server: McpServer): void {
   registerTool(server, {
     name: 'get_game',
@@ -106,7 +34,7 @@ function registerGetGame(server: McpServer): void {
       game_id: z.string().min(1).max(64).describe("The game's id, from get_inbox."),
       format: z.enum(['concise', 'detailed']).optional(),
     }),
-    output: gameViewSchema,
+    output: GameViewSchema,
     annotations: READ_ONLY,
     run: async (call, input) => {
       const bot = await resolveAndTouch(call, input.bot);

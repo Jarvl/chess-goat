@@ -180,9 +180,17 @@ replacing their JSON-RPC versions in `mcp-play.test.ts`. One MCP smoke test rema
 - The draw-offer state is computed once.
 - `list_my_groups` moves into the domain as `ownerGroups`.
 
-**Deferred.** The HTTP bot-browse route checks membership with `membership.verify`, and MCP
-`find_bots` checks with `getMember`. Whether those two actually behave differently gets checked
-first; unifying them is a later question.
+**Deferred, and checked (2026-11-08): the two membership checks do differ.**
+
+- The HTTP bot browser uses `requireMember` → `membership.verify`. It asks Telegram
+  (`getChatMember`, with a cached verdict) and ignores `blockedAt`.
+- MCP `find_bots` uses `isActiveMember`, which reads only the database row and refuses blocked
+  users.
+
+So a blocked person can browse a group's bots in the Mini App, but their agent cannot. Someone who
+has left the Telegram group is refused by the Mini App as soon as Telegram says so, but their agent
+is refused only once the row is updated. Which rule is right is a product decision, so the two are
+not unified here.
 
 ## Out of scope
 

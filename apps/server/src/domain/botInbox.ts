@@ -1,40 +1,55 @@
-import { sideToMove, type ColourChoice, type PlayerKind } from '@chess-goat/shared';
+import { ColourChoiceSchema, sideToMove, type ColourChoice } from '@chess-goat/shared';
 import { and, asc, eq, gt, inArray, or, sql, type AnyColumn } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { DbOrTx } from '../db/client';
 import { challenges, games, groups, users, type UserRow } from '../db/schema';
+import { z } from 'zod';
+import { BotViewPersonSchema, DrawOfferSchema, drawOfferFor } from './botView';
 import { displayName } from './users';
 import { kindOf } from './playerKind';
 
-export type InboxBot = { id: number; name: string };
-export type InboxPerson = { name: string; kind: PlayerKind };
+const InboxBotSchema = z.object({ id: z.number().int(), name: z.string() });
 
-/** What one of an owner's bots has to act on (bots spec §7; MCP plan, Task 5). */
-export type InboxEntry =
-  | {
-      kind: 'challenge';
-      bot: InboxBot;
-      challengeId: string;
-      from: InboxPerson;
-      group: { groupId: string; title: string };
-      timePerMove: number | null;
-      rated: boolean;
-      /** The colour the bot would play. */
-      colour: ColourChoice;
-      expiresAt: string;
-    }
-  | {
-      kind: 'your_move';
-      bot: InboxBot;
-      gameId: string;
-      opponent: InboxPerson;
-      ply: number;
-      deadlineAt: string | null;
-      drawOffer: 'none' | 'from_you' | 'from_opponent';
-      /** The bot's premove reply to `opponentMove` (both UCI) was illegal, so its tree was dropped. */
-      premoveFailed?: { opponentMove: string; reply: string };
-    }
-  | { kind: 'draw_offer'; bot: InboxBot; gameId: string; opponent: InboxPerson; ply: number };
+/**
+ * What one of an owner's bots has to act on (bots spec §7; MCP plan, Task 5). The schema is the
+ * source of truth for get_inbox's output and for the type.
+ */
+export const InboxEntrySchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('challenge'),
+    bot: InboxBotSchema,
+    challengeId: z.string(),
+    from: BotViewPersonSchema,
+    group: z.object({ groupId: z.string(), title: z.string() }),
+    timePerMove: z.number().nullable(),
+    rated: z.boolean(),
+    /** The colour the bot would play. */
+    colour: ColourChoiceSchema,
+    expiresAt: z.string(),
+  }),
+  z.object({
+    kind: z.literal('your_move'),
+    bot: InboxBotSchema,
+    gameId: z.string(),
+    opponent: BotViewPersonSchema,
+    ply: z.number().int(),
+    deadlineAt: z.string().nullable(),
+    drawOffer: DrawOfferSchema,
+    /** The bot's premove reply to `opponentMove` (both UCI) was illegal, so its tree was dropped. */
+    premoveFailed: z.object({ opponentMove: z.string(), reply: z.string() }).optional(),
+  }),
+  z.object({
+    kind: z.literal('draw_offer'),
+    bot: InboxBotSchema,
+    gameId: z.string(),
+    opponent: BotViewPersonSchema,
+    ply: z.number().int(),
+  }),
+]);
+
+export type InboxEntry = z.infer<typeof InboxEntrySchema>;
+type InboxBot = z.infer<typeof InboxBotSchema>;
+type InboxPerson = z.infer<typeof BotViewPersonSchema>;
 
 type Sorted = { entry: InboxEntry; deadline: number | null; since: number };
 
@@ -194,12 +209,7 @@ export async function loadInbox(tx: DbOrTx, botIds: readonly number[]): Promise<
             opponent: personOf(opponent),
             ply: game.plyCount,
             deadlineAt: game.deadlineAt?.toISOString() ?? null,
-            drawOffer:
-              game.drawOfferBy === null
-                ? 'none'
-                : game.drawOfferBy === colour
-                  ? 'from_you'
-                  : 'from_opponent',
+            drawOffer: drawOfferFor(game.drawOfferBy, colour),
             ...(failed
               ? { premoveFailed: { opponentMove: failure.opponentMove, reply: failure.reply } }
               : {}),

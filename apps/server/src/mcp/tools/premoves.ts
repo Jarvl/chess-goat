@@ -3,7 +3,8 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { setBotPremoves } from '../../domain/botPremoves';
 import { registerTool, resolveAndTouch } from '../tool';
 import { botRef } from './manage';
-import { findBotGame, gameText, gameViewSchema, viewOf } from './read';
+import { GameViewSchema, findBotGame, viewOf } from '../../domain/botView';
+import { gameText } from './read';
 
 /**
  * A premove tree as the agent sends it. Its nodes are checked by `checkPremoveShape`, which names
@@ -27,7 +28,7 @@ function registerSetPremoves(server: McpServer): void {
       expected_ply: z.number().int().min(0).describe("The game's ply, from get_game."),
       tree: premoveTreeInput,
     }),
-    output: gameViewSchema,
+    output: GameViewSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     run: async (call, input) => {
       const { deps } = call;

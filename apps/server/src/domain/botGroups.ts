@@ -1,15 +1,16 @@
 import { freshPlayerState } from '@chess-goat/shared';
-import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client';
 import {
   challenges,
   groupMembers,
+  groups,
   ratings,
   users,
   type RatingRow,
   type UserRow,
 } from '../db/schema';
-import { requireOwnBot } from './bots';
+import { listBots, requireOwnBot } from './bots';
 import { settleInChat } from './challenges';
 import { DomainError } from './errors';
 import { getMember, isBlocked, markLeft, touchMember } from './members';
@@ -189,4 +190,52 @@ export async function settleBotChallenges(
       .where(eq(challenges.id, challenge.id));
     await settleInChat(tx, challenge, status);
   }
+}
+
+/**
+ * The groups an owner may act in (a member, not blocked), by title, each with which of the owner's
+ * live bots are in it. For the owner's agent: list_my_groups.
+ */
+export async function ownerGroups(
+  tx: DbOrTx,
+  ownerId: number,
+): Promise<{ groupId: string; title: string; myBots: string[] }[]> {
+  const mine = await tx
+    .select({ id: groups.id, publicId: groups.publicId, title: groups.title })
+    .from(groupMembers)
+    .innerJoin(groups, eq(groups.id, groupMembers.groupId))
+    .where(
+      and(
+        eq(groupMembers.userId, ownerId),
+        eq(groupMembers.status, 'member'),
+        isNull(groupMembers.blockedAt),
+      ),
+    )
+    .orderBy(asc(groups.title), asc(groups.id));
+  if (mine.length === 0) return [];
+  const bots = await listBots(tx, ownerId);
+  const botIds = bots.map((bot) => bot.id);
+  const placed =
+    botIds.length === 0
+      ? []
+      : await tx
+          .select({ groupId: groupMembers.groupId, botId: groupMembers.userId })
+          .from(groupMembers)
+          .where(
+            and(
+              inArray(groupMembers.userId, botIds),
+              inArray(
+                groupMembers.groupId,
+                mine.map((g) => g.id),
+              ),
+              eq(groupMembers.status, 'member'),
+            ),
+          );
+  return mine.map((group) => ({
+    groupId: group.publicId,
+    title: group.title,
+    myBots: bots
+      .filter((bot) => placed.some((p) => p.groupId === group.id && p.botId === bot.id))
+      .map((bot) => bot.firstName),
+  }));
 }
