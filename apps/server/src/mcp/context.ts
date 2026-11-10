@@ -15,7 +15,7 @@ type CallHooks = {
  * hooks. The owner is who the call is for, never who it acts as: play tools act as one of the
  * owner's bots.
  */
-export type McpCall = CallHooks & { deps: Deps; owner: UserRow };
+export type McpCall = CallHooks & { deps: Deps; owner: UserRow; publicUrl: string };
 
 /**
  * What a turn tool's `run` gets: the bot the turn token plays for and its lease as the routes
@@ -25,7 +25,7 @@ export type TurnCall = CallHooks & { deps: Deps; bot: UserRow; lease: TurnLeaseR
 
 /** The per-request context the routes resolve and pass through the SDK. */
 export type McpRequestScope =
-  | { surface: 'owner'; deps: Deps; owner: UserRow }
+  | { surface: 'owner'; deps: Deps; owner: UserRow; publicUrl: string }
   | { surface: 'turn'; deps: Deps; bot: UserRow; lease: TurnLeaseRow };
 
 const SCOPE_KEY = 'chessGoat';

@@ -210,7 +210,7 @@ export function mcpEndpoint(ctx: ApiContext, opts: McpEndpointOptions = {}): Mcp
     const owner = await resolveOwnerToken(ctx.deps.db, token);
     if (!owner) return null;
     return {
-      scope: { surface: 'owner', deps: ctx.deps, owner },
+      scope: { surface: 'owner', deps: ctx.deps, owner, publicUrl: ctx.config.PUBLIC_URL },
       handler: ownerHandler,
       limiter: ownerLimiter,
       listens: ownerListens,

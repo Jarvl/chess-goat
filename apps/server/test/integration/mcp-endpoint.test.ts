@@ -221,7 +221,12 @@ describe('registerTool', () => {
     return {
       request: (_path: string, init: RequestInit) =>
         handler.fetch(new Request('http://test/mcp', init), {
-          authInfo: scopeAuthInfo({ surface: 'owner', deps: api.deps, owner }),
+          authInfo: scopeAuthInfo({
+            surface: 'owner',
+            deps: api.deps,
+            owner,
+            publicUrl: 'https://chess.test',
+          }),
         }),
     };
   };
@@ -321,6 +326,9 @@ describe('/mcp turn surface', () => {
     'list_my_groups',
     'add_bot_to_group',
     'remove_bot_from_group',
+    'link_runner',
+    'list_runners',
+    'revoke_runner',
     'get_profile',
     'find_bots',
     'challenge_bot',
@@ -340,7 +348,7 @@ describe('/mcp turn surface', () => {
 
   it('still lists the owner tools, unchanged, to an owner token', async () => {
     const reply = await mcpCall(api.app, token, 'tools/list');
-    expect(toolNames(reply).sort()).toEqual([...OWNER_TOOLS].sort());
+    expect(toolNames(reply)).toEqual(OWNER_TOOLS);
   });
 
   it('gives the turn instructions over a turn token, to initialize and to server/discover', async () => {

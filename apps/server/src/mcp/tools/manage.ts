@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import type { DbOrTx } from '../../db/client';
+import type { UserRow } from '../../db/schema';
 import {
   botViews,
   createBot,
@@ -6,10 +8,13 @@ import {
   listBots,
   resolveOwnBot,
   updateBot,
-  type BotView,
 } from '../../domain/bots';
 import { addBotToGroup, ownerGroups, removeBotFromGroup } from '../../domain/botGroups';
+import { PERSONA_MAX } from '../../domain/botNotes';
 import { requireGroupByPublicId } from '../../domain/groups';
+import { onlineBotIds } from '../../domain/runners';
+import { pendingTurns } from '../../domain/turns';
+import { failingTurns } from '../../domain/turnLeases';
 import type { McpServer } from '@modelcontextprotocol/server';
 import { BOT_DOCS_URL } from '../../links';
 import { registerTool, resolveAndTouch } from '../tool';
@@ -36,17 +41,54 @@ export const botSchema = z.object({
   lastActiveAt: z.string().nullable(),
   groups: z.array(botGroupSchema),
   liveGames: z.number().int(),
+  online: z.boolean(),
+  failingTurns: z.number().int(),
+  pendingChallenges: z.number().int(),
 });
+type BotOut = z.infer<typeof botSchema>;
 
-const botLine = (bot: BotView): string => {
+/**
+ * Text the schema publishes with `maxLength: max`. It isn't enforced here: `.max` would count UTF-16
+ * units; the domain counts code points and says by how much a persona is over.
+ */
+export const personaInput = (description: string) =>
+  z.string().meta({ maxLength: PERSONA_MAX }).describe(description);
+
+/** The bots' views with runner status: three batched reads, whatever the number of bots. */
+export async function botsWithStatus(tx: DbOrTx, bots: readonly UserRow[]): Promise<BotOut[]> {
+  const views = await botViews(tx, bots);
+  const ids = views.map((view) => view.id);
+  const [online, failing, pending] = await Promise.all([
+    onlineBotIds(tx, ids, new Date()),
+    failingTurns(tx, ids),
+    pendingTurns(tx, ids),
+  ]);
+  return views.map((view) => ({
+    ...view,
+    online: online.has(view.id),
+    failingTurns: failing.get(view.id) ?? 0,
+    pendingChallenges: pending.filter((t) => t.botId === view.id && t.kind === 'challenge').length,
+  }));
+}
+
+const botLine = (bot: BotOut): string => {
   const where =
     bot.groups.length === 0
       ? 'in no group'
       : `in ${bot.groups.map((g) => `${g.title} (${g.rating})`).join(', ')}`;
   const tagline = bot.tagline ? ` "${bot.tagline}"` : '';
   const games = bot.liveGames === 1 ? '1 live game' : `${bot.liveGames} live games`;
-  return `${bot.label}${tagline}, ${where}, ${games}`;
+  const status = [
+    bot.online ? 'online' : 'offline',
+    bot.failingTurns > 0 &&
+      `${bot.failingTurns} ${bot.failingTurns === 1 ? 'turn' : 'turns'} failing`,
+    bot.pendingChallenges > 0 &&
+      `${bot.pendingChallenges} ${bot.pendingChallenges === 1 ? 'challenge' : 'challenges'} waiting`,
+  ].filter(Boolean);
+  return `${bot.label}${tagline}, ${where}, ${games}, ${status.join(', ')}`;
 };
+
+const NO_RUNNER = 'No runner is connected, so your bots are not playing. Call link_runner.';
 
 const NEXT_STEPS =
   "Your bot exists but isn't in any group yet. Call list_my_groups, then add_bot_to_group. People challenge bots from the group; bots can challenge other bots with find_bots and challenge_bot." +
@@ -59,17 +101,19 @@ function registerListBots(server: McpServer): void {
   registerTool(server, {
     name: 'list_bots',
     description:
-      'List your bots with the groups each is in (and its rating there) and how many games it is playing now.',
+      'List your bots with the groups each is in (and its rating there), how many games it is playing now, whether a runner is online for it, and any turns failing or challenges waiting.',
     input: z.object({}),
     output: z.object({ bots: z.array(botSchema) }),
     annotations: READ_ONLY,
     run: async ({ deps, owner }) => ({
-      bots: await deps.db.transaction(async (tx) => botViews(tx, await listBots(tx, owner.id))),
+      bots: await deps.db.transaction(async (tx) =>
+        botsWithStatus(tx, await listBots(tx, owner.id)),
+      ),
     }),
     text: ({ bots }) =>
       bots.length === 0
         ? 'You have no bots yet. Call create_bot to make one.'
-        : bots.map(botLine).join('\n'),
+        : bots.map(botLine).join('\n') + (bots.some((b) => b.online) ? '' : `\n${NO_RUNNER}`),
   });
 }
 
@@ -81,6 +125,9 @@ function registerCreateBot(server: McpServer): void {
     input: z.object({
       name: z.string().max(100),
       tagline: z.string().max(200).optional(),
+      persona: personaInput(
+        "Optional. What the bot's agent is told it is: its character and style. At most 4,000 characters.",
+      ).optional(),
     }),
     output: z.object({ bot: botSchema, nextSteps: z.string() }),
     annotations: WRITE,
@@ -88,7 +135,7 @@ function registerCreateBot(server: McpServer): void {
       // `bot_name_taken` aborts the transaction and propagates; it is never caught inside it.
       bot: await deps.db.transaction(async (tx) => {
         const bot = await createBot(tx, owner.id, input);
-        return (await botViews(tx, [bot]))[0]!;
+        return (await botsWithStatus(tx, [bot]))[0]!;
       }),
       nextSteps: NEXT_STEPS,
     }),
@@ -99,11 +146,16 @@ function registerCreateBot(server: McpServer): void {
 function registerUpdateBot(server: McpServer): void {
   registerTool(server, {
     name: 'update_bot',
-    description: 'Rename a bot or change its tagline. An empty tagline clears it.',
+    description:
+      "Rename a bot, change its tagline or persona, or wipe its notes. An empty tagline or persona clears it. clear_notes erases the notes the bot wrote to itself; it can't be undone.",
     input: z.object({
       bot: botRef,
       name: z.string().max(100).optional(),
       tagline: z.string().max(200).optional(),
+      persona: personaInput(
+        "What the bot's agent is told it is. An empty string clears it. At most 4,000 characters.",
+      ).optional(),
+      clear_notes: z.boolean().optional().describe("Erase the bot's own notes."),
     }),
     output: z.object({ bot: botSchema }),
     annotations: { ...WRITE, idempotentHint: true },
@@ -112,11 +164,13 @@ function registerUpdateBot(server: McpServer): void {
       const own = await resolveAndTouch(call, input.bot);
       return {
         bot: await deps.db.transaction(async (tx) => {
-          const patch: { name?: string; tagline?: string } = {};
+          const patch: Parameters<typeof updateBot>[3] = {};
           if (input.name !== undefined) patch.name = input.name;
           if (input.tagline !== undefined) patch.tagline = input.tagline;
+          if (input.persona !== undefined) patch.persona = input.persona;
+          if (input.clear_notes) patch.clearNotes = true;
           const updated = await updateBot(tx, owner.id, own.id, patch);
-          return (await botViews(tx, [updated]))[0]!;
+          return (await botsWithStatus(tx, [updated]))[0]!;
         }),
       };
     },

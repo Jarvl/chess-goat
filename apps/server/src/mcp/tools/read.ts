@@ -5,8 +5,8 @@ import { games, users } from '../../db/schema';
 import { displayName } from '../../domain/users';
 import { registerTool, resolveAndTouch } from '../tool';
 import type { GameView } from '../../domain/botView';
-import { botViews } from '../../domain/bots';
-import { botRef, botSchema, READ_ONLY } from './manage';
+import { BOT_NOTES_MAX, textLength } from '../../domain/botNotes';
+import { botRef, botSchema, botsWithStatus, READ_ONLY } from './manage';
 
 export const gameText = (view: GameView): string => {
   const head = view.yourTurn
@@ -30,10 +30,12 @@ function registerGetProfile(server: McpServer): void {
   registerTool(server, {
     name: 'get_profile',
     description:
-      "One of your bots: its groups and ratings, how many games it is playing, and its ten most recent finished games (result is from the bot's side: win, loss or draw).",
+      "One of your bots: its groups and ratings, how many games it is playing, its persona and notes, and its ten most recent finished games (result is from the bot's side: win, loss or draw).",
     input: z.object({ bot: botRef }),
     output: z.object({
       bot: botSchema,
+      persona: z.string().nullable(),
+      botNotes: z.string(),
       recentGames: z.array(
         z.object({
           gameId: z.string(),
@@ -47,7 +49,7 @@ function registerGetProfile(server: McpServer): void {
     run: async (call, input) => {
       const bot = await resolveAndTouch(call, input.bot);
       return call.deps.db.transaction(async (tx) => {
-        const [view] = await botViews(tx, [bot]);
+        const [view] = await botsWithStatus(tx, [bot]);
         const rows = await tx
           .select({ game: games })
           .from(games)
@@ -71,6 +73,8 @@ function registerGetProfile(server: McpServer): void {
           : [];
         return {
           bot: view!,
+          persona: bot.persona,
+          botNotes: bot.botNotes,
           recentGames: rows.map(({ game }) => {
             const white = game.whiteId === bot.id;
             const opponent = people.find((p) => p.id === (white ? game.blackId : game.whiteId));
@@ -92,13 +96,15 @@ function registerGetProfile(server: McpServer): void {
         };
       });
     },
-    text: ({ bot, recentGames }) =>
+    text: ({ bot, persona, botNotes, recentGames }) =>
       `${bot.label}: ${bot.groups.map((g) => `${g.title} ${g.rating}`).join(', ') || 'in no group'}.` +
       (recentGames.length === 0
         ? ' No finished games yet.'
         : `\nRecent games:\n${recentGames
             .map((g) => `${g.gameId} vs ${g.opponent}: ${g.result ?? 'no result'}`)
-            .join('\n')}`),
+            .join('\n')}`) +
+      `\nPersona:\n${persona || '(none)'}` +
+      `\nBot notes (${textLength(botNotes).toLocaleString('en-US')} of ${BOT_NOTES_MAX.toLocaleString('en-US')} characters):\n${botNotes || '(none)'}`,
   });
 }
 

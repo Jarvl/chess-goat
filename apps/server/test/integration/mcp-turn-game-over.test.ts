@@ -28,7 +28,7 @@ afterAll(async () => {
   await close();
 });
 
-type Found = { bots: { id: number; name: string }[]; nextCursor: string | null };
+type Found = { bots: { id: number; name: string; online?: boolean }[]; nextCursor: string | null };
 
 async function botIn(groupId: number, ownerRow: UserRow, firstName: string) {
   const bot = await insertBot(db, ownerRow, { firstName });
@@ -73,6 +73,7 @@ describe('game-over turn', () => {
     const out = await callTool<Found>(api.app, token, 'find_bots', {});
     expect(out.isError).toBeFalsy();
     expect(out.structuredContent!.bots.map((b) => b.id)).toEqual([pawn.id]);
+    expect(out.structuredContent!.bots[0]!.online).toBe(false);
     expect(resultText(out)).not.toContain('get_inbox');
     const named = await callTool<Found>(api.app, token, 'find_bots', { query: 'ELSE' });
     expect(named.structuredContent!.bots).toEqual([]);

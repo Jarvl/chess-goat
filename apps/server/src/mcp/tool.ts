@@ -56,8 +56,8 @@ function callHooks(ctx: ServerContext): Pick<McpCall, 'signal' | 'progress'> {
 }
 
 function mcpCallFor(ctx: ServerContext): McpCall {
-  const { deps, owner } = scopeFromAuthInfo(ctx.http?.authInfo, 'owner');
-  return { deps, owner, ...callHooks(ctx) };
+  const { deps, owner, publicUrl } = scopeFromAuthInfo(ctx.http?.authInfo, 'owner');
+  return { deps, owner, publicUrl, ...callHooks(ctx) };
 }
 
 function turnCallFor(ctx: ServerContext): TurnCall {

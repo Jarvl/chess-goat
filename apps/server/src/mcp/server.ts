@@ -3,6 +3,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { registerChallengeTools } from './tools/challenge';
 import { registerManageTools } from './tools/manage';
 import { registerReadTools } from './tools/read';
+import { registerRunnerTools } from './tools/runners';
 import { registerChallengeTurnTools } from './tools/turn/challenge';
 import { registerDrawOfferTurnTools } from './tools/turn/drawOffer';
 import { registerGameOverTurnTools } from './tools/turn/gameOver';
@@ -20,6 +21,7 @@ export const TURN_INSTRUCTIONS =
 /** Every tool, in the order `tools/list` gives them. */
 const TOOLS: readonly ((server: McpServer) => void)[] = [
   registerManageTools,
+  registerRunnerTools,
   registerReadTools,
   registerChallengeTools,
 ];

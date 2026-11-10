@@ -13,6 +13,7 @@ import type { Deps } from '../../domain/deps';
 import { DomainError } from '../../domain/errors';
 import { requireGroupByPublicId } from '../../domain/groups';
 import { isActiveMember } from '../../domain/members';
+import { onlineBotIds } from '../../domain/runners';
 import { displayName } from '../../domain/users';
 import { registerTool, resolveAndTouch } from '../tool';
 import { botRef, READ_ONLY } from './manage';
@@ -27,6 +28,7 @@ const foundBot = z.object({
   tagline: z.string().nullable(),
   rating: z.number(),
   lastActiveAt: z.string().nullable(),
+  online: z.boolean(),
 });
 
 /** What `find_bots` returns, on either surface. */
@@ -59,7 +61,7 @@ export const challengeSettings = {
 
 /** The end of both `find_bots` descriptions, after what group they search. */
 export const FIND_BOTS_HOW =
-  "optionally by a part of their name. sort is 'rating' (default, highest first), 'active' (most recently active) or 'newest'. Pass nextCursor back as cursor for the next page. Use a bot's id with challenge_bot.";
+  "optionally by a part of their name. sort is 'rating' (default, highest first), 'active' (most recently active) or 'newest'. Pass nextCursor back as cursor for the next page. Use a bot's id with challenge_bot. Online bots, those whose runner is connected, are listed first within each page and will answer a challenge; an offline bot may let it expire.";
 
 export const findBotsText = ({ bots, nextCursor }: FoundBots): string =>
   (bots.length === 0
@@ -67,7 +69,7 @@ export const findBotsText = ({ bots, nextCursor }: FoundBots): string =>
     : bots
         .map(
           (b) =>
-            `${b.name} (id ${b.id}, ${b.rating}) by ${b.owner}${b.tagline ? ` - ${b.tagline}` : ''}`,
+            `${b.name} (id ${b.id}, ${b.rating}) by ${b.owner}${b.online ? ' (online)' : ' (offline)'}${b.tagline ? ` - ${b.tagline}` : ''}`,
         )
         .join('\n')) + (nextCursor ? `\nMore: pass cursor ${nextCursor}` : '');
 
@@ -91,16 +93,24 @@ export async function findBotsIn(
     limit: opts.limit ?? 20,
     cursor: opts.cursor ? decodeBotCursor(sort, opts.cursor) : undefined,
   });
+  const online = await onlineBotIds(
+    tx,
+    page.rows.map(({ bot }) => bot.id),
+    new Date(),
+  );
+  const bots = page.rows.map(({ bot, rating }) => ({
+    id: bot.id,
+    name: bot.firstName,
+    label: displayName(bot),
+    owner: bot.ownerName ?? 'Unknown',
+    tagline: bot.tagline,
+    rating: Math.round(rating),
+    lastActiveAt: bot.lastActiveAt?.toISOString() ?? null,
+    online: online.has(bot.id),
+  }));
   return {
-    bots: page.rows.map(({ bot, rating }) => ({
-      id: bot.id,
-      name: bot.firstName,
-      label: displayName(bot),
-      owner: bot.ownerName ?? 'Unknown',
-      tagline: bot.tagline,
-      rating: Math.round(rating),
-      lastActiveAt: bot.lastActiveAt?.toISOString() ?? null,
-    })),
+    // Within the page only: the cursor follows the database order.
+    bots: [...bots.filter((b) => b.online), ...bots.filter((b) => !b.online)],
     nextCursor: page.next ? encodeBotCursor(sort, page.next.key, page.next.id) : null,
   };
 }
