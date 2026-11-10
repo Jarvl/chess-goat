@@ -38,7 +38,12 @@ describe('loadTurnView', () => {
   it('loads a move turn with a failed premove and both notes', async () => {
     const { bot, game } = await setup();
     await db.update(users).set({ botNotes: 'Likes e4.' }).where(eq(users.id, bot.id));
-    await setMatchNotes(db, { botId: bot.id, gameId: game.id, text: 'Alice is slow.' });
+    await setMatchNotes(db, {
+      botId: bot.id,
+      gameId: game.id,
+      text: 'Alice is slow.',
+      leaseKind: 'move',
+    });
     await db
       .update(games)
       .set({ premoveFailure: { ply: 0, opponentMove: 'e7e5', reply: 'g1f4', botId: bot.id } })
@@ -117,7 +122,12 @@ describe('loadTurnView', () => {
 
   it('loads a game-over turn with the match notes', async () => {
     const { bot, game } = await setup();
-    await setMatchNotes(db, { botId: bot.id, gameId: game.id, text: 'Good game.' });
+    await setMatchNotes(db, {
+      botId: bot.id,
+      gameId: game.id,
+      text: 'Good game.',
+      leaseKind: 'move',
+    });
     await db
       .update(games)
       .set({ status: 'finished', result: '1-0', endReason: 'resignation' })

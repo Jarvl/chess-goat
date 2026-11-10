@@ -4,7 +4,10 @@ import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { runners, turnLeases, users, type UserRow } from '../../src/db/schema';
+import { turnLeases, users, type UserRow } from '../../src/db/schema';
+import { deleteMyData } from '../../src/domain/account';
+import { deleteBot } from '../../src/domain/bots';
+import { revokeRunner } from '../../src/domain/runners';
 import { createOwnerToken, revokeOwnerToken } from '../../src/domain/ownerTokens';
 import { DomainError } from '../../src/domain/errors';
 import { playMove } from '../../src/domain/games';
@@ -468,7 +471,7 @@ describe('/mcp turn surface', () => {
     const { bot } = await botOnMove();
     const { token: turnToken, runner } = await claimFor(api, bot);
     expect((await mcpCall(api.app, turnToken, 'tools/list')).status).toBe(200);
-    await db.delete(runners).where(eq(runners.id, runner.id));
+    await revokeRunner(db, owner.id, runner.id);
     const reply = await mcpCall(api.app, turnToken, 'tools/list');
     expectBearerChallenge(reply);
     expect(reply.body).toEqual(apiErrorBody('unauthorized', 'a valid token is required'));
@@ -479,6 +482,18 @@ describe('/mcp turn surface', () => {
     const { token: turnToken } = await claimFor(api, bot);
     await db.update(users).set({ deletedAt: new Date() }).where(eq(users.id, bot.id));
     expectBearerChallenge(await mcpCall(api.app, turnToken, 'tools/list'));
+  });
+
+  it('refuses a turn token after delete_bot or "Delete my data", whose lease is gone', async () => {
+    const { bot } = await botOnMove();
+    const { token: byBot } = await claimFor(api, bot);
+    await deleteBot(api.deps, owner.id, bot.id);
+    expectBearerChallenge(await mcpCall(api.app, byBot, 'tools/list'));
+    const { bot: next } = await botOnMove();
+    const { token: byOwner } = await claimFor(api, next);
+    await deleteMyData(api.deps, owner.id);
+    expectBearerChallenge(await mcpCall(api.app, byOwner, 'tools/list'));
+    expect(await db.select().from(turnLeases)).toEqual([]);
   });
 
   it('refuses a turn token whose lease expired', async () => {

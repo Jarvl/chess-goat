@@ -71,6 +71,20 @@ describe('bot notes', () => {
     await expect(setBotNotes(db, input)).resolves.toEqual({ revision: 1 });
   });
 
+  it('a lease gone or of another bot is turn_ended, and writes nothing', async () => {
+    const { owner, bot, leaseA } = await setup();
+    const sibling = await insertBot(db, owner);
+    await expect(
+      setBotNotes(db, { botId: sibling.id, leaseId: leaseA, text: 'x' }),
+    ).rejects.toMatchObject({ code: 'stale_state', details: { reason: 'turn_ended' } });
+    await db.delete(turnLeases).where(eq(turnLeases.id, leaseA));
+    await expect(
+      setBotNotes(db, { botId: bot.id, leaseId: leaseA, text: 'x' }),
+    ).rejects.toMatchObject({ code: 'stale_state', details: { reason: 'turn_ended' } });
+    const rows = await db.select().from(users).where(eq(users.id, bot.id));
+    expect(rows[0]).toMatchObject({ botNotes: '', botNotesRevision: 0 });
+  });
+
   it('clearBotNotes empties the notes and bumps the revision', async () => {
     const { bot, leaseA } = await setup();
     await setBotNotes(db, { botId: bot.id, leaseId: leaseA, text: 'keep' });
@@ -86,13 +100,13 @@ describe('match notes', () => {
     const botId = bot.id;
     const gameId = game.id;
     expect(await getMatchNotes(db, botId, gameId)).toBe('');
-    await setMatchNotes(db, { botId, gameId, text: 'one' });
-    await setMatchNotes(db, { botId, gameId, text: 'two' });
+    await setMatchNotes(db, { botId, gameId, text: 'one', leaseKind: 'move' });
+    await setMatchNotes(db, { botId, gameId, text: 'two', leaseKind: 'move' });
     expect(await getMatchNotes(db, botId, gameId)).toBe('two');
     await expect(
-      setMatchNotes(db, { botId, gameId, text: '🐐'.repeat(2001) }),
+      setMatchNotes(db, { botId, gameId, text: '🐐'.repeat(2001), leaseKind: 'move' }),
     ).rejects.toMatchObject({ details: { reason: 'notes_too_long', over: 1, limit: 2000 } });
-    await setMatchNotes(db, { botId, gameId, text: '🐐'.repeat(2000) });
+    await setMatchNotes(db, { botId, gameId, text: '🐐'.repeat(2000), leaseKind: 'move' });
     expect(await db.select().from(matchNotes)).toHaveLength(1);
   });
 });

@@ -1,6 +1,14 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { runnerLinkCodes, runners, turnLeases, users } from '../../src/db/schema';
+import {
+  matchNotes,
+  runnerLinkCodes,
+  runners,
+  turnLeases,
+  users,
+  type RunnerRow,
+  type UserRow,
+} from '../../src/db/schema';
 import { isDomainError } from '../../src/domain/errors';
 import {
   createLinkCode,
@@ -10,10 +18,17 @@ import {
   resolveRunner,
   revokeRunner,
 } from '../../src/domain/runners';
-import { openTestDb, truncateAll } from '../helpers/db';
-import { insertBot, insertUser } from '../helpers/fixtures';
+import {
+  claimTurn,
+  failingTurns,
+  requireLiveLease,
+  startPractice,
+} from '../../src/domain/turnLeases';
+import { openTestDb, testDeps, truncateAll } from '../helpers/db';
+import { insertBot, insertGame, insertGroup, insertUser } from '../helpers/fixtures';
 
 const { db, close } = openTestDb();
+const deps = testDeps(db);
 
 beforeEach(() => truncateAll(db));
 afterAll(() => close());
@@ -233,18 +248,122 @@ describe('listing and revoking', () => {
     expect((await listRunners(db, owner.id, after(191)))[1]!.connected).toBe(false);
   });
 
-  it('revoking stops the credential and nulls a lease it held', async () => {
+  it('revoking stops the credential and frees a lease it held', async () => {
     const owner = await insertUser(db);
     const bot = await insertBot(db, owner);
     const { runner, credential } = await link(owner.id);
     const [lease] = await db
       .insert(turnLeases)
-      .values({ botId: bot.id, kind: 'move', runnerId: runner.id, leasedUntil: after(300) })
+      .values({
+        botId: bot.id,
+        kind: 'practice',
+        runnerId: runner.id,
+        leasedUntil: after(300),
+        expiresAt: after(600),
+      })
       .returning();
-    await revokeRunner(db, owner.id, runner.id);
+    await revokeRunner(db, owner.id, runner.id, T0);
     expect(await resolveRunner(db, credential, T0)).toBeNull();
     const [after_] = await db.select().from(turnLeases).where(eq(turnLeases.id, lease!.id));
-    expect(after_!.runnerId).toBeNull();
+    expect(after_).toMatchObject({ runnerId: null, leasedUntil: null, failures: 0 });
+  });
+
+  /** A move, a game-over and a practice turn of `owner`'s bots, each claimed by `runner`. */
+  async function threeLeases(owner: Pick<UserRow, 'id'>, runner: RunnerRow) {
+    const group = await insertGroup(db);
+    const human = await insertUser(db);
+    const [mover, finisher, tester] = [
+      await insertBot(db, owner),
+      await insertBot(db, owner),
+      await insertBot(db, owner),
+    ];
+    await insertGame(db, group.id, mover.id, human.id);
+    const ended = await insertGame(db, group.id, human.id, finisher.id, {
+      status: 'finished',
+      result: '1-0',
+      endReason: 'resignation',
+    });
+    await db.insert(turnLeases).values({
+      botId: finisher.id,
+      kind: 'game_over',
+      gameId: ended.id,
+      claimableAt: T0,
+      expiresAt: after(3600),
+    });
+    await db.insert(matchNotes).values({ botId: finisher.id, gameId: ended.id, body: 'gg' });
+    await startPractice(db, tester.id, T0);
+    const leases = [];
+    for (let n = 0; n < 3; n += 1) leases.push((await claimTurn(deps, runner, { now: T0 }))!.lease);
+    expect(leases.map((l) => l.kind)).toEqual(['practice', 'move', 'game_over']);
+    return { leases, bots: [mover, finisher, tester] };
+  }
+
+  const reclaimedBy = async (runner: RunnerRow, now: Date) => {
+    const kinds = [];
+    for (let n = 0; n < 3; n += 1) kinds.push((await claimTurn(deps, runner, { now }))?.lease.kind);
+    return kinds;
+  };
+
+  it('revoking frees its leases at once, with no failure and nothing dropped', async () => {
+    const owner = await insertUser(db);
+    const { runner } = await link(owner.id);
+    const { runner: spare } = await link(owner.id);
+    const { leases, bots } = await threeLeases(owner, runner);
+
+    await revokeRunner(db, owner.id, runner.id, T0);
+
+    const rows = await db.select().from(turnLeases).orderBy(turnLeases.id);
+    expect(rows.map((r) => [r.kind, r.runnerId, r.leasedUntil, r.failures])).toEqual(
+      ['game_over', 'practice', 'move'].map((kind) => [kind, null, null, 0]),
+    );
+    for (const lease of leases) {
+      const row = rows.find((r) => r.id === lease.id)!;
+      expect(row.claimableAt).toEqual(lease.claimableAt);
+      // The old turn token's lease: refused at once.
+      expect(
+        await reasonOf(requireLiveLease(db, lease.id, after(1), { claimSeq: lease.claimSeq })),
+      ).toBe('turn_ended');
+    }
+    expect(await db.select().from(matchNotes)).toHaveLength(1);
+    expect(
+      await failingTurns(
+        db,
+        bots.map((b) => b.id),
+      ),
+    ).toEqual(new Map());
+    expect(await reclaimedBy(spare, after(1))).toEqual(['practice', 'move', 'game_over']);
+  });
+
+  it('revoking still counts the failure of a lease that had already run out', async () => {
+    const owner = await insertUser(db);
+    const group = await insertGroup(db);
+    const bot = await insertBot(db, owner);
+    await insertGame(db, group.id, bot.id, (await insertUser(db)).id);
+    const { runner } = await link(owner.id);
+    const { lease } = (await claimTurn(deps, runner, { now: T0, leaseSeconds: 60 }))!;
+    await revokeRunner(db, owner.id, runner.id, after(120));
+    const [row] = await db.select().from(turnLeases).where(eq(turnLeases.id, lease.id));
+    expect(row).toMatchObject({ runnerId: null, leasedUntil: null, failures: 1 });
+  });
+
+  it('a runner row gone any other way frees its leases the same', async () => {
+    const owner = await insertUser(db);
+    const { runner } = await link(owner.id);
+    const { runner: spare } = await link(owner.id);
+    const { bots } = await threeLeases(owner, runner);
+
+    await db.delete(runners).where(eq(runners.id, runner.id));
+
+    expect(await reclaimedBy(spare, after(1))).toEqual(['practice', 'move', 'game_over']);
+    const rows = await db.select().from(turnLeases);
+    expect(rows.map((r) => r.failures)).toEqual([0, 0, 0]);
+    expect(await db.select().from(matchNotes)).toHaveLength(1);
+    expect(
+      await failingTurns(
+        db,
+        bots.map((b) => b.id),
+      ),
+    ).toEqual(new Map());
   });
 
   it('another owner’s or a missing runner id is runner_not_found', async () => {

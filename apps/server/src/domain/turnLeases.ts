@@ -1,7 +1,25 @@
 import type { EndReason, TurnKind } from '@chess-goat/shared';
-import { and, asc, eq, gt, inArray, isNull, lt, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  eq,
+  exists,
+  gt,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  lte,
+  ne,
+  notExists,
+  or,
+  sql,
+  type SQL,
+} from 'drizzle-orm';
 import type { DbOrTx } from '../db/client';
 import {
+  challenges,
+  games,
   matchNotes,
   runners,
   turnLeases,
@@ -23,7 +41,7 @@ export const RETRY_DELAYS_SECONDS = [60, 300, 1800] as const;
 export const GAME_OVER_TTL_HOURS = 24;
 export const TURN_CALL_BUDGET = 30;
 
-/** Namespace of the two-key advisory lock `claimTurn` takes per owner. */
+/** Namespace of the two-key advisory lock `lockOwnerTurns` takes per owner. */
 const CLAIM_LOCK = 0x7475726e; // 'turn'
 
 /** Games ended by these offer no game-over turn: nothing was played out. */
@@ -32,8 +50,9 @@ const NO_GAME_OVER: ReadonlySet<EndReason> = new Set(['abort', 'timeout_abort', 
 export type ClaimedTurn = { lease: TurnLeaseRow; bot: UserRow };
 
 /** Kinds read off the game state; the others exist only as lease rows. */
+const DERIVED_KINDS = ['challenge', 'move', 'draw_offer'] as const satisfies readonly TurnKind[];
 const isDerived = (kind: TurnKind): boolean =>
-  kind === 'challenge' || kind === 'move' || kind === 'draw_offer';
+  (DERIVED_KINDS as readonly TurnKind[]).includes(kind);
 
 const addSeconds = (date: Date, seconds: number): Date => new Date(date.getTime() + seconds * 1000);
 
@@ -55,14 +74,42 @@ const turnEnded = (): DomainError =>
 const isPending = (row: TurnLeaseRow, pending: readonly PendingTurn[]): boolean =>
   pending.some((turn) => sameTurn(turn, row));
 
-async function deleteLease(tx: DbOrTx, row: TurnLeaseRow): Promise<void> {
-  await tx.delete(turnLeases).where(eq(turnLeases.id, row.id));
+async function deleteLeases(tx: DbOrTx, rows: readonly TurnLeaseRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  await tx.delete(turnLeases).where(
+    inArray(
+      turnLeases.id,
+      rows.map((row) => row.id),
+    ),
+  );
   // A game-over turn is the bot's last look at the game: its match notes go with it.
-  if (row.kind === 'game_over' && row.gameId !== null) {
+  for (const row of rows) {
+    if (row.kind !== 'game_over' || row.gameId === null) continue;
     await tx
       .delete(matchNotes)
       .where(and(eq(matchNotes.botId, row.botId), eq(matchNotes.gameId, row.gameId)));
   }
+}
+
+const deleteLease = (tx: DbOrTx, row: TurnLeaseRow): Promise<void> => deleteLeases(tx, [row]);
+
+/**
+ * The owner's claim lock, held to the end of the transaction: one claim at a time per owner, and
+ * nothing else that frees or deletes the owner's lease rows runs beside one. Take it first.
+ */
+export async function lockOwnerTurns(tx: DbOrTx, ownerId: number): Promise<void> {
+  const ownerKey = ownerId % 2_147_483_647;
+  await tx.execute(sql`select pg_advisory_xact_lock(${CLAIM_LOCK}::int, ${ownerKey}::int)`);
+}
+
+/**
+ * Deletes the bots' turn rows and match notes, for a deletion. Run it under `lockOwnerTurns`
+ * (taken before the games), after the bot rows are locked: bot, then lease.
+ */
+export async function eraseBotTurns(tx: DbOrTx, botIds: readonly number[]): Promise<void> {
+  if (botIds.length === 0) return;
+  await tx.delete(turnLeases).where(inArray(turnLeases.botId, [...botIds]));
+  await tx.delete(matchNotes).where(inArray(matchNotes.botId, [...botIds]));
 }
 
 /**
@@ -112,7 +159,7 @@ async function endLease(
 /**
  * Brings this owner's lease rows up to date at `now` and returns those still standing: rows of
  * resolved turns go once no lease holds them, game-over and practice rows go when they expire,
- * and leases that ran out (or lost their runner) are ended as if released.
+ * leases that lost their runner are freed, and leases that ran out are ended as if released.
  */
 async function settleLeases(
   tx: DbOrTx,
@@ -134,6 +181,16 @@ async function settleLeases(
     }
     if (isDerived(row.kind) && !stillPending) {
       await deleteLease(tx, row);
+      continue;
+    }
+    // Its runner went (the foreign key cleared it): freed, not failed.
+    if (row.runnerId === null && row.leasedUntil !== null) {
+      const [freed] = await tx
+        .update(turnLeases)
+        .set({ leasedUntil: null })
+        .where(eq(turnLeases.id, row.id))
+        .returning();
+      kept.push(freed!);
       continue;
     }
     const settled = row.leasedUntil !== null ? await endLease(tx, row, stillPending, now) : row;
@@ -172,11 +229,11 @@ export async function claimTurn(
   return deps.db.transaction(async (tx) => {
     // Lock order: the owner's advisory lock, the runner, its bots (key share), their lease rows,
     // then the key shares an insert takes on its game or challenge. Nothing may lock a lease row
-    // after a game row, or it could deadlock with a claim.
+    // after a game row, or it could deadlock with a claim, unless it took this owner's lock
+    // (`lockOwnerTurns`) before the game, as a deletion does.
     // One claim at a time per owner, so two runners can't both take a turn. (A runner's owner
     // never changes, so the caller's copy can key the lock.)
-    const ownerKey = runner.ownerId % 2_147_483_647;
-    await tx.execute(sql`select pg_advisory_xact_lock(${CLAIM_LOCK}::int, ${ownerKey}::int)`);
+    await lockOwnerTurns(tx, runner.ownerId);
     // Read as it is now: a runner revoked meanwhile claims nothing, and the share lock holds off
     // its revocation.
     const [live] = await tx
@@ -189,7 +246,7 @@ export async function claimTurn(
     if (bots.length === 0) return null;
     const botIds = bots.map((bot) => bot.id);
 
-    const pending = await pendingTurns(tx, botIds);
+    const pending = await pendingTurns(tx, botIds, now);
     const rows = await settleLeases(
       tx,
       await tx
@@ -276,7 +333,7 @@ export async function releaseTurn(
     // Not this claim of the lease: nothing to give back.
     if (!row) return;
     const stillPending =
-      isDerived(row.kind) && isPending(row, await pendingTurns(inner, [row.botId]));
+      isDerived(row.kind) && isPending(row, await pendingTurns(inner, [row.botId], now));
     await endLease(inner, row, stillPending, now);
   });
 }
@@ -305,15 +362,61 @@ export async function unclaimTurn(
       )
       .for('update');
     if (!row) return;
-    if (isDerived(row.kind) && !isPending(row, await pendingTurns(inner, [row.botId]))) {
-      await deleteLease(inner, row);
-      return;
-    }
-    await inner
-      .update(turnLeases)
-      .set({ runnerId: null, leasedUntil: null })
-      .where(eq(turnLeases.id, row.id));
+    await giveBack(inner, [row]);
   });
+}
+
+/**
+ * The rows' leases, locked by the caller, back as if never claimed: no failure, no retry delay; a
+ * resolved derived turn's row goes.
+ */
+async function giveBack(
+  tx: DbOrTx,
+  rows: readonly TurnLeaseRow[],
+  now: Date = new Date(),
+): Promise<void> {
+  const derived = rows.filter((row) => isDerived(row.kind));
+  const pending = derived.length
+    ? await pendingTurns(tx, [...new Set(derived.map((row) => row.botId))], now)
+    : [];
+  const resolved = derived.filter((row) => !isPending(row, pending));
+  await deleteLeases(tx, resolved);
+  const freed = rows.filter((row) => !resolved.includes(row));
+  if (freed.length === 0) return;
+  await tx
+    .update(turnLeases)
+    .set({ runnerId: null, leasedUntil: null })
+    .where(
+      inArray(
+        turnLeases.id,
+        freed.map((row) => row.id),
+      ),
+    );
+}
+
+/**
+ * Frees the leases `runnerId` holds, for its revocation: those still running go back with no
+ * failure (`giveBack`); those that ran out end as they would have (`endLease`). Run it under
+ * `lockOwnerTurns` and the runner's row lock, as a claim takes them, before deleting the runner.
+ */
+export async function freeRunnerLeases(tx: DbOrTx, runnerId: number, now: Date): Promise<void> {
+  const rows = await tx
+    .select()
+    .from(turnLeases)
+    .where(eq(turnLeases.runnerId, runnerId))
+    .orderBy(asc(turnLeases.id))
+    .for('update');
+  await giveBack(
+    tx,
+    rows.filter((row) => !lapsed(row, now)),
+    now,
+  );
+  const ran = rows.filter((row) => lapsed(row, now));
+  if (ran.length === 0) return;
+  const pending = await pendingTurns(tx, [...new Set(ran.map((row) => row.botId))], now);
+  for (const row of ran) {
+    await endLease(tx, row, isDerived(row.kind) && isPending(row, pending), now);
+  }
 }
 
 /**
@@ -339,7 +442,7 @@ export async function requireLiveLease(
   if (opts.claimSeq !== undefined && opts.claimSeq !== lease.claimSeq) throw turnEnded();
   if (lease.expiresAt !== null && lease.expiresAt <= now) throw turnEnded();
   if (!opts.allowResolved && isDerived(lease.kind)) {
-    if (!isPending(lease, await pendingTurns(tx, [lease.botId]))) throw turnEnded();
+    if (!isPending(lease, await pendingTurns(tx, [lease.botId], now))) throw turnEnded();
   }
   return lease;
 }
@@ -373,14 +476,25 @@ export async function spendCall(tx: DbOrTx, leaseId: number, claimSeq: number): 
   });
 }
 
-/** A game-over turn for each live bot that played `game`, unless it was aborted or voided. */
+/**
+ * A game-over turn for each live bot that played `game`, unless it was aborted or voided. A bot
+ * offered none (that, or deleted) has nothing more to read its match notes in: they go now.
+ */
 export async function offerGameOverTurns(tx: DbOrTx, game: GameRow, now: Date): Promise<void> {
-  if (game.endReason === null || NO_GAME_OVER.has(game.endReason)) return;
   const players = await tx
     .select()
     .from(users)
-    .where(and(inArray(users.id, [game.whiteId, game.blackId]), isNull(users.deletedAt)));
-  const bots = players.filter((player) => kindOf(player) === 'bot');
+    .where(inArray(users.id, [game.whiteId, game.blackId]));
+  const played = players.filter((player) => kindOf(player) === 'bot');
+  const offers = game.endReason !== null && !NO_GAME_OVER.has(game.endReason);
+  const bots = played.filter((bot) => offers && bot.deletedAt === null);
+  const unoffered = played.filter((bot) => !bots.includes(bot)).map((bot) => bot.id);
+  // Under the game's lock, as `setMatchNotes` takes it before the notes.
+  if (unoffered.length > 0) {
+    await tx
+      .delete(matchNotes)
+      .where(and(eq(matchNotes.gameId, game.id), inArray(matchNotes.botId, unoffered)));
+  }
   if (bots.length === 0) return;
   // A repeat (a second ending of the same game) must not fail the ending: the row stands.
   await tx
@@ -517,4 +631,87 @@ export async function reportPractice(
     }
     return { status, rowId: row?.id ?? null };
   });
+}
+
+export type PrunedTurns = {
+  expired: number;
+  deletedBots: number;
+  resolved: number;
+  matchNotes: number;
+};
+
+/**
+ * The daily sweep of what no claim will settle: turn rows past their expiry (a game-over row's
+ * match notes with it), rows of deleted bots, unleased rows of derived turns whose game is over
+ * or whose challenge was answered, and match notes of games over that no game-over row still
+ * reads. Rows a claim holds are skipped, for the next day. Counts what went.
+ */
+export async function pruneTurns(db: DbOrTx, now: Date): Promise<PrunedTurns> {
+  const sweep = (where: SQL | undefined) =>
+    db.transaction(async (tx) => {
+      const rows = await tx
+        .select()
+        .from(turnLeases)
+        .where(where)
+        .orderBy(asc(turnLeases.id))
+        .for('update', { skipLocked: true });
+      await deleteLeases(tx, rows);
+      return rows.length;
+    });
+  const expired = await sweep(lte(turnLeases.expiresAt, now));
+  const deletedBots = await sweep(
+    inArray(
+      turnLeases.botId,
+      db.select({ id: users.id }).from(users).where(isNotNull(users.deletedAt)),
+    ),
+  );
+  const over = (gameId: SQL | typeof turnLeases.gameId | typeof matchNotes.gameId) =>
+    exists(
+      db
+        .select({ id: games.id })
+        .from(games)
+        .where(and(eq(games.id, gameId), ne(games.status, 'active'))),
+    );
+  const resolved = await sweep(
+    and(
+      inArray(turnLeases.kind, [...DERIVED_KINDS]),
+      or(
+        isNull(turnLeases.runnerId),
+        isNull(turnLeases.leasedUntil),
+        lte(turnLeases.leasedUntil, now),
+      ),
+      or(
+        over(turnLeases.gameId),
+        exists(
+          db
+            .select({ id: challenges.id })
+            .from(challenges)
+            .where(
+              and(eq(challenges.id, turnLeases.challengeId), ne(challenges.status, 'pending')),
+            ),
+        ),
+      ),
+    ),
+  );
+  const notes = await db
+    .delete(matchNotes)
+    .where(
+      and(
+        over(matchNotes.gameId),
+        notExists(
+          db
+            .select({ id: turnLeases.id })
+            .from(turnLeases)
+            .where(
+              and(
+                eq(turnLeases.botId, matchNotes.botId),
+                eq(turnLeases.gameId, matchNotes.gameId),
+                eq(turnLeases.kind, 'game_over'),
+              ),
+            ),
+        ),
+      ),
+    )
+    .returning({ botId: matchNotes.botId });
+  return { expired, deletedBots, resolved, matchNotes: notes.length };
 }

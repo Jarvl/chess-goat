@@ -1,9 +1,20 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { dmMessages, games, jobs, ownerTokens, users } from '../../src/db/schema';
+import {
+  dmMessages,
+  games,
+  jobs,
+  matchNotes,
+  ownerTokens,
+  runnerLinkCodes,
+  runners,
+  turnLeases,
+  users,
+} from '../../src/db/schema';
 import { recordDm } from '../../src/domain/dms';
 import { deleteMyData } from '../../src/domain/account';
 import { deleteBot } from '../../src/domain/bots';
+import { createLinkCode } from '../../src/domain/runners';
 import { createOwnerToken, resolveOwnerToken } from '../../src/domain/ownerTokens';
 import { displayName } from '../../src/domain/users';
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
@@ -12,6 +23,8 @@ import {
   insertChallenge,
   insertGame,
   insertGroup,
+  insertRunner,
+  insertTurnData,
   insertUser,
 } from '../helpers/fixtures';
 
@@ -143,6 +156,51 @@ describe('deleteMyData bots', () => {
     expect(await resolveOwnerToken(db, token)).toBeNull();
     expect(await db.select().from(ownerTokens)).toEqual([]);
     expect(published).toEqual([game.publicId]);
+  });
+
+  it("erases every bot's persona, notes and turn rows, and the owner's runners and link codes", async () => {
+    const group = await insertGroup(db);
+    const owner = await insertUser(db, { telegramUserId: 11 });
+    const other = await insertUser(db, { telegramUserId: 12 });
+    const human = await insertUser(db);
+    const bots = [await insertBot(db, owner), await insertBot(db, owner)];
+    const theirs = await insertBot(db, other);
+    const runner = await insertRunner(db, owner.id);
+    const theirRunner = await insertRunner(db, other.id);
+    for (const bot of bots) {
+      await insertTurnData(db, bot, {
+        groupId: group.id,
+        opponentId: human.id,
+        runnerId: runner.id,
+      });
+    }
+    await insertTurnData(db, theirs, {
+      groupId: group.id,
+      opponentId: human.id,
+      runnerId: theirRunner.id,
+    });
+    await createLinkCode(db, owner.id, {}, new Date());
+    await createLinkCode(db, other.id, {}, new Date());
+
+    await deleteMyData(deps, owner.id);
+
+    for (const bot of bots) {
+      const [row] = await db.select().from(users).where(eq(users.id, bot.id));
+      expect(row).toMatchObject({ persona: null, botNotes: '', botNotesRevision: 4 });
+    }
+    expect((await db.select().from(matchNotes)).map((n) => n.botId)).toEqual([
+      theirs.id,
+      theirs.id,
+    ]);
+    expect((await db.select().from(turnLeases)).map((l) => [l.botId, l.runnerId])).toEqual([
+      [theirs.id, theirRunner.id],
+      [theirs.id, null],
+      [theirs.id, null],
+    ]);
+    expect((await db.select().from(runners)).map((r) => r.id)).toEqual([theirRunner.id]);
+    expect((await db.select().from(runnerLinkCodes)).map((c) => c.ownerId)).toEqual([other.id]);
+    const [kept] = await db.select().from(users).where(eq(users.id, theirs.id));
+    expect(kept).toMatchObject({ persona: 'Plays sharp.', botNotesRevision: 3 });
   });
 
   it('finishes a game between the owner and their own bot once', async () => {

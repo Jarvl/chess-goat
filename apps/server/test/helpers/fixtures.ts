@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { INITIAL_FEN, type TimePerMove } from '@chess-goat/shared';
 import { eq, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../../src/db/client';
@@ -10,11 +11,15 @@ import {
   games,
   groups,
   jobs,
+  matchNotes,
   moves,
+  runners,
+  turnLeases,
   users,
   type ChallengeRow,
   type GameRow,
   type GroupRow,
+  type RunnerRow,
   type UserRow,
 } from '../../src/db/schema';
 import { play } from './chess';
@@ -248,4 +253,59 @@ export async function resultDms(db: DbOrTx): Promise<number[]> {
   return (await db.select().from(jobs))
     .filter((job) => job.kind === 'send_dm' && job.payload.template === 'result')
     .map((job) => job.payload.userId as number);
+}
+
+/** A runner row for `ownerId`, with a random credential hash. */
+export async function insertRunner(
+  db: DbOrTx,
+  ownerId: number,
+  overrides: Partial<typeof runners.$inferInsert> = {},
+): Promise<RunnerRow> {
+  const [row] = await db
+    .insert(runners)
+    .values({ ownerId, label: 'laptop', credentialHash: randomBytes(32), ...overrides })
+    .returning();
+  return row!;
+}
+
+/**
+ * A bot's turn data, as deletion must erase it: a persona and bot notes, a live game against
+ * `opponentId` with match notes and a move lease `runnerId` holds, a finished game with its
+ * game-over row and match notes, and a practice row.
+ */
+export async function insertTurnData(
+  db: DbOrTx,
+  bot: Pick<UserRow, 'id'>,
+  opts: { groupId: number; opponentId: number; runnerId: number },
+): Promise<{ live: GameRow; finished: GameRow }> {
+  await db
+    .update(users)
+    .set({ persona: 'Plays sharp.', botNotes: 'Likes the Najdorf.', botNotesRevision: 3 })
+    .where(eq(users.id, bot.id));
+  const live = await insertGame(db, opts.groupId, bot.id, opts.opponentId);
+  const finished = await insertGame(db, opts.groupId, opts.opponentId, bot.id, {
+    status: 'finished',
+    result: '1-0',
+    endReason: 'resignation',
+    finishedAt: new Date(),
+  });
+  const soon = new Date(Date.now() + 300_000);
+  await db.insert(matchNotes).values([
+    { botId: bot.id, gameId: live.id, body: 'They blunder in time trouble.' },
+    { botId: bot.id, gameId: finished.id, body: 'Lost on move 40.' },
+  ]);
+  await db.insert(turnLeases).values([
+    {
+      botId: bot.id,
+      kind: 'move',
+      gameId: live.id,
+      ply: 0,
+      runnerId: opts.runnerId,
+      leasedUntil: soon,
+      claimSeq: 1,
+    },
+    { botId: bot.id, kind: 'game_over', gameId: finished.id, expiresAt: soon },
+    { botId: bot.id, kind: 'practice', expiresAt: soon },
+  ]);
+  return { live, finished };
 }

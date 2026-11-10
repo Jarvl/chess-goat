@@ -52,7 +52,11 @@ function byUrgency(a: PendingTurn, b: PendingTurn): number {
  * draw offer standing), and draw offers made to them on the opponent's move. No page limit: the
  * caller takes the first claimable one. One query per source, whatever the number of bots.
  */
-export async function pendingTurns(tx: DbOrTx, botIds: readonly number[]): Promise<PendingTurn[]> {
+export async function pendingTurns(
+  tx: DbOrTx,
+  botIds: readonly number[],
+  now: Date = new Date(),
+): Promise<PendingTurn[]> {
   if (botIds.length === 0) return [];
   const ids = [...botIds];
   const side = sql`split_part(${games.fen}, ' ', 2)`;
@@ -79,7 +83,7 @@ export async function pendingTurns(tx: DbOrTx, botIds: readonly number[]): Promi
         and(
           eq(challenges.status, 'pending'),
           inArray(challenges.opponentId, ids),
-          gt(challenges.expiresAt, sql`now()`),
+          gt(challenges.expiresAt, now),
         ),
       ),
     tx

@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { matchNotes, turnLeases, users, type UserRow } from '../../src/db/schema';
+import { resign } from '../../src/domain/games';
 import { touchMember } from '../../src/domain/members';
 import type { TestApi } from '../helpers/api';
 import { openTestDb, truncateAll } from '../helpers/db';
@@ -109,6 +110,23 @@ describe('set_notes', () => {
       /HTTP 401/,
     );
     expect(await botNotesOf(bot.id)).toBe('after the move');
+  });
+
+  it('refuses match notes on a move turn once the game is over, and writes none', async () => {
+    const { bot, human, game } = await moveTurn();
+    const { token } = await claimFor(api, bot);
+    await resign(api.deps, { gameId: game.publicId, userId: human.id });
+    const out = await callTool(api.app, token, 'set_notes', { match_notes: 'They resigned.' });
+    expect(out.isError).toBe(true);
+    expect(resultText(out)).toBe('This turn has ended; stop.');
+    expect(await db.select().from(matchNotes)).toEqual([]);
+
+    // The game-over turn is the one place notes on a finished game are written.
+    const { token: last, lease } = await claimFor(api, bot);
+    expect(lease.kind).toBe('game_over');
+    const saved = await callTool(api.app, last, 'set_notes', { match_notes: 'gg' });
+    expect(saved.isError).toBeFalsy();
+    expect((await db.select().from(matchNotes)).map((n) => n.body)).toEqual(['gg']);
   });
 
   it('says how many characters to cut', async () => {

@@ -53,7 +53,12 @@ function registerSetNotes(server: McpServer): void {
       // Match notes first: a `notes_changed` refusal on the bot notes must not lose them.
       if (input.match_notes !== undefined) {
         const text = input.match_notes;
-        await setMatchNotes(deps.db, { botId: bot.id, gameId: lease.gameId!, text });
+        await setMatchNotes(deps.db, {
+          botId: bot.id,
+          gameId: lease.gameId!,
+          text,
+          leaseKind: lease.kind,
+        });
         out.matchNotes = { length: textLength(text), limit: MATCH_NOTES_MAX };
       }
       if (input.bot_notes !== undefined) {

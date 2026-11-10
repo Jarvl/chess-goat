@@ -359,11 +359,48 @@ describe('game-over turns', () => {
     expect(await gameOverRows(game)).toEqual([]);
   });
 
+  it('deletes the match notes of a bot offered no game-over turn, and keeps the others', async () => {
+    const notes = (...rows: { botId: number; gameId: number }[]) =>
+      db.insert(matchNotes).values(rows.map((row) => ({ ...row, body: 'notes' })));
+    const notesOf = async (game: GameRow) =>
+      (await db.select().from(matchNotes).where(eq(matchNotes.gameId, game.id))).map(
+        (n) => n.botId,
+      );
+
+    const aborted = await botGame();
+    await notes(
+      { botId: aborted.white.id, gameId: aborted.game.id },
+      { botId: aborted.black.id, gameId: aborted.game.id },
+    );
+    await abortGame(deps, { gameId: aborted.game.publicId, userId: aborted.white.id });
+    expect(await notesOf(aborted.game)).toEqual([]);
+
+    const resigned = await botGame();
+    await db.update(users).set({ deletedAt: T0 }).where(eq(users.id, resigned.black.id));
+    await notes(
+      { botId: resigned.white.id, gameId: resigned.game.id },
+      { botId: resigned.black.id, gameId: resigned.game.id },
+    );
+    await resign(deps, { gameId: resigned.game.publicId, userId: resigned.white.id });
+    expect(await notesOf(resigned.game)).toEqual([resigned.white.id]);
+  });
+
   it('deletes match notes when the game-over turn ends or 24 h pass', async () => {
     const { white, black, game, runner } = await botGame();
     await offerGameOverTurns(db, { ...game, status: 'finished', endReason: 'checkmate' }, T0);
-    await setMatchNotes(db, { botId: white.id, gameId: game.id, text: 'white' });
-    await setMatchNotes(db, { botId: black.id, gameId: game.id, text: 'black' });
+    const gameOver = 'game_over' as const;
+    await setMatchNotes(db, {
+      botId: white.id,
+      gameId: game.id,
+      text: 'white',
+      leaseKind: gameOver,
+    });
+    await setMatchNotes(db, {
+      botId: black.id,
+      gameId: game.id,
+      text: 'black',
+      leaseKind: gameOver,
+    });
     const notesOf = async (botId: number) =>
       db
         .select()

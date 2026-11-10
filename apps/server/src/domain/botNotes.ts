@@ -1,6 +1,7 @@
+import type { TurnKind } from '@chess-goat/shared';
 import { and, eq, sql } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../db/client';
-import { matchNotes, turnLeases, users } from '../db/schema';
+import { games, matchNotes, turnLeases, users } from '../db/schema';
 import { DomainError } from './errors';
 
 export const PERSONA_MAX = 4000;
@@ -59,7 +60,10 @@ export async function setBotNotes(
       .from(turnLeases)
       .where(and(eq(turnLeases.id, input.leaseId), eq(turnLeases.botId, input.botId)))
       .for('update');
-    if (!lease) throw new Error('setBotNotes: no such lease for this bot');
+    // Gone since the caller checked it (deleted or settled): the turn is over.
+    if (!lease) {
+      throw new DomainError('stale_state', 'this turn has ended', { reason: 'turn_ended' });
+    }
     if (lease.seen !== bot.revision) {
       await tx
         .update(turnLeases)
@@ -95,18 +99,33 @@ export async function clearBotNotes(tx: DbOrTx, botId: number): Promise<void> {
     .where(eq(users.id, botId));
 }
 
+/**
+ * Replaces the bot's notes on the game. Once the game is over only its game-over turn may write
+ * them (that turn's end deletes them); any other lease meets 'turn_ended'.
+ */
 export async function setMatchNotes(
   tx: DbOrTx,
-  input: { botId: number; gameId: number; text: string },
+  input: { botId: number; gameId: number; text: string; leaseKind: TurnKind },
 ): Promise<void> {
   checkNotesLength(input.text, MATCH_NOTES_MAX);
-  await tx
-    .insert(matchNotes)
-    .values({ botId: input.botId, gameId: input.gameId, body: input.text })
-    .onConflictDoUpdate({
-      target: [matchNotes.botId, matchNotes.gameId],
-      set: { body: input.text },
-    });
+  await tx.transaction(async (inner) => {
+    // Key share: an ending (which locks the game, then deletes notes) is waited for and seen.
+    const [game] = await inner
+      .select({ status: games.status })
+      .from(games)
+      .where(eq(games.id, input.gameId))
+      .for('key share');
+    if (!game || (game.status !== 'active' && input.leaseKind !== 'game_over')) {
+      throw new DomainError('stale_state', 'this turn has ended', { reason: 'turn_ended' });
+    }
+    await inner
+      .insert(matchNotes)
+      .values({ botId: input.botId, gameId: input.gameId, body: input.text })
+      .onConflictDoUpdate({
+        target: [matchNotes.botId, matchNotes.gameId],
+        set: { body: input.text },
+      });
+  });
 }
 
 export async function getMatchNotes(tx: DbOrTx, botId: number, gameId: number): Promise<string> {

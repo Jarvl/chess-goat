@@ -5,6 +5,7 @@ import type { DbOrTx } from '../db/client';
 import { runnerLinkCodes, runners, users, type RunnerRow, type UserRow } from '../db/schema';
 import { requireOwnBot } from './bots';
 import { DomainError, isDomainError } from './errors';
+import { freeRunnerLeases, lockOwnerTurns } from './turnLeases';
 import { lockLiveHumanOwner } from './users';
 
 export { PRESETS };
@@ -159,6 +160,15 @@ export async function redeemLinkCode(
   return { runner: runner!, credential, preset };
 }
 
+/** Deletes every owner's link codes past their expiry, for the daily prune; returns how many. */
+export async function deleteExpiredLinkCodes(tx: DbOrTx, now: Date): Promise<number> {
+  const gone = await tx
+    .delete(runnerLinkCodes)
+    .where(lte(runnerLinkCodes.expiresAt, now))
+    .returning({ ownerId: runnerLinkCodes.ownerId });
+  return gone.length;
+}
+
 /** Marks the runner seen at `now`, unconditionally (a claim poll calls it as it starts and ends). */
 export async function touchRunner(tx: DbOrTx, runnerId: number, now: Date): Promise<void> {
   await tx.update(runners).set({ lastSeenAt: now }).where(eq(runners.id, runnerId));
@@ -235,15 +245,25 @@ export async function listRunners(tx: DbOrTx, ownerId: number, now: Date): Promi
   }));
 }
 
-/** Deletes the runner; leases it held are freed by the foreign key. */
-export async function revokeRunner(tx: DbOrTx, ownerId: number, runnerId: number): Promise<void> {
-  const deleted = await tx
-    .delete(runners)
+/** Deletes the runner, first freeing the leases it holds with no failure counted. */
+export async function revokeRunner(
+  tx: DbOrTx,
+  ownerId: number,
+  runnerId: number,
+  now: Date = new Date(),
+): Promise<void> {
+  // A claim's lock order: the owner's claim lock, the runner, then its lease rows.
+  await lockOwnerTurns(tx, ownerId);
+  const [runner] = await tx
+    .select({ id: runners.id })
+    .from(runners)
     .where(and(eq(runners.id, runnerId), eq(runners.ownerId, ownerId)))
-    .returning({ id: runners.id });
-  if (deleted.length === 0) {
+    .for('update');
+  if (!runner) {
     throw new DomainError('not_found', 'runner not found', { reason: 'runner_not_found' });
   }
+  await freeRunnerLeases(tx, runnerId, now);
+  await tx.delete(runners).where(eq(runners.id, runnerId));
 }
 
 /** Of `botIds`, those with a connected runner of their owner that serves them. */

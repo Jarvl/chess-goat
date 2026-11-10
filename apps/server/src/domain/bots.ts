@@ -8,6 +8,7 @@ import { deletedBotFields, leavePlay, lockPlay } from './account';
 import type { Deps } from './deps';
 import { DomainError } from './errors';
 import { MAX_BOTS_PER_OWNER } from './limits';
+import { eraseBotTurns, lockOwnerTurns } from './turnLeases';
 import { gameSummaryRows, toGameSummary } from './summaries';
 import { displayName, lockLiveHumanOwner } from './users';
 
@@ -159,8 +160,10 @@ export async function updateBot(
 export async function deleteBot(deps: Deps, ownerId: number, botId: number): Promise<number> {
   const finished = await deps.db.transaction(async (tx) => {
     await requireOwnBot(tx, ownerId, botId);
+    // Same lock order as `deleteMyData`: the owner's claim lock, games, challenges, then the
+    // `users` row and, last, its turn rows.
+    await lockOwnerTurns(tx, ownerId);
     const now = await dbNow(tx);
-    // Same lock order as `deleteMyData`: games, then challenges, then the `users` row.
     const play = await lockPlay(tx, [botId]);
     // Re-checked under the row lock: a concurrent deletion of the same bot leaves nothing to do.
     const [row] = await tx
@@ -170,7 +173,10 @@ export async function deleteBot(deps: Deps, ownerId: number, botId: number): Pro
       .returning({ id: users.id });
     if (!row) throw new DomainError('not_found', 'bot not found', { reason: 'bot_not_found' });
     // A bot has no DMs to retire.
-    return leavePlay(tx, play, now, []);
+    const publicIds = await leavePlay(tx, play, now, []);
+    // After its games end; soft deletion fires no cascade.
+    await eraseBotTurns(tx, [botId]);
+    return publicIds;
   });
   for (const publicId of finished) deps.bus.publish(publicId);
   return finished.length;
