@@ -1,6 +1,9 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runners, turnLeases, type UserRow } from '../../src/db/schema';
+import { DomainError } from '../../src/domain/errors';
+import { abortGame } from '../../src/domain/games';
+import { renderTurn } from '../../src/runner/routes';
 import { createLinkCode } from '../../src/domain/runners';
 import { loadTurnView, renderTurnPrompt } from '../../src/domain/turnPrompt';
 import { issueTurnToken } from '../../src/domain/turnTokens';
@@ -17,12 +20,19 @@ let api: TestApi;
 let owner: UserRow;
 /** The endpoint's clock; tests move it. */
 let clock: Date;
+/** What builds a claimed turn's response; tests swap it to fail or stall one. */
+let render: typeof renderTurn;
 
 beforeEach(async () => {
   if (api) await api.stop();
   await truncateAll(db);
   clock = new Date();
-  api = await startTestRunner(db, {}, { now: () => clock });
+  render = renderTurn;
+  api = await startTestRunner(
+    db,
+    {},
+    { now: () => clock, render: (c, claimed) => render(c, claimed) },
+  );
   owner = await insertUser(db, { username: 'alice' });
 });
 afterAll(async () => {
@@ -95,6 +105,21 @@ describe('POST /runner/link', () => {
     expect(wrongBody.error.reason).toBe('link_code_invalid');
   });
 
+  it('the global backstop is 429 across addresses', async () => {
+    const hit = (n: number) =>
+      api.app.request(
+        '/runner/link',
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ code: 'AAAA-AAAA' }),
+        },
+        { incoming: { socket: { remoteAddress: `10.0.${Math.floor(n / 200)}.${n % 200}` } } },
+      );
+    for (let n = 0; n < 300; n += 1) expect((await hit(n)).status).toBe(404);
+    expect((await hit(300)).status).toBe(429);
+  });
+
   it('ignores a bearer and rejects an invalid body with 400', async () => {
     const res = await post('/runner/link', { code: 5 }, 'cgrun_whatever');
     expect(res.status).toBe(400);
@@ -125,7 +150,7 @@ describe('authentication', () => {
 
 describe('POST /runner/claim', () => {
   it('links, claims a move turn, and the returned token plays the move over /mcp', async () => {
-    const { bot, game: g } = await game();
+    const { bot } = await game();
     const { credential } = await linkRunner(api, owner);
     const { status, body } = await claim(api, credential);
     expect(status).toBe(200);
@@ -145,7 +170,6 @@ describe('POST /runner/claim', () => {
     const out = await callTool(api.app, turn.token, 'make_move', { move: 'e4' });
     expect(out.isError).toBeFalsy();
     expect(out.structuredContent).toMatchObject({ ply: 1, yourTurn: false });
-    expect(g.id).toBeTruthy();
     expect((await claim(api, credential)).body).toEqual({ turn: null });
   });
 
@@ -177,10 +201,13 @@ describe('POST /runner/claim', () => {
   it('touches lastSeenAt at the start and at the end of a poll', async () => {
     await game(false);
     const { credential, runnerId } = await linkRunner(api, owner);
-    const start = new Date(clock.getTime() + 3_600_000);
-    clock = start;
     const seen = async () =>
       (await db.select().from(runners).where(eq(runners.id, runnerId)))[0]!.lastSeenAt;
+    await claim(api, credential);
+    const first = clock;
+    // Under the 60 s throttle of resolveRunner: only touchRunner can explain a change.
+    const start = new Date(first.getTime() + 30_000);
+    clock = start;
     const pending = claim(api, credential, { wait_seconds: 1 });
     await vi.waitFor(async () => expect(await seen()).toEqual(start));
     const end = new Date(start.getTime() + 45_000);
@@ -196,16 +223,25 @@ describe('POST /runner/claim', () => {
     const open = aborts.map((a) =>
       claim(api, credential, { wait_seconds: 30 }, a.signal).catch(() => null),
     );
-    await new Promise((r) => setTimeout(r, 300));
+    // No observable says when all four have taken their slot; a probe would take one itself.
+    await new Promise((r) => setTimeout(r, 400));
     const fifth = await claim(api, credential, { wait_seconds: 0 });
     expect(fifth.status).toBe(429);
     expect((fifth.body as unknown as { error: { code: string } }).error.code).toBe('rate_limited');
     aborts[0]!.abort();
     await open[0];
-    await new Promise((r) => setTimeout(r, 100));
-    expect((await claim(api, credential, { wait_seconds: 0 })).status).toBe(200);
+    await vi.waitFor(async () => expect((await claim(api, credential)).status).toBe(200));
     for (const a of aborts) a.abort();
     await Promise.all(open);
+  });
+
+  it('throttles failed authentication by address, counting only failures', async () => {
+    const { credential } = await linkRunner(api, owner);
+    for (let i = 0; i < 60; i += 1) {
+      expect((await post('/runner/claim', { wait_seconds: 0 }, 'cgrun_nope')).status).toBe(401);
+    }
+    expect((await post('/runner/claim', { wait_seconds: 0 }, 'cgrun_nope')).status).toBe(429);
+    expect((await claim(api, credential)).status).toBe(200);
   });
 
   it('rejects an invalid body with 400 and a body over 16 KB with 413', async () => {
@@ -226,6 +262,16 @@ describe('POST /runner/release', () => {
       token,
     );
 
+  it('rejects ids beyond 2147483647 with 400', async () => {
+    const { credential } = await linkRunner(api, owner);
+    const res = await post(
+      '/runner/release',
+      { turn_id: 2147483648, claim_seq: 1, reason: 'exited' },
+      credential,
+    );
+    expect(res.status).toBe(400);
+  });
+
   it('makes the turn claimable again only after 60 s', async () => {
     await game();
     const { credential } = await linkRunner(api, owner);
@@ -245,9 +291,10 @@ describe('POST /runner/release', () => {
     const turn = (await claim(api, credential)).body.turn!;
     await callTool(api.app, turn.token, 'make_move', { move: 'e4' });
     expect((await release(credential, turn, { reason: 'exited' })).status).toBe(204);
-    // The played turn's lease is gone or kept; either way nothing failed.
+    // Resolved turns lose their lease row; released after the move, nothing may be charged.
     const leases = await db.select().from(turnLeases).where(eq(turnLeases.id, turn.id));
-    expect(leases.every((lease) => lease.failures === 0)).toBe(true);
+    expect(leases).toHaveLength(0);
+    expect((await claim(api, credential)).body.turn).toBeNull();
   });
 
   it('with a stale claim_seq leaves the current lease intact, and logs ids and reason only', async () => {
@@ -269,5 +316,77 @@ describe('POST /runner/release', () => {
       { runnerId: lease!.runnerId, leaseId: turn.id, reason: 'error' },
       expect.any(String),
     );
+  });
+});
+
+describe('a claim the server cannot deliver', () => {
+  const lease = async () => (await db.select().from(turnLeases))[0]!;
+
+  it('is given back without a failure when rendering fails, and the response leaks nothing', async () => {
+    await game();
+    const { credential } = await linkRunner(api, owner);
+    const before = (await claim(api, credential)).body.turn!;
+    await post(
+      '/runner/release',
+      { turn_id: before.id, claim_seq: before.claim_seq, reason: 'exited' },
+      credential,
+    );
+    // Back to a clean row: failures 1 from that release; compare against it.
+    const row = await lease();
+    clock = new Date(clock.getTime() + 120_000);
+    render = async () => {
+      throw new Error('boom');
+    };
+    const res = await post('/runner/claim', { wait_seconds: 0 }, credential);
+    expect(res.status).toBe(500);
+    const text = await res.text();
+    expect(text).not.toContain('Queen');
+    expect(text).not.toContain('Rook');
+    const after = await lease();
+    expect(after).toMatchObject({ runnerId: null, leasedUntil: null, failures: row.failures });
+    expect(after.claimableAt).toEqual(row.claimableAt);
+  });
+
+  it('is given back without a failure when the client leaves before the response', async () => {
+    await game();
+    const { credential } = await linkRunner(api, owner);
+    let release!: () => void;
+    const stalled = new Promise<void>((resolve) => (release = resolve));
+    let rendering!: () => void;
+    const started = new Promise<void>((resolve) => (rendering = resolve));
+    render = async (c, claimed) => {
+      rendering();
+      await stalled;
+      return renderTurn(c, claimed);
+    };
+    const abort = new AbortController();
+    const pending = claim(api, credential, { wait_seconds: 5 }, abort.signal).catch(() => null);
+    await started;
+    const held = await lease();
+    expect(held.runnerId).not.toBeNull();
+    abort.abort();
+    release();
+    await pending;
+    await vi.waitFor(async () => expect((await lease()).runnerId).toBeNull());
+    expect(await lease()).toMatchObject({ leasedUntil: null, failures: 0 });
+    expect((await lease()).claimableAt).toEqual(held.claimableAt);
+  });
+
+  it('releases a turn that vanished between claim and render without a failure, and keeps polling', async () => {
+    const { game: g, human } = await game();
+    const { credential } = await linkRunner(api, owner);
+    let first = true;
+    render = async (c, claimed) => {
+      if (first) {
+        first = false;
+        await abortGame(api.deps, { gameId: g.publicId, userId: human.id });
+        throw new DomainError('stale_state', 'this turn has ended', { reason: 'turn_ended' });
+      }
+      return renderTurn(c, claimed);
+    };
+    const { status, body } = await claim(api, credential);
+    expect(status).toBe(200);
+    expect(body).toEqual({ turn: null });
+    expect((await db.select().from(turnLeases)).every((l) => l.failures === 0)).toBe(true);
   });
 });

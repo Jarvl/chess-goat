@@ -1,4 +1,3 @@
-import { getConnInfo } from '@hono/node-server/conninfo';
 import {
   apiErrorBody,
   RunnerClaimRequestSchema,
@@ -11,18 +10,27 @@ import {
 import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import type { ZodType, z } from 'zod';
+import { clientAddress } from '../api/clientAddress';
 import type { ApiContext } from '../api/context';
 import { RateLimiter } from '../bot/rateLimit';
 import type { RunnerRow } from '../db/schema';
 import { DomainError, isDomainError } from '../domain/errors';
 import { redeemLinkCode, resolveRunner, touchRunner } from '../domain/runners';
-import { LEASE_DEFAULT_SECONDS, claimTurn, releaseTurn } from '../domain/turnLeases';
+import {
+  LEASE_DEFAULT_SECONDS,
+  claimTurn,
+  releaseTurn,
+  unclaimTurn,
+  type ClaimedTurn,
+} from '../domain/turnLeases';
 import { loadTurnView, renderTurnPrompt } from '../domain/turnPrompt';
 import { issueTurnToken } from '../domain/turnTokens';
 import { OwnerGate } from '../mcp/gate';
 
 export const RUNNER_MAX_BODY_BYTES = 16 * 1024;
 export const RUNNER_LINKS_PER_MINUTE = 10;
+export const RUNNER_LINKS_PER_MINUTE_ALL = 300;
+export const RUNNER_AUTH_FAILURES_PER_MINUTE = 60;
 export const RUNNER_CALLS_PER_MINUTE = 120;
 export const RUNNER_CLAIMS_PER_RUNNER = 4;
 export const CLAIM_DEFAULT_WAIT_SECONDS = 50;
@@ -37,6 +45,8 @@ export type RunnerEndpoint = {
 };
 
 export type RunnerEndpointOptions = {
+  /** Builds the turn a claim returns (a test seam; production uses `renderTurn`). */
+  render?: typeof renderTurn;
   /** The time of every database write and token (a test seam; production leaves it unset). */
   now?: () => Date;
 };
@@ -59,16 +69,6 @@ function pause(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-/** The client's address as the socket sees it; the API has no proxy handling to defer to. */
-function clientAddress(c: Context): string {
-  try {
-    return getConnInfo(c).remote.address ?? 'unknown';
-  } catch {
-    // No socket (an in-process request).
-    return 'unknown';
-  }
-}
-
 /** The JSON body under `schema`; no body at all counts as `{}`. Failures are `validation`. */
 async function parseBody<T extends ZodType>(c: Context, schema: T): Promise<z.infer<T>> {
   const text = await c.req.text();
@@ -89,6 +89,38 @@ async function parseBody<T extends ZodType>(c: Context, schema: T): Promise<z.in
   return parsed.data;
 }
 
+/** The turn a claimed lease asks for, or null when it ended between the claim and now. */
+export async function renderTurn(
+  ctx: ApiContext,
+  claimed: ClaimedTurn,
+): Promise<RunnerTurn | null> {
+  const { lease, bot } = claimed;
+  let prompt: string;
+  try {
+    prompt = renderTurnPrompt(await loadTurnView(ctx.deps.db, lease, bot));
+  } catch (error) {
+    if (isDomainError(error) && error.details.reason === 'turn_ended') return null;
+    throw error;
+  }
+  const leasedUntil = lease.leasedUntil!;
+  return {
+    id: lease.id,
+    claim_seq: lease.claimSeq,
+    kind: lease.kind,
+    bot: { id: bot.id, name: bot.firstName },
+    persona: bot.persona,
+    prompt,
+    token: issueTurnToken(ctx.config.SESSION_SECRET, {
+      leaseId: lease.id,
+      botId: bot.id,
+      seq: lease.claimSeq,
+      exp: Math.floor(leasedUntil.getTime() / 1000),
+    }),
+    expires_at: new Date(leasedUntil.getTime() - EXPIRY_MARGIN_MS).toISOString(),
+    mcp_url: `${ctx.config.PUBLIC_URL.replace(/\/+$/, '')}/mcp`,
+  };
+}
+
 /**
  * `/runner`: plain HTTP for the runner on an owner's machine. `link` trades a link code for a
  * credential; `claim` long-polls for the next turn; `release` hands one back. Like `/mcp` it sits
@@ -99,10 +131,12 @@ export function runnerEndpoint(ctx: ApiContext, opts: RunnerEndpointOptions = {}
   const { db, log } = ctx.deps;
   const now = opts.now ?? (() => new Date());
   const linkLimiter = new RateLimiter(RUNNER_LINKS_PER_MINUTE, 60_000);
+  const linkAllLimiter = new RateLimiter(RUNNER_LINKS_PER_MINUTE_ALL, 60_000);
+  const authFailures = new RateLimiter(RUNNER_AUTH_FAILURES_PER_MINUTE, 60_000);
   const callLimiter = new RateLimiter(RUNNER_CALLS_PER_MINUTE, 60_000);
   const claims = new OwnerGate(RUNNER_CLAIMS_PER_RUNNER);
   const shutdown = new AbortController();
-  const mcpUrl = `${ctx.config.PUBLIC_URL.replace(/\/+$/, '')}/mcp`;
+  const render = opts.render ?? renderTurn;
   const serverUrl = ctx.config.PUBLIC_URL.replace(/\/+$/, '');
 
   const app = new Hono();
@@ -120,6 +154,10 @@ export function runnerEndpoint(ctx: ApiContext, opts: RunnerEndpointOptions = {}
     const found = token ? await resolveRunner(db, token, now()) : null;
     // One answer for every failure, as on /mcp.
     if (!found) {
+      // Only failures count, so guessing credentials is throttled and real runners are not.
+      if (!authFailures.allow(clientAddress(c, ctx.config.TRUST_PROXY_HOPS))) {
+        throw new DomainError('rate_limited', 'too many requests');
+      }
       return c.json(apiErrorBody('unauthorized', 'a valid token is required'), 401, {
         'WWW-Authenticate': 'Bearer',
       });
@@ -131,7 +169,10 @@ export function runnerEndpoint(ctx: ApiContext, opts: RunnerEndpointOptions = {}
   };
 
   app.post('/runner/link', async (c) => {
-    if (!linkLimiter.allow(clientAddress(c))) {
+    if (
+      !linkLimiter.allow(clientAddress(c, ctx.config.TRUST_PROXY_HOPS)) ||
+      !linkAllLimiter.allow('all')
+    ) {
       throw new DomainError('rate_limited', 'too many requests');
     }
     const body = await parseBody(c, RunnerLinkRequestSchema);
@@ -148,35 +189,13 @@ export function runnerEndpoint(ctx: ApiContext, opts: RunnerEndpointOptions = {}
     return c.json(response);
   });
 
-  /** The turn a claimed lease asks for, or null when it ended between the claim and now. */
-  const render = async (
-    claimed: NonNullable<Awaited<ReturnType<typeof claimTurn>>>,
-  ): Promise<RunnerTurn | null> => {
-    const { lease, bot } = claimed;
-    let prompt: string;
+  /** Returns an undelivered lease without blaming the bot; a failure here must not hide the cause. */
+  const giveBack = async (runnerId: number, lease: ClaimedTurn['lease']): Promise<void> => {
     try {
-      prompt = renderTurnPrompt(await loadTurnView(db, lease, bot));
+      await unclaimTurn(db, runnerId, lease.id, lease.claimSeq);
     } catch (error) {
-      if (isDomainError(error) && error.details.reason === 'turn_ended') return null;
-      throw error;
+      log.warn({ runnerId, leaseId: lease.id, err: error }, 'could not give back a lease');
     }
-    const leasedUntil = lease.leasedUntil!;
-    return {
-      id: lease.id,
-      claim_seq: lease.claimSeq,
-      kind: lease.kind,
-      bot: { id: bot.id, name: bot.firstName },
-      persona: bot.persona,
-      prompt,
-      token: issueTurnToken(ctx.config.SESSION_SECRET, {
-        leaseId: lease.id,
-        botId: bot.id,
-        seq: lease.claimSeq,
-        exp: Math.floor(leasedUntil.getTime() / 1000),
-      }),
-      expires_at: new Date(leasedUntil.getTime() - EXPIRY_MARGIN_MS).toISOString(),
-      mcp_url: mcpUrl,
-    };
   };
 
   app.post('/runner/claim', async (c) => {
@@ -198,10 +217,26 @@ export function runnerEndpoint(ctx: ApiContext, opts: RunnerEndpointOptions = {}
           now: now(),
         });
         if (claimed) {
-          const turn = await render(claimed);
+          const { lease } = claimed;
+          let turn: RunnerTurn | null;
+          try {
+            turn = await render(ctx, claimed);
+          } catch (error) {
+            if (isDomainError(error) && error.details.reason === 'turn_ended') {
+              turn = null;
+            } else {
+              await giveBack(runner.id, lease);
+              throw error;
+            }
+          }
+          if (turn && signal.aborted) {
+            // The client left while we worked: nobody will play this, and the bot is not to blame.
+            await giveBack(runner.id, lease);
+            return c.json({ turn: null } satisfies RunnerClaimResponse);
+          }
           if (turn) return c.json({ turn } satisfies RunnerClaimResponse);
           // Gone between claim and render: give it back and look for another.
-          await releaseTurn(db, runner.id, claimed.lease.id, claimed.lease.claimSeq, now());
+          await releaseTurn(db, runner.id, lease.id, lease.claimSeq, now());
           if (!signal.aborted) continue;
         }
         const left = waitMs - (Date.now() - started);

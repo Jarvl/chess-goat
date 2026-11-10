@@ -43,8 +43,8 @@ export const RunnerClaimResponseSchema = z.object({ turn: RunnerTurnSchema.nulla
 export type RunnerClaimResponse = z.infer<typeof RunnerClaimResponseSchema>;
 
 export const RunnerReleaseRequestSchema = z.object({
-  turn_id: z.number().int(),
-  claim_seq: z.number().int(),
+  turn_id: z.number().int().positive().max(2147483647),
+  claim_seq: z.number().int().positive().max(2147483647),
   reason: z.enum(['exited', 'timeout', 'error']),
   detail: z.string().max(2000).optional(),
 });

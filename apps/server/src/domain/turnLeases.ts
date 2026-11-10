@@ -271,6 +271,41 @@ export async function releaseTurn(
 }
 
 /**
+ * Gives a lease back as if it had never been claimed, for a claim the server could not deliver:
+ * no failure counted, no retry delay. A lease this runner does not hold under `claimSeq` is left
+ * alone. A resolved turn's row goes, as in `releaseTurn`.
+ */
+export async function unclaimTurn(
+  tx: DbOrTx,
+  runnerId: number,
+  leaseId: number,
+  claimSeq: number,
+): Promise<void> {
+  await tx.transaction(async (inner) => {
+    const [row] = await inner
+      .select()
+      .from(turnLeases)
+      .where(
+        and(
+          eq(turnLeases.id, leaseId),
+          eq(turnLeases.runnerId, runnerId),
+          eq(turnLeases.claimSeq, claimSeq),
+        ),
+      )
+      .for('update');
+    if (!row) return;
+    if (isDerived(row.kind) && !isPending(row, await pendingTurns(inner, [row.botId]))) {
+      await deleteLease(inner, row);
+      return;
+    }
+    await inner
+      .update(turnLeases)
+      .set({ runnerId: null, leasedUntil: null })
+      .where(eq(turnLeases.id, row.id));
+  });
+}
+
+/**
  * The lease, if it is held, unexpired, still the claim `claimSeq` names (when given) and its turn
  * still pending (or, with `allowResolved`, resolved but still under lease). Else throws reason
  * 'turn_ended'.

@@ -20,6 +20,7 @@ import {
   releaseTurn,
   requireLiveLease,
   spendCall,
+  unclaimTurn,
 } from '../../src/domain/turnLeases';
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
 import { insertBot, insertGame, insertGroup, insertUser } from '../helpers/fixtures';
@@ -360,5 +361,35 @@ describe('game-over turns', () => {
     expect(await claimTurn(deps, runner, { now: at(86_400) })).toBeNull();
     expect(await notesOf(other)).toEqual([]);
     expect(await leaseRows()).toEqual([]);
+  });
+});
+
+describe('unclaimTurn', () => {
+  it('frees the lease without a failure or a delay', async () => {
+    const { runner } = await setup();
+    const claimed = (await claimTurn(deps, runner, { now: T0 }))!;
+    const before = claimed.lease;
+    await unclaimTurn(db, runner.id, before.id, before.claimSeq);
+    const [row] = await leaseRows();
+    expect(row).toMatchObject({ runnerId: null, leasedUntil: null, failures: 0 });
+    expect(row!.claimableAt).toEqual(before.claimableAt);
+    expect((await claimTurn(deps, runner, { now: at(1) }))?.lease.id).toBe(before.id);
+  });
+
+  it('leaves a lease held at another claim sequence or by another runner alone', async () => {
+    const { owner, runner } = await setup();
+    const other = await insertRunner(owner);
+    const { lease } = (await claimTurn(deps, runner, { now: T0 }))!;
+    await unclaimTurn(db, runner.id, lease.id, lease.claimSeq + 1);
+    await unclaimTurn(db, other.id, lease.id, lease.claimSeq);
+    expect((await leaseRows())[0]).toMatchObject({ runnerId: runner.id });
+  });
+
+  it('drops the row of a turn that has resolved', async () => {
+    const { runner, game, human } = await setup();
+    const { lease } = (await claimTurn(deps, runner, { now: T0 }))!;
+    await abortGame(deps, { gameId: game.publicId, userId: human.id });
+    await unclaimTurn(db, runner.id, lease.id, lease.claimSeq);
+    expect((await leaseRows()).filter((r) => r.kind === 'move')).toHaveLength(0);
   });
 });

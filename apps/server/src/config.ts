@@ -38,6 +38,8 @@ export const ConfigSchema = z.object({
   ROLES: RolesSchema,
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+  /** Reverse proxies in front of the server whose X-Forwarded-For entry to trust. */
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
   /** Bot API base for tests and local fakes; unset means api.telegram.org. */
   TELEGRAM_API_ROOT: z.url().optional(),
   /** `true` runs long polling (dev); otherwise updates arrive on the webhook. */
