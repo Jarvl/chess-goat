@@ -92,6 +92,11 @@ export const PlayerKindSchema = z.enum(['human', 'engine', 'bot']);
 
 export type PlayerKind = z.infer<typeof PlayerKindSchema>;
 
+/** What a turn asks of a bot's agent: answer a challenge, move, answer a draw offer, close out a game, or practice. */
+export const TurnKindSchema = z.enum(['challenge', 'move', 'draw_offer', 'game_over', 'practice']);
+
+export type TurnKind = z.infer<typeof TurnKindSchema>;
+
 export const ViewerRoleSchema = z.enum(['white', 'black', 'spectator']);
 
 export type ViewerRole = z.infer<typeof ViewerRoleSchema>;

@@ -2,11 +2,17 @@ import { eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { dbNow } from '../../src/db/client';
 import { runMigrations } from '../../src/db/migrate';
-import { dmMessages, userFlair, users } from '../../src/db/schema';
+import { dmMessages, runners, turnLeases, userFlair, users } from '../../src/db/schema';
 import { listMoves, requireGameById } from '../../src/domain/games';
 import { storePhoto } from '../../src/domain/photos';
 import { openTestDb, truncateAll } from '../helpers/db';
-import { insertChallenge, insertGame, insertGroup, insertUser } from '../helpers/fixtures';
+import {
+  insertBot,
+  insertChallenge,
+  insertGame,
+  insertGroup,
+  insertUser,
+} from '../helpers/fixtures';
 import { FIXTURE_JPEG } from '../helpers/photos';
 import { testDatabaseUrl } from '../helpers/testDatabase';
 
@@ -74,12 +80,16 @@ describe('database', () => {
       'group_members',
       'groups',
       'jobs',
+      'match_notes',
       'moves',
       'owner_tokens',
       'ratings',
+      'runner_link_codes',
+      'runners',
       'shares',
       'telegram_updates',
       'tips',
+      'turn_leases',
       'user_flair',
       'user_photos',
       'users',
@@ -129,5 +139,43 @@ describe('dm_messages table', () => {
         telegramMessageId: 102,
       }),
     ).rejects.toThrow();
+  });
+
+  async function botWorld() {
+    const group = await insertGroup(db);
+    const owner = await insertUser(db);
+    const bot = await insertBot(db, owner);
+    const other = await insertUser(db);
+    const game = await insertGame(db, group.id, bot.id, other.id);
+    return { owner, bot, game };
+  }
+
+  it('turn_leases allows one row per turn', async () => {
+    const { bot, game } = await botWorld();
+    const row = { botId: bot.id, kind: 'move' as const, gameId: game.id, ply: 4 };
+    await db.insert(turnLeases).values(row);
+    const duplicate = await db
+      .insert(turnLeases)
+      .values(row)
+      .catch((error: unknown) => error);
+    // postgres.js puts the constraint name on the cause, not the wrapper's message.
+    expect(String((duplicate as { cause?: unknown }).cause)).toContain('turn_leases_turn');
+    await expect(db.insert(turnLeases).values({ ...row, ply: 6 })).resolves.toBeDefined();
+  });
+
+  it('deleting a runner frees its leases without deleting them', async () => {
+    const { owner, bot, game } = await botWorld();
+    const [runner] = await db
+      .insert(runners)
+      .values({ ownerId: owner.id, label: 'laptop', credentialHash: Buffer.from('hash-1') })
+      .returning();
+    const [lease] = await db
+      .insert(turnLeases)
+      .values({ botId: bot.id, kind: 'move', gameId: game.id, ply: 4, runnerId: runner!.id })
+      .returning();
+    await db.delete(runners).where(eq(runners.id, runner!.id));
+    const [after] = await db.select().from(turnLeases).where(eq(turnLeases.id, lease!.id));
+    expect(after).toBeDefined();
+    expect(after!.runnerId).toBeNull();
   });
 });
