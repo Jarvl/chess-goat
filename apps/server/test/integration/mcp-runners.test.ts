@@ -83,7 +83,7 @@ describe('link_runner', () => {
     expect(code).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{4}$/);
     expect(command).toBe(`npx goat-runner link ${code} --server https://chess.test`);
     expect(resultText(plain)).toBe(
-      `Run this command on the machine that will play your bots:\n\n${command}\n\nRun it yourself if you have a shell; otherwise give it to your owner. It links the runner, starts it in the background and registers it to start at login (\`goat-runner autostart off\` undoes that). The code works once and expires at ${expiresAt}. Then call list_runners to check it connected.`,
+      `Run this command on the machine that will play your bots:\n\n${command}\n\nRun it yourself if you have a shell; otherwise give it to your owner. That machine needs Node.js (for npx). It links the runner, starts it in the background and registers it to start at login (\`goat-runner autostart off\` undoes that). The code works once and expires at ${expiresAt}. Then call test_runner for one of your bots to check it works.`,
     );
     const withPreset = await call<Linked>('link_runner', { preset: 'claude' });
     expect(withPreset.structuredContent!.command).toBe(

@@ -13,6 +13,9 @@ import { issueTurnToken } from '../../src/domain/turnTokens';
 import { scopeAuthInfo, type McpCall, type TurnCall } from '../../src/mcp/context';
 import { mcpEndpoint } from '../../src/mcp/routes';
 import { OWNER_INSTRUCTIONS, setUpBotPrompt, TURN_INSTRUCTIONS } from '../../src/mcp/server';
+import { findBotsText } from '../../src/mcp/tools/challenge';
+import { createdLines } from '../../src/mcp/tools/manage';
+import { linkRunnerText, PRACTICE_STATUSES, testText } from '../../src/mcp/tools/runners';
 import { registerTool, registerTurnTool } from '../../src/mcp/tool';
 import type { TestApi } from '../helpers/api';
 import { openTestDb, truncateAll } from '../helpers/db';
@@ -193,21 +196,75 @@ describe('/mcp surface', () => {
     const reply = await mcpCall(api.app, token, 'server/discover');
     expect(reply.response?.result?.instructions).toBe(OWNER_INSTRUCTIONS);
     expect(OWNER_INSTRUCTIONS).toContain(
-      '(4) test_runner until it says the bot is live, or tells you what failed;',
+      "A runner on the owner's machine starts a short session for each thing a bot must respond to, using the bot's persona. Bots cannot challenge people: they answer people's challenges and may challenge other bots.",
+    );
+    expect(OWNER_INSTRUCTIONS).toContain(
+      '(4) test_runner until it says the bot is live, or tells you what failed; if it is not live after a few tries, tell your owner what it says;',
     );
     expect(OWNER_INSTRUCTIONS).not.toContain('get_inbox');
   });
 
   it('names only tools that are registered', async () => {
     const list = await mcpCall(api.app, token, 'tools/list');
-    const registered = new Set(
-      ((list.response?.result?.tools ?? []) as { name: string }[]).map((t) => t.name),
-    );
-    const named = (text: string) => [...text.matchAll(/\b[a-z]+(?:_[a-z]+)+\b/g)].map((m) => m[0]);
-    for (const text of [OWNER_INSTRUCTIONS, setUpBotPrompt('x')]) {
-      const words = named(text);
-      expect(words.length).toBeGreaterThan(0);
-      for (const word of words) expect(registered.has(word), word).toBe(true);
+    const ownerTools = (list.response?.result?.tools ?? []) as {
+      name: string;
+      description: string;
+    }[];
+    const registered = new Set(ownerTools.map((t) => t.name));
+    // Argument names that are not tools.
+    const notTools = new Set(['wait_seconds', 'bot_notes', 'match_notes', 'time_per_move']);
+    const named = (text: string) =>
+      [...text.matchAll(/\b[a-z]+(?:_[a-z]+)+\b/g)]
+        .map((m) => m[0])
+        .filter((word) => !notTools.has(word));
+    const describing = (name: string) => ownerTools.find((t) => t.name === name)!.description;
+    const online = {
+      id: 1,
+      name: 'A',
+      label: 'A',
+      owner: 'o',
+      tagline: null,
+      rating: 1,
+      lastActiveAt: null,
+      online: true,
+    };
+    const link = { alreadyServed: false, command: 'npx goat-runner link X', expiresAt: 'soon' };
+    const texts = [
+      OWNER_INSTRUCTIONS,
+      setUpBotPrompt('x'),
+      describing('create_bot'),
+      describing('link_runner'),
+      describing('test_runner'),
+      describing('find_bots'),
+      linkRunnerText(link),
+      linkRunnerText({ alreadyServed: true, served: 'all' }),
+      ...PRACTICE_STATUSES.map((status) => testText(status, 'Rook')),
+      ...[0, 2].flatMap((groups) =>
+        [{ kind: 'connected', label: 'laptop' }, { kind: 'offline' }, { kind: 'none' }].map(
+          (runner) =>
+            createdLines(
+              groups ? [{ title: 'G' }] : [],
+              groups ? 0 : 2,
+              runner as Parameters<typeof createdLines>[2],
+              false,
+            ),
+        ),
+      ),
+      createdLines([], 0, { kind: 'none' }, false),
+    ];
+    for (const text of texts) {
+      for (const word of named(text)) expect(registered.has(word), word).toBe(true);
+    }
+    expect(named(OWNER_INSTRUCTIONS).length).toBeGreaterThan(0);
+    expect(named(setUpBotPrompt('x')).length).toBeGreaterThan(0);
+    // find_bots is shared with the game-over turn surface, which registers it too.
+    for (const text of [
+      findBotsText({ bots: [], nextCursor: null, narrowedBy: null }),
+      findBotsText({ bots: [], nextCursor: null, narrowedBy: 'query' }),
+      findBotsText({ bots: [], nextCursor: null, narrowedBy: 'cursor' }),
+      findBotsText({ bots: [online], nextCursor: 'c', narrowedBy: null }),
+    ]) {
+      for (const word of named(text)) expect(['find_bots', 'challenge_bot']).toContain(word);
     }
     // The turn instructions name no tool: they point at "the tools listed".
     expect(named(TURN_INSTRUCTIONS)).toEqual([]);
@@ -729,8 +786,20 @@ describe('prompts', () => {
     expect(text[0]!.content.text.split('(2) call delete_bot')).toHaveLength(2);
   });
 
-  it('is an error without a description', async () => {
-    const reply = await get({});
-    expect(reply.response?.error ?? reply.response?.result?.isError).toBeTruthy();
+  it('refuses a missing, empty or over-long description', async () => {
+    for (const args of [{}, { description: '' }, { description: 'x'.repeat(2001) }]) {
+      const reply = await get(args);
+      expect(reply.response?.error?.message, JSON.stringify(args).slice(0, 40)).toMatch(
+        /description/i,
+      );
+    }
+    const edge = await get({ description: 'x'.repeat(2000) });
+    expect(edge.response?.error).toBeUndefined();
+  });
+
+  it('asks for a few tries before reporting back', () => {
+    expect(setUpBotPrompt('x')).toContain(
+      'Call test_runner until it says the bot is live, or tells you what failed. If it is not live after a few tries, tell me what it says.',
+    );
   });
 });

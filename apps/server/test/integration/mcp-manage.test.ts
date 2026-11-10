@@ -1,15 +1,14 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { groupMembers, users, type UserRow } from '../../src/db/schema';
+import { groupMembers, runners, users, type UserRow } from '../../src/db/schema';
 import { createBot } from '../../src/domain/bots';
 import { createLinkCode, redeemLinkCode } from '../../src/domain/runners';
-import { runners } from '../../src/db/schema';
 import { createOwnerToken } from '../../src/domain/ownerTokens';
 import { touchMember } from '../../src/domain/members';
 import type { TestApi } from '../helpers/api';
 import { openTestDb, truncateAll } from '../helpers/db';
 import { insertBot, insertGame, insertGroup, insertUser } from '../helpers/fixtures';
-import { callTool, resultText, startTestMcp } from '../helpers/mcp';
+import { callTool, mcpCall, resultText, startTestMcp } from '../helpers/mcp';
 
 const { db, close } = openTestDb();
 let api: TestApi;
@@ -162,7 +161,7 @@ describe('update_bot and delete_bot', () => {
 type Created = {
   bot: BotOut;
   groups: { groupId: string; title: string }[];
-  runner: 'connected' | 'none';
+  runner: 'connected' | 'offline' | 'none';
 };
 const botCount = async () => (await listed()).length;
 const memberGroup = async (title: string) => {
@@ -265,6 +264,26 @@ describe('create_bot puts the bot in groups and names the next step', () => {
     expect(resultText(created)).toContain(NO_RUNNER_LINE);
   });
 
+  it('says a runner is linked but not connected', async () => {
+    const stale = new Date(Date.now() - 120_000);
+    await connectedRunner('laptop');
+    await db.update(runners).set({ lastSeenAt: stale });
+    const created = await call<Created>('create_bot', { name: 'Waiting', persona: 'You play.' });
+    expect(created.structuredContent!.runner).toBe('offline');
+    expect(resultText(created)).toContain(
+      '\nA runner is linked but not connected. Start it on its machine with `goat-runner start`, then call test_runner; or call link_runner to link another.',
+    );
+  });
+
+  it('a stale runner scoped to other bots still leaves the bot unserved', async () => {
+    const other = await insertBot(db, owner, { firstName: 'Other' });
+    await connectedRunner('laptop', [other.id]);
+    await db.update(runners).set({ lastSeenAt: new Date(Date.now() - 120_000) });
+    const created = await call<Created>('create_bot', { name: 'Unserved', persona: 'You play.' });
+    expect(created.structuredContent!.runner).toBe('none');
+    expect(resultText(created)).toContain(NO_RUNNER_LINE);
+  });
+
   it('flags a missing persona, and only then', async () => {
     const without = await call<Created>('create_bot', { name: 'Blank' });
     expect(resultText(without).endsWith(`\n${NO_PERSONA_LINE}`)).toBe(true);
@@ -273,12 +292,12 @@ describe('create_bot puts the bot in groups and names the next step', () => {
   });
 
   it('describes the persona and groups', async () => {
-    const { mcpCall } = await import('../helpers/mcp');
     const list = await mcpCall(api.app, token, 'tools/list');
     const tools = list.response?.result?.tools as { name: string; description: string }[];
     const description = tools.find((t) => t.name === 'create_bot')!.description;
     expect(description).toContain('system prompt for every session');
     expect(description).toContain('Pass `groups` (ids from list_my_groups)');
+    expect(description).toContain('A bot cannot challenge people, only other bots.');
   });
 });
 

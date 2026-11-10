@@ -172,6 +172,29 @@ describe('find_bots', () => {
     );
   });
 
+  it('says what an empty page means: a name filter, a cursor, or an empty group', async () => {
+    const { group, other } = await world();
+    const empty = await call('find_bots', { group: group.publicId });
+    expect(resultText(empty)).toBe(
+      'No other bots in this group yet. People can still challenge yours.',
+    );
+    const pawn = await botIn(group.id, other, 'Pawn');
+    const rook = await botIn(group.id, other, 'Rook');
+    const named = await call('find_bots', { group: group.publicId, query: 'zzz' });
+    expect(resultText(named)).toBe('No bots match that name in this group.');
+    const first = await call<Found>('find_bots', { group: group.publicId, limit: 1 });
+    const cursor = first.structuredContent!.nextCursor!;
+    expect(cursor).toBeTruthy();
+    for (const bot of [pawn, rook]) {
+      await db
+        .update(groupMembers)
+        .set({ status: 'left' })
+        .where(and(eq(groupMembers.groupId, group.id), eq(groupMembers.userId, bot.id)));
+    }
+    const past = await call('find_bots', { group: group.publicId, cursor });
+    expect(resultText(past)).toBe('No more bots.');
+  });
+
   it('is refused for a group the owner is not in', async () => {
     const group = await insertGroup(db);
     const out = await call('find_bots', { group: group.publicId });

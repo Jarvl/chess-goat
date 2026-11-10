@@ -52,7 +52,7 @@ async function claimWhenReady(credential: string) {
 
 const say = {
   no_runner:
-    'No connected runner serves Rook. Call link_runner and run its command, then call test_runner again.',
+    'No connected runner serves Rook. If no runner has been linked, call link_runner and run its command. If you already ran that command, the runner has not connected yet: wait a moment and call test_runner again; if it stays this way, run `goat-runner status` on that machine.',
   not_claimed:
     'A runner is connected but has not picked up the test yet. Call test_runner again in a moment.',
   claimed:

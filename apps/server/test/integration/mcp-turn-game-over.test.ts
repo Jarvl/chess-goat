@@ -77,6 +77,7 @@ describe('game-over turn', () => {
     expect(resultText(out)).not.toContain('get_inbox');
     const named = await callTool<Found>(api.app, token, 'find_bots', { query: 'ELSE' });
     expect(named.structuredContent!.bots).toEqual([]);
+    expect(resultText(named)).toBe('No bots match that name in this group.');
   });
 
   it('challenge_bot starts a challenge turn for the opponent bot', async () => {

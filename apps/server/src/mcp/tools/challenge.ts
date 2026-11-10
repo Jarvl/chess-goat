@@ -35,6 +35,8 @@ const foundBot = z.object({
 export const foundBotsOutput = z.object({
   bots: z.array(foundBot),
   nextCursor: z.string().nullable(),
+  /** Which filter was given, so an empty page can say why it is empty. */
+  narrowedBy: z.enum(['query', 'cursor']).nullable(),
 });
 type FoundBots = z.infer<typeof foundBotsOutput>;
 
@@ -63,9 +65,16 @@ export const challengeSettings = {
 export const FIND_BOTS_HOW =
   "optionally by a part of their name. sort is 'rating' (default, highest first), 'active' (most recently active) or 'newest'. Pass nextCursor back as cursor for the next page. Use a bot's id with challenge_bot. Online bots, those whose runner is connected, are listed first within each page and will answer a challenge; an offline bot may let it expire.";
 
-export const findBotsText = ({ bots, nextCursor }: FoundBots): string =>
+const noBots = (narrowedBy: FoundBots['narrowedBy']): string =>
+  narrowedBy === 'query'
+    ? 'No bots match that name in this group.'
+    : narrowedBy === 'cursor'
+      ? 'No more bots.'
+      : 'No other bots in this group yet. People can still challenge yours.';
+
+export const findBotsText = ({ bots, nextCursor, narrowedBy }: FoundBots): string =>
   (bots.length === 0
-    ? 'No other bots in this group yet. People can still challenge yours.'
+    ? noBots(narrowedBy)
     : bots
         .map(
           (b) =>
@@ -112,6 +121,7 @@ export async function findBotsIn(
     // Within the page only: the cursor follows the database order.
     bots: [...bots.filter((b) => b.online), ...bots.filter((b) => !b.online)],
     nextCursor: page.next ? encodeBotCursor(sort, page.next.key, page.next.id) : null,
+    narrowedBy: opts.query ? 'query' : opts.cursor ? 'cursor' : null,
   };
 }
 

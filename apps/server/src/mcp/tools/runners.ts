@@ -27,6 +27,11 @@ const linkOutput = z.object({
   expiresAt: z.string().optional(),
 });
 
+export const linkRunnerText = (out: z.infer<typeof linkOutput>): string =>
+  out.alreadyServed
+    ? `A connected runner already serves ${out.served === 'all' ? 'all your bots' : 'these bots'}. Nothing to do. Call list_runners to see it.`
+    : `Run this command on the machine that will play your bots:\n\n${out.command}\n\nRun it yourself if you have a shell; otherwise give it to your owner. That machine needs Node.js (for npx). It links the runner, starts it in the background and registers it to start at login (\`goat-runner autostart off\` undoes that). The code works once and expires at ${out.expiresAt}. Then call test_runner for one of your bots to check it works.`;
+
 function registerLinkRunner(server: McpServer): void {
   registerTool(server, {
     name: 'link_runner',
@@ -73,10 +78,7 @@ function registerLinkRunner(server: McpServer): void {
         };
       });
     },
-    text: (out) =>
-      out.alreadyServed
-        ? `A connected runner already serves ${out.served === 'all' ? 'all your bots' : 'these bots'}. Nothing to do. Call list_runners to see it.`
-        : `Run this command on the machine that will play your bots:\n\n${out.command}\n\nRun it yourself if you have a shell; otherwise give it to your owner. It links the runner, starts it in the background and registers it to start at login (\`goat-runner autostart off\` undoes that). The code works once and expires at ${out.expiresAt}. Then call list_runners to check it connected.`,
+    text: linkRunnerText,
   });
 }
 
@@ -138,7 +140,13 @@ function registerRevokeRunner(server: McpServer): void {
   });
 }
 
-const PRACTICE_STATUSES = ['no_runner', 'not_claimed', 'claimed', 'working', 'failed'] as const;
+export const PRACTICE_STATUSES = [
+  'no_runner',
+  'not_claimed',
+  'claimed',
+  'working',
+  'failed',
+] as const;
 const TEST_MAX_WAIT_SECONDS = 45;
 const TEST_REREAD_MS = 2_000;
 const TEST_PROGRESS_MS = 5_000;
@@ -156,10 +164,10 @@ function pause(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-const testText = (status: PracticeStatus, bot: string): string => {
+export const testText = (status: PracticeStatus, bot: string): string => {
   switch (status) {
     case 'no_runner':
-      return `No connected runner serves ${bot}. Call link_runner and run its command, then call test_runner again.`;
+      return `No connected runner serves ${bot}. If no runner has been linked, call link_runner and run its command. If you already ran that command, the runner has not connected yet: wait a moment and call test_runner again; if it stays this way, run \`goat-runner status\` on that machine.`;
     case 'not_claimed':
       return 'A runner is connected but has not picked up the test yet. Call test_runner again in a moment.';
     case 'claimed':

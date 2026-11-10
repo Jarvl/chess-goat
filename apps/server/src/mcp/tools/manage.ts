@@ -113,13 +113,17 @@ function registerListBots(server: McpServer): void {
 }
 
 const PERSONA_GUIDE =
-  'The persona is the system prompt for every session that plays this bot. Write it in the second person and settle: how the bot plays; which challenges it accepts; when it offers, accepts or declines a draw; whether it challenges other bots after a game ends; what it keeps in its notes.';
+  'The persona is the system prompt for every session that plays this bot. Write it in the second person and settle: how the bot plays; which challenges it accepts; when it offers, accepts or declines a draw; whether it challenges other bots after a game ends; what it keeps in its notes. A bot cannot challenge people, only other bots.';
+
+/** Who runs the new bot: a connected runner, a linked one that is not connected, or none. */
+export type RunnerState =
+  { kind: 'connected'; label: string } | { kind: 'offline' } | { kind: 'none' };
 
 /** The next-step lines of a created bot: where it is, who runs it, and what it lacks. */
-function createdLines(
+export function createdLines(
   added: readonly { title: string }[],
   ownerGroupCount: number,
-  runner: string | null,
+  runner: RunnerState,
   hasPersona: boolean,
 ): string {
   const where =
@@ -128,11 +132,15 @@ function createdLines(
       : ownerGroupCount > 0
         ? 'It is in no group yet. Ask your owner which group, then call add_bot_to_group.'
         : 'It is in no group yet: your owner is in no group with Chess Goat. They must add Chess Goat to a Telegram group first.';
+  const who =
+    runner.kind === 'connected'
+      ? `Served by runner ${runner.label}, connected. Next: call test_runner.`
+      : runner.kind === 'offline'
+        ? 'A runner is linked but not connected. Start it on its machine with `goat-runner start`, then call test_runner; or call link_runner to link another.'
+        : 'No runner serves this bot yet. Next: call link_runner.';
   return [
     where,
-    runner === null
-      ? 'No runner serves this bot yet. Next: call link_runner.'
-      : `Served by runner ${runner}, connected. Next: call test_runner.`,
+    who,
     hasPersona
       ? null
       : 'It has no persona yet, so its sessions will play with no instructions. Call update_bot with a persona.',
@@ -161,7 +169,7 @@ function registerCreateBot(server: McpServer): void {
     output: z.object({
       bot: botSchema,
       groups: z.array(z.object({ groupId: z.string(), title: z.string() })),
-      runner: z.enum(['connected', 'none']),
+      runner: z.enum(['connected', 'offline', 'none']),
       nextSteps: z.string(),
     }),
     annotations: WRITE,
@@ -179,18 +187,21 @@ function registerCreateBot(server: McpServer): void {
           await addBotToGroup(tx, owner.id, bot.id, group.id);
           added.set(group.id, { groupId: group.publicId, title: group.title });
         }
-        const now = new Date();
-        const served = (await onlineBotIds(tx, [bot.id], now)).has(bot.id);
-        const label = served
-          ? ((await listRunners(tx, owner.id, now)).find(
-              (r) => r.connected && (r.bots === 'all' || r.bots.includes(bot.firstName)),
-            )?.label ?? 'unnamed')
-          : null;
+        const linked = await listRunners(tx, owner.id, new Date());
+        const serving = linked.find(
+          (r) => r.connected && (r.bots === 'all' || r.bots.includes(bot.firstName)),
+        );
+        // A runner scoped to named bots can't serve a bot created just now, so only 'all' counts.
+        const runner: RunnerState = serving
+          ? { kind: 'connected', label: serving.label }
+          : linked.some((r) => r.bots === 'all')
+            ? { kind: 'offline' }
+            : { kind: 'none' };
         return {
           bot: (await botsWithStatus(tx, [bot]))[0]!,
           groups: [...added.values()],
-          runner: served ? ('connected' as const) : ('none' as const),
-          nextSteps: createdLines([...added.values()], mine.length, label, bot.persona !== null),
+          runner: runner.kind,
+          nextSteps: createdLines([...added.values()], mine.length, runner, bot.persona !== null),
         };
       }),
     text: ({ bot, nextSteps }) => `Created ${bot.label}.\n${nextSteps}`,
