@@ -1,10 +1,12 @@
 import {
   OwnerBotsDtoSchema,
+  OwnerRunnersDtoSchema,
   OwnerTokenCreatedDtoSchema,
   OwnerTokenStatusDtoSchema,
   ratingLabel,
   t,
   type OwnerBotDto,
+  type OwnerRunnerDto,
   type OwnerTokenStatusDto,
 } from '@chess-goat/shared';
 import { useEffect, useState } from 'preact/hooks';
@@ -13,6 +15,7 @@ import { useApp } from '../context';
 import { confirmDialog } from '../dialog';
 import { GameCard } from '../GameCard';
 import { dateLabel } from '../format';
+import { RunnersCard } from '../RunnersCard';
 import { toast } from '../toast';
 import { ErrorScreen, Loading } from './Status';
 
@@ -86,6 +89,8 @@ export function Bots() {
   const { client } = useApp();
   const [bots, setBots] = useState<OwnerBotDto[] | undefined>(undefined);
   const [botsFailed, setBotsFailed] = useState(false);
+  // Also an extra: a failed load shows no card.
+  const [runners, setRunners] = useState<OwnerRunnerDto[]>([]);
   const [info, setInfo] = useState<Info | undefined>(undefined);
   const [failed, setFailed] = useState(false);
   // The plaintext token lives only here: shown once, gone when the screen closes.
@@ -109,6 +114,12 @@ export function Bots() {
       .catch(() => setBotsFailed(true));
   };
   useEffect(loadBots, [client]);
+  useEffect(() => {
+    client
+      .get('/api/me/runners', OwnerRunnersDtoSchema)
+      .then((list) => setRunners(list.runners))
+      .catch(() => undefined);
+  }, [client]);
 
   const create = async (confirmMessage?: string) => {
     if (busy) return;
@@ -209,6 +220,12 @@ export function Bots() {
           </div>
         ) : null}
       </div>
+      {runners.length > 0 ? (
+        <RunnersCard
+          runners={runners}
+          onRevoked={(id) => setRunners((list) => list.filter((r) => r.id !== id))}
+        />
+      ) : null}
       <p class="hint">{t('app.bots.warning')}</p>
       {info ? (
         <>

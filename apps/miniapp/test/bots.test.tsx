@@ -18,6 +18,8 @@ function server(
   let state = initial;
   return ({ method, path }) => {
     if (path === '/api/me/bots') return { status: 200, body: list };
+    if (path === '/api/me/runners' || path.startsWith('/api/me/runners/'))
+      return { status: 404, body: { error: { code: 'not_found', message: 'none' } } };
     if (method === 'POST') {
       state = { createdAt: CREATED, lastUsedAt: null };
       return { status: 200, body: { token: TOKEN, createdAt: CREATED } };
@@ -270,5 +272,123 @@ describe('Bots', () => {
     expect(r.text()).toContain('1 game in progress');
     expect(r.text()).toContain('In 1 group');
     expect(r.text()).not.toContain('In 1 groups');
+  });
+
+  describe('runners', () => {
+    const connected = {
+      id: 1,
+      label: 'Laptop',
+      harness: 'claude',
+      bots: 'all',
+      connected: true,
+      lastSeenAt: '2026-05-02T12:00:00.000Z',
+    };
+    const never = {
+      id: 2,
+      label: 'Old desktop',
+      harness: null,
+      bots: ['Rook', 'Pawn'],
+      connected: false,
+      lastSeenAt: null,
+    };
+    function withRunners(list: unknown[], del: () => { status: number; body?: unknown }) {
+      let runners = list;
+      const base = server(null);
+      return (req: Parameters<FakeRoute>[0]) => {
+        if (req.path === '/api/me/runners') return { status: 200, body: { runners } };
+        const match = /^\/api\/me\/runners\/(\d+)$/.exec(req.path);
+        if (match && req.method === 'DELETE') {
+          const res = del();
+          if (res.status === 204)
+            runners = runners.filter((x) => (x as { id: number }).id !== Number(match[1]));
+          return res;
+        }
+        return base(req);
+      };
+    }
+    const ok = () => ({ status: 204 });
+
+    it('has no runners card without runners', async () => {
+      const r = renderApp(() => <Bots />, withRunners([], ok));
+      await r.flush();
+      expect(r.root.querySelector('[data-card="runners"]')).toBeNull();
+    });
+
+    it('lists each runner with its status and bots', async () => {
+      const r = renderApp(() => <Bots />, withRunners([connected, never], ok));
+      await r.flush();
+      const card = r.root.querySelector('[data-card="runners"]')!;
+      expect(card.textContent).toContain(t('app.bots.runners'));
+      expect(card.querySelector('[data-runner="1"]')!.textContent).toContain('Laptop');
+      expect(card.querySelector('[data-runner="1"]')!.textContent).toContain(
+        `${t('app.bots.runner_connected')} · ${t('app.bots.runner_all_bots')}`,
+      );
+      expect(card.querySelector('[data-runner="2"]')!.textContent).toContain(
+        `${t('app.bots.runner_never')} · Rook, Pawn`,
+      );
+    });
+
+    it('shows when a disconnected runner was last seen', async () => {
+      const r = renderApp(() => <Bots />, withRunners([{ ...connected, connected: false }], ok));
+      await r.flush();
+      expect(r.root.querySelector('[data-runner="1"]')!.textContent).not.toContain(
+        t('app.bots.runner_never'),
+      );
+      expect(r.root.querySelector('[data-runner="1"]')!.textContent).toContain('Last seen');
+    });
+
+    it('leaves the token card working when the runners fail to load', async () => {
+      const r = renderApp(() => <Bots />, server(null));
+      await r.flush();
+      expect(r.root.querySelector('[data-card="runners"]')).toBeNull();
+      expect(r.root.querySelector('[data-card="owner-token"]')).not.toBeNull();
+    });
+
+    it('revokes after confirming, then drops the row and the card', async () => {
+      const r = renderApp(() => <Bots />, withRunners([connected], ok));
+      await r.flush();
+      await r.click('[data-runner="1"] [data-action="revoke-runner"]');
+      window.__tg!.answerPopup('confirm');
+      await r.flush();
+      expect(writes(r)[0]).toMatchObject({ method: 'DELETE', path: '/api/me/runners/1' });
+      expect(r.root.querySelector('[data-card="runners"]')).toBeNull();
+      expect(document.querySelector('.toast')?.textContent).toContain(t('app.bots.runner_revoked'));
+    });
+
+    it('keeps the other rows when one is revoked', async () => {
+      const r = renderApp(() => <Bots />, withRunners([connected, never], ok));
+      await r.flush();
+      await r.click('[data-runner="2"] [data-action="revoke-runner"]');
+      window.__tg!.answerPopup('confirm');
+      await r.flush();
+      expect(r.root.querySelector('[data-runner="2"]')).toBeNull();
+      expect(r.root.querySelector('[data-runner="1"]')).not.toBeNull();
+    });
+
+    it('sends nothing when the confirmation is declined', async () => {
+      const r = renderApp(() => <Bots />, withRunners([connected], ok));
+      await r.flush();
+      await r.click('[data-action="revoke-runner"]');
+      window.__tg!.answerPopup('cancel');
+      await r.flush();
+      expect(writes(r)).toEqual([]);
+      expect(r.root.querySelector('[data-runner="1"]')).not.toBeNull();
+    });
+
+    it('keeps the row and toasts when the request fails', async () => {
+      const r = renderApp(
+        () => <Bots />,
+        withRunners([connected], () => ({
+          status: 500,
+          body: { error: { code: 'internal', message: 'boom' } },
+        })),
+      );
+      await r.flush();
+      await r.click('[data-action="revoke-runner"]');
+      window.__tg!.answerPopup('confirm');
+      await r.flush();
+      expect(r.root.querySelector('[data-runner="1"]')).not.toBeNull();
+      expect(document.querySelector('.toast')?.textContent).toContain(t('app.common.error'));
+    });
   });
 });

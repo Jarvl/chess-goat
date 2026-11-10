@@ -443,6 +443,17 @@ export const en = {
   'app.bots.no_match': 'No bots match "{query}".',
   'app.bots.more': 'Show more',
   'app.bots.revoke_confirm': 'Revoke your token? Anything using it stops working.',
+  'app.bots.runners': 'Runners',
+  'app.bots.runners_hint':
+    'Programs on your machines that play your bots. Link one by asking your agent.',
+  'app.bots.runner_connected': 'Connected',
+  'app.bots.runner_last_seen': 'Last seen {date}',
+  'app.bots.runner_never': 'Never connected',
+  'app.bots.runner_all_bots': 'All bots',
+  'app.bots.runner_revoke': 'Revoke',
+  'app.bots.runner_revoke_confirm':
+    'Revoke this runner? Its bots stop playing until you link another.',
+  'app.bots.runner_revoked': 'Runner revoked',
   'app.settings.flair': 'Flair',
   'app.settings.flair_unlocked': '{percent}% unlocked',
   'app.settings.notifications': 'Receive turn notifications',

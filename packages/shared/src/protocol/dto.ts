@@ -432,6 +432,23 @@ export const OwnerTokenStatusDtoSchema = z.object({
 
 export type OwnerTokenStatusDto = z.infer<typeof OwnerTokenStatusDtoSchema>;
 
+/** One of the viewer's runners: the program on their machine that plays their bots. */
+export const OwnerRunnerDtoSchema = z.object({
+  id: z.number().int(),
+  label: z.string(),
+  harness: z.string().nullable(),
+  /** 'all' or the names of the bots it serves. */
+  bots: z.union([z.literal('all'), z.array(z.string())]),
+  connected: z.boolean(),
+  lastSeenAt: IsoDateSchema.nullable(),
+});
+
+export type OwnerRunnerDto = z.infer<typeof OwnerRunnerDtoSchema>;
+
+export const OwnerRunnersDtoSchema = z.object({ runners: z.array(OwnerRunnerDtoSchema) });
+
+export type OwnerRunnersDto = z.infer<typeof OwnerRunnersDtoSchema>;
+
 /** One of the viewer's bots on their dashboard: where it plays, what it is doing, how it fared. */
 export const OwnerBotDtoSchema = z.object({
   id: z.number().int(),
