@@ -1,18 +1,31 @@
+import { randomBytes } from 'node:crypto';
 import { apiErrorBody, HTTP_STATUS_BY_ERROR_CODE } from '@chess-goat/shared';
 import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import type { UserRow } from '../../src/db/schema';
+import { runners, turnLeases, users, type UserRow } from '../../src/db/schema';
 import { createOwnerToken, revokeOwnerToken } from '../../src/domain/ownerTokens';
 import { DomainError } from '../../src/domain/errors';
-import { scopeAuthInfo, type McpCall } from '../../src/mcp/context';
+import { playMove } from '../../src/domain/games';
+import { TURN_CALL_BUDGET } from '../../src/domain/turnLeases';
+import { issueTurnToken } from '../../src/domain/turnTokens';
+import { scopeAuthInfo, type McpCall, type TurnCall } from '../../src/mcp/context';
 import { mcpEndpoint } from '../../src/mcp/routes';
-import { MCP_INSTRUCTIONS } from '../../src/mcp/server';
-import { registerTool } from '../../src/mcp/tool';
+import { MCP_INSTRUCTIONS, TURN_INSTRUCTIONS } from '../../src/mcp/server';
+import { registerTool, registerTurnTool } from '../../src/mcp/tool';
 import type { TestApi } from '../helpers/api';
 import { openTestDb, truncateAll } from '../helpers/db';
-import { insertUser } from '../helpers/fixtures';
-import { callTool, mcpCall, openListen, resultText, startTestMcp } from '../helpers/mcp';
+import { insertBot, insertGame, insertGroup, insertUser } from '../helpers/fixtures';
+import {
+  callTool,
+  claimFor,
+  mcpCall,
+  openListen,
+  resultText,
+  startTestMcp,
+  type ToolResult,
+} from '../helpers/mcp';
 
 const { db, close } = openTestDb();
 let api: TestApi;
@@ -207,7 +220,7 @@ describe('registerTool', () => {
     return {
       request: (_path: string, init: RequestInit) =>
         handler.fetch(new Request('http://test/mcp', init), {
-          authInfo: scopeAuthInfo({ deps: api.deps, owner }),
+          authInfo: scopeAuthInfo({ surface: 'owner', deps: api.deps, owner }),
         }),
     };
   };
@@ -286,6 +299,261 @@ describe('/mcp listen streams', () => {
     let done = false;
     while (!done) done = (await reader.read()).done;
     expect(done).toBe(true);
+  });
+});
+
+describe('/mcp turn surface', () => {
+  /** A bot of `owner` on the move (White) against a person: one claimable move turn. */
+  const botOnMove = async () => {
+    const group = await insertGroup(db);
+    const bot = await insertBot(db, owner);
+    const human = await insertUser(db);
+    const game = await insertGame(db, group.id, bot.id, human.id);
+    return { bot, game };
+  };
+
+  const OWNER_TOOLS = [
+    'list_bots',
+    'create_bot',
+    'update_bot',
+    'delete_bot',
+    'list_my_groups',
+    'add_bot_to_group',
+    'remove_bot_from_group',
+    'get_game',
+    'get_profile',
+    'get_inbox',
+    'make_move',
+    'game_action',
+    'set_premoves',
+    'find_bots',
+    'challenge_bot',
+    'respond_to_challenge',
+  ];
+
+  const toolNames = (reply: Awaited<ReturnType<typeof mcpCall>>) =>
+    ((reply.response?.result?.tools ?? []) as { name: string }[]).map((t) => t.name);
+
+  it('lists no owner tools to a turn token', async () => {
+    const { bot } = await botOnMove();
+    const { token: turnToken } = await claimFor(api, bot);
+    const reply = await mcpCall(api.app, turnToken, 'tools/list');
+    expect(reply.status).toBe(200);
+    expect(toolNames(reply)).not.toContain('list_bots');
+    expect(toolNames(reply)).toEqual([]);
+  });
+
+  it('still lists the owner tools, unchanged, to an owner token', async () => {
+    const reply = await mcpCall(api.app, token, 'tools/list');
+    expect(toolNames(reply).sort()).toEqual([...OWNER_TOOLS].sort());
+  });
+
+  it('gives the turn instructions over a turn token, to initialize and to server/discover', async () => {
+    const { bot } = await botOnMove();
+    const { token: turnToken } = await claimFor(api, bot);
+    // A 2025-06-18 client's initialize, as it sends it: no `_meta` envelope.
+    const res = await api.app.request('/mcp', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${turnToken}`,
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2025-06-18',
+          capabilities: {},
+          clientInfo: { name: 'test', version: '1' },
+        },
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain(JSON.stringify(TURN_INSTRUCTIONS));
+    const discover = await mcpCall(api.app, turnToken, 'server/discover');
+    expect(discover.response?.result?.instructions).toBe(TURN_INSTRUCTIONS);
+    expect(TURN_INSTRUCTIONS).toBe(
+      'You are playing one turn for a Chess Goat bot. Your instructions are in the message you were given. Use only the tools listed, then stop.',
+    );
+  });
+
+  it('refuses a runner credential at /mcp with 401', async () => {
+    expectBearerChallenge(
+      await mcpCall(api.app, `cgrun_${randomBytes(32).toString('base64url')}`, 'tools/list'),
+    );
+  });
+
+  it('refuses a turn token once its runner is revoked', async () => {
+    const { bot } = await botOnMove();
+    const { token: turnToken, runner } = await claimFor(api, bot);
+    expect((await mcpCall(api.app, turnToken, 'tools/list')).status).toBe(200);
+    await db.delete(runners).where(eq(runners.id, runner.id));
+    const reply = await mcpCall(api.app, turnToken, 'tools/list');
+    expectBearerChallenge(reply);
+    expect(reply.body).toEqual(apiErrorBody('unauthorized', 'an owner token is required'));
+  });
+
+  it('refuses a turn token for a deleted bot', async () => {
+    const { bot } = await botOnMove();
+    const { token: turnToken } = await claimFor(api, bot);
+    await db.update(users).set({ deletedAt: new Date() }).where(eq(users.id, bot.id));
+    expectBearerChallenge(await mcpCall(api.app, turnToken, 'tools/list'));
+  });
+
+  it('refuses a turn token whose lease expired', async () => {
+    const { bot } = await botOnMove();
+    const { token: turnToken, lease } = await claimFor(api, bot);
+    await db
+      .update(turnLeases)
+      .set({ leasedUntil: new Date(Date.now() - 1000) })
+      .where(eq(turnLeases.id, lease.id));
+    expectBearerChallenge(await mcpCall(api.app, turnToken, 'tools/list'));
+  });
+
+  it('refuses a token from an earlier claim of the same lease', async () => {
+    const { bot } = await botOnMove();
+    const first = await claimFor(api, bot);
+    // Run out two minutes ago, so its 60 s retry delay has passed and the turn is claimable again.
+    await db
+      .update(turnLeases)
+      .set({ leasedUntil: new Date(Date.now() - 120_000) })
+      .where(eq(turnLeases.id, first.lease.id));
+    const second = await claimFor(api, bot);
+    expect(second.lease.id).toBe(first.lease.id);
+    expect(second.lease.claimSeq).toBe(first.lease.claimSeq + 1);
+    expectBearerChallenge(await mcpCall(api.app, first.token, 'tools/list'));
+    expect((await mcpCall(api.app, second.token, 'tools/list')).status).toBe(200);
+  });
+
+  it("refuses a turn token whose bot is not the lease's", async () => {
+    const { bot } = await botOnMove();
+    const other = await insertBot(db, owner);
+    const { lease } = await claimFor(api, bot);
+    const forged = issueTurnToken(api.config.SESSION_SECRET, {
+      leaseId: lease.id,
+      botId: other.id,
+      seq: lease.claimSeq,
+      exp: Math.floor(lease.leasedUntil!.getTime() / 1000),
+    });
+    expectBearerChallenge(await mcpCall(api.app, forged, 'tools/list'));
+  });
+
+  it('refuses a turn token signed with another secret', async () => {
+    const { bot } = await botOnMove();
+    const { lease } = await claimFor(api, bot);
+    const forged = issueTurnToken('x'.repeat(32), {
+      leaseId: lease.id,
+      botId: bot.id,
+      seq: lease.claimSeq,
+      exp: Math.floor(lease.leasedUntil!.getTime() / 1000),
+    });
+    expectBearerChallenge(await mcpCall(api.app, forged, 'tools/list'));
+  });
+});
+
+describe('registerTurnTool', () => {
+  /** `/mcp` with two probe tools on every turn server: one plain, one allowed after the move. */
+  const probeEndpoint = () => {
+    const runs: TurnCall[] = [];
+    const probe = (name: string, allowResolved: boolean) => ({
+      name,
+      description: name,
+      input: z.object({}),
+      output: z.object({ leaseId: z.number() }),
+      annotations: { readOnlyHint: true },
+      allowResolved,
+      run: async (call: TurnCall) => {
+        runs.push(call);
+        return { leaseId: call.lease.id };
+      },
+      text: (o: { leaseId: number }) => `lease ${o.leaseId}`,
+    });
+    const endpoint = mcpEndpoint(api.ctx, {
+      turnTools: (server) => {
+        registerTurnTool(server, probe('probe', false));
+        registerTurnTool(server, probe('probe_after', true));
+      },
+    });
+    return { app: endpoint.routes, runs };
+  };
+
+  const onMove = async () => {
+    const group = await insertGroup(db);
+    const bot = await insertBot(db, owner);
+    const human = await insertUser(db);
+    const game = await insertGame(db, group.id, bot.id, human.id);
+    return { bot, game, ...(await claimFor(api, bot)) };
+  };
+
+  it('runs a tool with the bot and lease the token named', async () => {
+    const { app, runs } = probeEndpoint();
+    const { bot, lease, token: turnToken } = await onMove();
+    const result = await callTool(app, turnToken, 'probe');
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toEqual({ leaseId: lease.id });
+    expect(runs[0]?.bot.id).toBe(bot.id);
+    expect(runs[0]?.lease.claimSeq).toBe(lease.claimSeq);
+  });
+
+  it('refuses the 31st call with the budget text', async () => {
+    const { app, runs } = probeEndpoint();
+    const { token: turnToken, lease } = await onMove();
+    for (let i = 0; i < TURN_CALL_BUDGET; i += 1) {
+      expect((await callTool(app, turnToken, 'probe')).isError).toBeFalsy();
+    }
+    const refused = await callTool(app, turnToken, 'probe');
+    expect(refused.isError).toBe(true);
+    expect(resultText(refused)).toBe('This session has used its 30 tool calls; stop.');
+    expect(runs).toHaveLength(TURN_CALL_BUDGET);
+    const [row] = await db.select().from(turnLeases).where(eq(turnLeases.id, lease.id));
+    expect(row?.callsUsed).toBe(TURN_CALL_BUDGET);
+  });
+
+  it('refuses a call after the turn resolved as a tool error, unless the tool allows it', async () => {
+    const { app, runs } = probeEndpoint();
+    const { bot, game, token: turnToken } = await onMove();
+    await playMove(api.deps, { gameId: game.publicId, userId: bot.id, move: 'e4', expectedPly: 0 });
+    const reply = await mcpCall(app, turnToken, 'tools/call', { name: 'probe', arguments: {} });
+    expect(reply.status).toBe(200);
+    const refused = reply.response?.result as ToolResult;
+    expect(refused.isError).toBe(true);
+    expect(resultText(refused)).toBe('This turn has ended; stop.');
+    expect(runs).toHaveLength(0);
+    const allowed = await callTool(app, turnToken, 'probe_after');
+    expect(allowed.isError).toBeFalsy();
+    expect(runs).toHaveLength(1);
+  });
+
+  it('counts a call whose run refuses', async () => {
+    const { token: turnToken, lease } = await onMove();
+    const endpoint = mcpEndpoint(api.ctx, {
+      turnTools: (server) =>
+        registerTurnTool(server, {
+          name: 'refuse',
+          description: 'refuse',
+          input: z.object({}),
+          output: z.object({}),
+          annotations: { readOnlyHint: true },
+          run: async () => {
+            throw new DomainError('not_found', 'unknown bot');
+          },
+          text: () => '',
+        }),
+    });
+    const result = await callTool(endpoint.routes, turnToken, 'refuse');
+    expect(result.isError).toBe(true);
+    const [row] = await db.select().from(turnLeases).where(eq(turnLeases.id, lease.id));
+    expect(row?.callsUsed).toBe(1);
+  });
+
+  it('does not offer turn tools to an owner token', async () => {
+    const { app } = probeEndpoint();
+    const reply = await mcpCall(app, token, 'tools/list');
+    expect(
+      ((reply.response?.result?.tools ?? []) as { name: string }[]).map((t) => t.name),
+    ).not.toContain('probe');
   });
 });
 

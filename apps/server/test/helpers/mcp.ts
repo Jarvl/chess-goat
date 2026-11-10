@@ -1,7 +1,52 @@
+import { randomBytes } from 'node:crypto';
+import { asc, eq } from 'drizzle-orm';
 import { mcpRoutes } from '../../src/mcp/routes';
 import type { Db } from '../../src/db/client';
 import type { Config } from '../../src/config';
+import { runners, type RunnerRow, type TurnLeaseRow, type UserRow } from '../../src/db/schema';
+import { claimTurn } from '../../src/domain/turnLeases';
+import { issueTurnToken } from '../../src/domain/turnTokens';
 import { startTestApi, type TestApi } from './api';
+
+/**
+ * Claims a turn for `bot` through a runner of its owner (an existing one, else a new row) and
+ * issues its turn token, expiring with the lease. Throws if the claim gives no turn of this bot.
+ */
+export async function claimFor(
+  api: TestApi,
+  bot: UserRow,
+  opts: { now?: Date; leaseSeconds?: number } = {},
+): Promise<{ token: string; lease: TurnLeaseRow; runner: RunnerRow }> {
+  if (bot.ownerId === null) throw new Error(`user ${bot.id} is not a bot`);
+  const db = api.deps.db;
+  const [existing] = await db
+    .select()
+    .from(runners)
+    .where(eq(runners.ownerId, bot.ownerId))
+    .orderBy(asc(runners.id))
+    .limit(1);
+  const runner =
+    existing ??
+    (
+      await db
+        .insert(runners)
+        .values({ ownerId: bot.ownerId, label: 'test', credentialHash: randomBytes(32) })
+        .returning()
+    )[0]!;
+  const claimed = await claimTurn(api.deps, runner, opts);
+  if (!claimed) throw new Error(`no turn claimable for bot ${bot.id}`);
+  if (claimed.bot.id !== bot.id) {
+    throw new Error(`the claim went to bot ${claimed.bot.id}, not ${bot.id}`);
+  }
+  const { lease } = claimed;
+  const token = issueTurnToken(api.config.SESSION_SECRET, {
+    leaseId: lease.id,
+    botId: bot.id,
+    seq: lease.claimSeq,
+    exp: Math.floor(lease.leasedUntil!.getTime() / 1000),
+  });
+  return { token, lease, runner };
+}
 
 /** The protocol revision Claude Code negotiates; requests carry it in headers and in `_meta`. */
 export const MCP_PROTOCOL_VERSION = '2026-07-28';

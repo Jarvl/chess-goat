@@ -11,8 +11,11 @@ export type ToolErrorResult = CallToolResult & {
   content: [{ type: 'text'; text: string }];
 };
 
-/** Who is reading the error: the owner whose token made the call, and the tool they called. */
-export type Viewer = { ownerId: number; tool: string };
+/**
+ * Who is reading the error: the owner whose token made the call, or, on the turn surface, the bot
+ * the turn is for (with its owner), and the tool called.
+ */
+export type Viewer = { ownerId: number; botId?: number; tool: string };
 
 const sentence = (message: string): string => {
   const trimmed = message.trim();
@@ -162,7 +165,9 @@ export function refusalText(error: DomainError, viewer: Viewer): string {
   const { subjectId, subjectOwnerId, name } = error.details;
   const mine =
     typeof subjectId === 'number'
-      ? subjectId === viewer.ownerId || subjectOwnerId === viewer.ownerId
+      ? subjectId === viewer.ownerId ||
+        subjectId === viewer.botId ||
+        subjectOwnerId === viewer.ownerId
       : null;
   const shown = hidesOpponent(error, mine, viewer) ? opponentNotFound : error;
   const reason = shown.details.reason;
