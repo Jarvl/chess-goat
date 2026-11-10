@@ -4,12 +4,14 @@ import { z } from 'zod';
 export const TURN_TOKEN_PREFIX = 'cgturn_';
 
 const MAX_TOKEN_LENGTH = 512;
+const SIGNATURE = /^[A-Za-z0-9_-]{43}$/;
+const id = z.number().int().nonnegative().safe();
 
 const Claim = z.object({
-  leaseId: z.number().int(),
-  botId: z.number().int(),
-  seq: z.number().int(),
-  exp: z.number().int(),
+  leaseId: id,
+  botId: id,
+  seq: id,
+  exp: id,
 });
 
 /** A key of its own, so a turn token can never verify as a session token (or the reverse). */
@@ -36,11 +38,18 @@ export function verifyTurnToken(
   token: string,
   nowSeconds: number,
 ): { leaseId: number; botId: number; seq: number } | null {
-  if (token.length > MAX_TOKEN_LENGTH || !token.startsWith(TURN_TOKEN_PREFIX)) return null;
+  if (
+    typeof token !== 'string' ||
+    token.length > MAX_TOKEN_LENGTH ||
+    !token.startsWith(TURN_TOKEN_PREFIX)
+  )
+    return null;
   const parts = token.slice(TURN_TOKEN_PREFIX.length).split('.');
   if (parts.length !== 2) return null;
   const [body, signature] = parts as [string, string];
+  if (!SIGNATURE.test(signature)) return null;
   const given = Buffer.from(signature, 'base64url');
+  if (given.toString('base64url') !== signature) return null;
   const expected = sign(secret, body);
   if (given.length !== expected.length || !timingSafeEqual(given, expected)) return null;
   let payload: unknown;

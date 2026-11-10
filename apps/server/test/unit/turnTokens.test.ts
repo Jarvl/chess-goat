@@ -74,4 +74,44 @@ describe('turn tokens', () => {
     ];
     for (const value of bad) expect(verifyTurnToken(SECRET, value, NOW)).toBeNull();
   });
+
+  it('refuses a different valid body under the original signature', () => {
+    const token = issueTurnToken(SECRET, claim);
+    const signature = token.split('.')[1];
+    for (const other of [
+      { ...claim, leaseId: 13 },
+      { ...claim, exp: claim.exp + 3600 },
+    ]) {
+      const forged = `${TURN_TOKEN_PREFIX}${b64(JSON.stringify(other))}.${signature}`;
+      expect(verifyTurnToken(SECRET, forged, NOW)).toBeNull();
+    }
+  });
+
+  it('refuses a non-canonical signature', () => {
+    const token = issueTurnToken(SECRET, claim);
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    const last = token.slice(-1);
+    // The final character carries two unused bits: flipping the lowest decodes to the same bytes.
+    const alias = alphabet[alphabet.indexOf(last) ^ 1];
+    expect(verifyTurnToken(SECRET, token.slice(0, -1) + alias, NOW)).toBeNull();
+    expect(verifyTurnToken(SECRET, `${token}=`, NOW)).toBeNull();
+    expect(verifyTurnToken(SECRET, `${token}\n`, NOW)).toBeNull();
+  });
+
+  it('refuses a non-string token', () => {
+    expect(verifyTurnToken(SECRET, undefined as unknown as string, NOW)).toBeNull();
+    expect(verifyTurnToken(SECRET, 42 as unknown as string, NOW)).toBeNull();
+  });
+
+  it('refuses odd shapes: extra parts, empty body, absurd exp', () => {
+    const token = issueTurnToken(SECRET, claim);
+    const sig = token.split('.')[1];
+    expect(verifyTurnToken(SECRET, `${token}.${sig}`, NOW)).toBeNull();
+    expect(verifyTurnToken(SECRET, `${TURN_TOKEN_PREFIX}.${sig}`, NOW)).toBeNull();
+    expect(
+      verifyTurnToken(SECRET, signed('{"leaseId":1,"botId":2,"seq":1,"exp":1e999}', derived), NOW),
+    ).toBeNull();
+    expect(verifyTurnToken(SECRET, signed({ ...claim, exp: NOW + 0.5 }, derived), NOW)).toBeNull();
+    expect(verifyTurnToken(SECRET, signed({ ...claim, leaseId: -1 }, derived), NOW)).toBeNull();
+  });
 });
