@@ -338,8 +338,16 @@ describe('Bots', () => {
     });
 
     it('leaves the token card working when the runners fail to load', async () => {
-      const r = renderApp(() => <Bots />, server(null));
+      const base = server(null);
+      const r = renderApp(
+        () => <Bots />,
+        (req) =>
+          req.path === '/api/me/runners'
+            ? { status: 500, body: { error: { code: 'internal', message: 'boom' } } }
+            : base(req),
+      );
       await r.flush();
+      expect(r.calls.some((c) => c.method === 'GET' && c.path === '/api/me/runners')).toBe(true);
       expect(r.root.querySelector('[data-card="runners"]')).toBeNull();
       expect(r.root.querySelector('[data-card="owner-token"]')).not.toBeNull();
     });
@@ -389,6 +397,65 @@ describe('Bots', () => {
       await r.flush();
       expect(r.root.querySelector('[data-runner="1"]')).not.toBeNull();
       expect(document.querySelector('.toast')?.textContent).toContain(t('app.common.error'));
+    });
+
+    it('names the runner in each revoke button and in the confirmation', async () => {
+      const r = renderApp(() => <Bots />, withRunners([connected, never], ok));
+      await r.flush();
+      const names = [...r.root.querySelectorAll('[data-action="revoke-runner"]')].map((b) =>
+        b.getAttribute('aria-label'),
+      );
+      expect(names).toEqual([
+        t('app.bots.runner_revoke_label', { label: 'Laptop' }),
+        t('app.bots.runner_revoke_label', { label: 'Old desktop' }),
+      ]);
+      await r.click('[data-runner="2"] [data-action="revoke-runner"]');
+      expect(window.__tg!.popups.at(-1)!.message).toBe(
+        t('app.bots.runner_revoke_confirm', { label: 'Old desktop' }),
+      );
+    });
+
+    it('disables every revoke button while one is pending, and sends one request', async () => {
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      const base = withRunners([connected, never], ok);
+      const r = renderApp(
+        () => <Bots />,
+        async (req) => {
+          if (req.method === 'DELETE') await held;
+          return base(req);
+        },
+      );
+      await r.flush();
+      const buttons = () => [
+        ...r.root.querySelectorAll<HTMLButtonElement>('[data-action="revoke-runner"]'),
+      ];
+      await r.click('[data-runner="1"] [data-action="revoke-runner"]');
+      expect(buttons().map((b) => b.disabled)).toEqual([true, true]);
+      window.__tg!.answerPopup('confirm');
+      await r.flush();
+      expect(buttons().map((b) => b.disabled)).toEqual([true, true]);
+      await r.click('[data-runner="2"] [data-action="revoke-runner"]');
+      expect(writes(r)).toHaveLength(1);
+      release();
+      await r.flush();
+      expect(buttons().map((b) => b.disabled)).toEqual([false]);
+    });
+
+    it('counts a runner that is already gone as revoked', async () => {
+      const r = renderApp(
+        () => <Bots />,
+        withRunners([connected], () => ({
+          status: 404,
+          body: { error: { code: 'not_found', message: 'runner not found' } },
+        })),
+      );
+      await r.flush();
+      await r.click('[data-action="revoke-runner"]');
+      window.__tg!.answerPopup('confirm');
+      await r.flush();
+      expect(r.root.querySelector('[data-card="runners"]')).toBeNull();
+      expect(document.querySelector('.toast')?.textContent).toContain(t('app.bots.runner_revoked'));
     });
   });
 });

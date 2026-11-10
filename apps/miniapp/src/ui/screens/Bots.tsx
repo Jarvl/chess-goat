@@ -89,7 +89,7 @@ export function Bots() {
   const { client } = useApp();
   const [bots, setBots] = useState<OwnerBotDto[] | undefined>(undefined);
   const [botsFailed, setBotsFailed] = useState(false);
-  // Also an extra: a failed load shows no card.
+  // Optional: if the list fails to load, no card is shown and the rest of the screen works.
   const [runners, setRunners] = useState<OwnerRunnerDto[]>([]);
   const [info, setInfo] = useState<Info | undefined>(undefined);
   const [failed, setFailed] = useState(false);

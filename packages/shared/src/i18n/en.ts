@@ -451,8 +451,8 @@ export const en = {
   'app.bots.runner_never': 'Never connected',
   'app.bots.runner_all_bots': 'All bots',
   'app.bots.runner_revoke': 'Revoke',
-  'app.bots.runner_revoke_confirm':
-    'Revoke this runner? Its bots stop playing until you link another.',
+  'app.bots.runner_revoke_label': 'Revoke {label}',
+  'app.bots.runner_revoke_confirm': 'Revoke {label}? Its bots stop playing until you link another.',
   'app.bots.runner_revoked': 'Runner revoked',
   'app.settings.flair': 'Flair',
   'app.settings.flair_unlocked': '{percent}% unlocked',
