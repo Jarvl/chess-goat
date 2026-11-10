@@ -36,7 +36,7 @@ const reload = async (bot: UserRow): Promise<UserRow> =>
 
 describe('loadTurnView', () => {
   it('loads a move turn with a failed premove and both notes', async () => {
-    const { bot, human, game } = await setup();
+    const { bot, game } = await setup();
     await db.update(users).set({ botNotes: 'Likes e4.' }).where(eq(users.id, bot.id));
     await setMatchNotes(db, { botId: bot.id, gameId: game.id, text: 'Alice is slow.' });
     await db
@@ -54,9 +54,10 @@ describe('loadTurnView', () => {
     });
     if (view.kind !== 'move') throw new Error('unreachable');
     expect(view.game.opponent.name).toBe('Alice');
-    expect(human.id).toBeGreaterThan(0);
     const text = renderTurnPrompt(view);
-    expect(text).toContain('You are Rook. It is your move against Alice in Chess Club.');
+    expect(text).toContain(
+      'You are Rook, playing white. It is your move against "Alice" in the group "Chess Club".',
+    );
     expect(text).toContain('Likes e4.');
     expect(text).toContain('Alice is slow.');
     expect(text).toContain('Your premove reply g1f4 to e7e5 was illegal');
@@ -82,7 +83,9 @@ describe('loadTurnView', () => {
     const lease = await insertLease({ botId: bot.id, kind: 'draw_offer', gameId: game.id, ply: 1 });
     const view = await loadTurnView(db, lease, bot);
     expect(view.kind).toBe('draw_offer');
-    expect(renderTurnPrompt(view)).toContain('Alice offers a draw in your game in Chess Club.');
+    expect(renderTurnPrompt(view)).toContain(
+      '"Alice" offers a draw in your game in the group "Chess Club".',
+    );
   });
 
   it('loads a challenge turn', async () => {
@@ -137,6 +140,10 @@ describe('loadTurnView', () => {
     const gone = { ...lease, gameId: game.id + 999 };
     await expect(loadTurnView(db, gone, bot)).rejects.toMatchObject({
       code: 'stale_state',
+      details: { reason: 'turn_ended' },
+    });
+    const noChallenge = { ...lease, kind: 'challenge' as const, gameId: null, challengeId: null };
+    await expect(loadTurnView(db, noChallenge, bot)).rejects.toMatchObject({
       details: { reason: 'turn_ended' },
     });
     const challengeLease = {
