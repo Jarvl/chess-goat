@@ -115,10 +115,80 @@ describe('the calling bot’s own standing', () => {
     expect(text(error('blocked', mine))).toContain('blocked this bot or its owner');
   });
 
-  it('still names an opponent’s standing on a turn', () => {
-    expect(text(error('bot_not_in_group', theirs), { ...turnViewer, tool: 'x' })).toBe(
-      'Knightbot is no longer in that group.',
-    );
+  it('hides any other bot’s standing on a turn, a sibling of the same owner included', () => {
+    const sibling = { subjectId: 43, subjectOwnerId: OWNER, name: 'Pawn' };
+    const notFound = 'Opponent bot not found. Use a bot id from find_bots for that group.';
+    for (const reason of ['bot_not_in_group', 'owner_not_member', 'blocked']) {
+      for (const subject of [sibling, theirs]) {
+        const out = text(error(reason, subject), turnViewer);
+        expect(out).toBe(notFound);
+        expect(out).not.toContain('add_bot_to_group');
+        expect(out).not.toContain('list_my_groups');
+      }
+    }
+  });
+
+  it('leaves a sibling’s standing as it was for the owner', () => {
+    const sibling = { subjectId: 43, subjectOwnerId: OWNER, name: 'Pawn' };
+    expect(text(error('bot_not_in_group', sibling))).toContain('add_bot_to_group');
+    expect(text(error('owner_not_member', sibling))).toContain('list_my_groups');
+  });
+});
+
+/** Tools only an owner has: a turn session is never pointed at one. */
+const OWNER_ONLY_TOOLS = [
+  'add_bot_to_group',
+  'remove_bot_from_group',
+  'list_my_groups',
+  'list_bots',
+  'create_bot',
+  'update_bot',
+  'delete_bot',
+  'link_runner',
+  'list_runners',
+  'revoke_runner',
+  'get_profile',
+];
+
+/**
+ * Reasons whose text names an owner-only tool but that no turn tool can throw: they come from the
+ * owner-surface tools (manage, runners, find_bots' owner gate, get_profile).
+ */
+const OWNER_SURFACE_ONLY = new Set([
+  'bot_not_found',
+  'too_many_link_codes',
+  'too_many_runners',
+  'link_code_invalid',
+  'runner_not_found',
+  'bot_name_taken',
+  'invalid_bot_name',
+  'persona_too_long',
+  'invalid_tagline',
+  'too_many_bots',
+  'not_a_human_owner',
+  'group_not_found',
+]);
+
+describe('a turn session is never pointed at an owner tool', () => {
+  const turnViewer: Viewer = { ownerId: OWNER, botId: 40, tool: 'challenge_bot' };
+  const sibling = { subjectId: 43, subjectOwnerId: OWNER, name: 'Pawn' };
+
+  it('in any refusal a turn tool can reach', () => {
+    const offenders: string[] = [];
+    for (const key of Object.keys(REFUSALS)) {
+      if (OWNER_SURFACE_ONLY.has(key)) continue;
+      for (const subject of [mine, sibling, theirs]) {
+        for (const tool of ['challenge_bot', 'find_bots', 'make_move']) {
+          const out = text(new DomainError('forbidden', 'refused', { reason: key, ...subject }), {
+            ...turnViewer,
+            tool,
+          });
+          for (const name of OWNER_ONLY_TOOLS)
+            if (out.includes(name)) offenders.push(`${key}: ${name}`);
+        }
+      }
+    }
+    expect([...new Set(offenders)]).toEqual([]);
   });
 });
 

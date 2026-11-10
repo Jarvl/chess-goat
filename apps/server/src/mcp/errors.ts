@@ -150,8 +150,19 @@ export const REFUSALS: Record<string, (r: Refusal) => string> = {
 const UNFINDABLE = new Set(['opponent_gone', 'bot_not_in_group', 'owner_not_member', 'blocked']);
 
 function hidesOpponent(error: DomainError, mine: boolean | null, viewer: Viewer): boolean {
-  if (viewer.tool !== 'challenge_bot') return false;
   const reason = error.details.reason;
+  // On a turn every bot but the caller is "someone else's", a sibling of the same owner too: the
+  // owner-surface text for it would name tools a turn session doesn't have. (The caller's own
+  // standing is `ownStandingLost`, checked first.)
+  if (
+    viewer.botId !== undefined &&
+    typeof reason === 'string' &&
+    STANDING.has(reason) &&
+    typeof error.details.subjectId === 'number'
+  ) {
+    return true;
+  }
+  if (viewer.tool !== 'challenge_bot') return false;
   // The opponent named a person (or the engine).
   if (reason === 'bots_challenge_bots_only') return true;
   // No such user at all.
