@@ -132,6 +132,8 @@ export const REFUSALS: Record<string, (r: Refusal) => string> = {
   no_claim: hint('Call get_game to see what the bot can do now.'),
   abort_unavailable: hint('Play on, or resign with game_action.'),
   rate_limited: hint('Wait a minute, then try again.'),
+  turn_ended: () => 'This turn has ended; stop.',
+  turn_budget_spent: () => 'This session has used its 30 tool calls; stop.',
 };
 
 /**

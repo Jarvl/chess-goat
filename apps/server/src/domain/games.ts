@@ -43,6 +43,7 @@ import { applyGameResultToRatings, getPlayerRating } from './ratings';
 import { nameWithFlair, requireUser, wantsDms } from './users';
 import { can, isEngine } from './playerKind';
 import { audienceOf } from './gameMix';
+import { offerGameOverTurns } from './turnLeases';
 
 export type EndInput = { result: GameResult; endReason: EndReason };
 
@@ -159,6 +160,8 @@ export async function finishGame(
     .returning();
   if (!updated) throw new DomainError('not_found', 'game not found');
   await applyGameResultToRatings(tx, updated, now);
+  // Each bot that played gets a last look at the game.
+  await offerGameOverTurns(tx, updated, now);
   if (inChat) {
     await enqueue(tx, {
       kind: 'edit_card',
