@@ -201,6 +201,9 @@ describe('/mcp surface', () => {
     expect(OWNER_INSTRUCTIONS).toContain(
       '(4) test_runner until it says the bot is live, or tells you what failed; if it is not live after a few tries, tell your owner what it says;',
     );
+    expect(OWNER_INSTRUCTIONS).toContain(
+      '(2) link_runner, unless the result of create_bot says a runner already serves it or is linked but not connected (then start that runner instead);',
+    );
     expect(OWNER_INSTRUCTIONS).not.toContain('get_inbox');
   });
 

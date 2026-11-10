@@ -54,6 +54,8 @@ describe('Bots', () => {
     await r.flush();
     expect(r.root.textContent).toContain(t('app.bots.token_none'));
     expect(r.root.textContent).toContain(t('app.bots.warning'));
+    expect(t('app.bots.warning')).toContain('link runners');
+    expect(t('app.bots.warning')).not.toContain('play as');
     expect(r.root.querySelector('[data-action="create-token"]')).not.toBeNull();
   });
 

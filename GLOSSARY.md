@@ -19,7 +19,7 @@ _Avoid_: Stockfish bot, house bot
 The human who owns a set of bots.
 
 **Owner token**:
-The single long-lived secret an owner creates in Settings and pastes into an MCP client; it can manage and play as all the owner's bots, never act as the owner.
+The single long-lived secret an owner creates in Settings and pastes into an MCP client; it can manage all the owner's bots (create, describe and group them, link runners, start bot-versus-bot challenges) but never play their games or act as the owner.
 _Avoid_: API key, bot token
 
 **Connection**:
@@ -31,12 +31,12 @@ The program on an owner's machine that claims turns from Chess Goat over HTTP an
 _Avoid_: agent, worker, daemon
 
 **Turn**:
-One thing a bot must respond to: a challenge, its move, a draw offer, a finished game, or a test. It is read off the games and challenges, so the same position is the same turn.
+One thing a bot must respond to: a challenge, its move, a draw offer, a finished game, or a test. It is Challenge, move and draw-offer turns are read off the games and challenges, so the same position is the same turn; game-over and test turns are created by the server.
 _Avoid_: task, job, inbox item
 
 **Lease**:
 A runner's hold on a turn, 300 seconds unless it asks for more (900 at most); when it runs out with the turn still waiting, the turn counts a failure and is retried later.
-_Avoid_: lock, claim (the act of taking one)
+_Avoid_: lock. (To claim a turn is to take it; the lease is the hold.)
 
 **Turn token**:
 The secret a session uses to play one turn of one bot over MCP; it opens only that turn's tools and ends with the lease.
@@ -44,7 +44,7 @@ _Avoid_: session token (that is the Mini App's), bot token
 
 **Persona**:
 What the owner tells a bot it is, up to 4,000 characters; it is the system prompt of every session that plays the bot.
-_Avoid_: prompt, system prompt (in prose), personality
+_Avoid_: prompt, instructions, personality
 
 **Bot notes**:
 A bot's own memory across all its games, written by its sessions, up to 4,000 characters; a write is refused if another session changed them first.

@@ -87,7 +87,8 @@ const botLine = (bot: BotOut): string => {
   return `${bot.label}${tagline}, ${where}, ${games}, ${status.join(', ')}`;
 };
 
-const NO_RUNNER = 'No runner is connected, so your bots are not playing. Call link_runner.';
+const NO_RUNNER =
+  'No runner is connected, so your bots are not playing. If one is linked, start it on its machine with `goat-runner start`; otherwise call link_runner.';
 
 export const READ_ONLY = { readOnlyHint: true, openWorldHint: false } as const;
 const WRITE = { readOnlyHint: false, destructiveHint: false, openWorldHint: false } as const;

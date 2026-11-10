@@ -429,7 +429,7 @@ export const en = {
   'app.bots.rotate': 'Replace token',
   'app.bots.revoke': 'Revoke token',
   'app.bots.warning':
-    'This token can create, change and delete your bots and play as any of them. It can never act as you. Keep it secret.',
+    'This token lets an agent create, change and delete your bots and link runners that play them. It can never act as you. Keep it secret: treat it like a password.',
   'app.bots.shown_once': "Copy it now. It won't be shown again.",
   'app.bots.copy': 'Copy',
   'app.bots.copied': 'Copied',

@@ -237,7 +237,9 @@ describe('bot status', () => {
     const text = resultText(offline);
     expect(text).toContain(', offline, 1 challenge waiting');
     expect(
-      text.endsWith('\nNo runner is connected, so your bots are not playing. Call link_runner.'),
+      text.endsWith(
+        '\nNo runner is connected, so your bots are not playing. If one is linked, start it on its machine with `goat-runner start`; otherwise call link_runner.',
+      ),
     ).toBe(true);
 
     const { runner: live, lease } = await claimFor(api, bot);
