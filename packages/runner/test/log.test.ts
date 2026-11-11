@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { fileLogger, LOG_MAX_BYTES, readLogTail } from '../src/log.js';
+import { cleanLine, fileLogger, LOG_MAX_BYTES, readLogTail } from '../src/log.js';
 
 const posix = process.platform !== 'win32';
 let dir: string;
@@ -83,5 +83,49 @@ describe('readLogTail', () => {
     const big = `${'z'.repeat(300 * 1024)}\nlast line\n`;
     fs.writeFileSync(path.join(dir, 'runner.log'), big);
     expect(readLogTail(dir, 100)).toBe('last line');
+  });
+});
+
+describe('control characters', () => {
+  it('cleanLine replaces C0, DEL, C1 and the Unicode line separators', () => {
+    expect(cleanLine('a\x1b[2Jb\bc\x00d\x7fe\x85f\u2028g\u2029h')).toBe('a [2Jb c d e f g h');
+  });
+
+  it('fileLogger writes none of them', () => {
+    fileLogger(dir).info('x\x1b[2Jy\bz\u2028w');
+    const text = read('runner.log');
+    expect(text).toMatch(/INFO x {1}\[2Jy z w\n$/);
+    // eslint-disable-next-line no-control-regex
+    expect(text).not.toMatch(/[\x00-\x09\x0b-\x1f\x7f-\x9f\u2028\u2029]/);
+  });
+
+  it('readLogTail cleans a file that already holds them but keeps the line breaks', () => {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'runner.log'), 'one \x1b[31mred\x1b[0m\ntwo\u2028x\n');
+    expect(readLogTail(dir, 10)).toBe('one  [31mred [0m\ntwo x');
+  });
+
+  it('caps one line at 8000 characters with an ellipsis', () => {
+    fileLogger(dir).info('q'.repeat(20_000));
+    const line = read('runner.log').trimEnd();
+    expect(line.endsWith('q…')).toBe(true);
+    expect(line.length).toBeLessThan(8100);
+  });
+});
+
+describe('readLogTail window', () => {
+  it('returns the last 256 KB of a single line longer than the window', () => {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'runner.log'), `${'y'.repeat(400 * 1024)}\n`);
+    const t = readLogTail(dir, 5);
+    expect(t.length).toBe(256 * 1024 - 1);
+    expect(t).toMatch(/^y+$/);
+  });
+
+  it('keeps a complete line when the window starts exactly on a boundary', () => {
+    fs.mkdirSync(dir, { recursive: true });
+    const last = `${'b'.repeat(256 * 1024 - 1)}\n`;
+    fs.writeFileSync(path.join(dir, 'runner.log'), `first\n${last}`);
+    expect(readLogTail(dir, 5)).toBe(`${'b'.repeat(256 * 1024 - 1)}`);
   });
 });

@@ -140,6 +140,9 @@ importers:
       tsup:
         specifier: ^8.5.0
         version: 8.5.1(postcss@8.5.32)(tsx@4.23.15)(typescript@6.0.3)
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
 
   packages/shared:
     dependencies:

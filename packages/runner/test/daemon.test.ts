@@ -3,7 +3,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { claimPidFile, daemonStatus, startDaemon, stopDaemon } from '../src/daemon.js';
+import spawn from 'cross-spawn';
+import {
+  AlreadyRunningError,
+  claimPidFile,
+  daemonStatus,
+  startDaemon,
+  stopDaemon,
+} from '../src/daemon.js';
 
 const FAKE = fileURLToPath(new URL('./support/fakeDaemon.mjs', import.meta.url));
 const posix = process.platform !== 'win32';
@@ -47,6 +54,12 @@ const deadPid = async () => {
   const c = spawn(process.execPath, ['-e', '0'], { stdio: 'ignore' });
   await new Promise((r) => c.on('close', r));
   return c.pid as number;
+};
+
+const iso = (ms: number) => new Date(ms).toISOString();
+const age = (secondsAgo: number) => {
+  const t = new Date(Date.now() - secondsAgo * 1000);
+  fs.utimesSync(pidFile(), t, t);
 };
 
 describe('daemon', () => {
@@ -102,8 +115,12 @@ describe('daemon', () => {
   it('treats a malformed pid file as stale', () => {
     write('not json');
     expect(daemonStatus(data).running).toBe(false);
+    expect(fs.existsSync(pidFile())).toBe(true); // fresh: it may still be being written
+    age(10);
+    expect(daemonStatus(data).running).toBe(false);
     expect(fs.existsSync(pidFile())).toBe(false);
     write({ pid: 'x' });
+    age(10);
     expect(daemonStatus(data).running).toBe(false);
   });
 });
@@ -143,5 +160,163 @@ describe('claimPidFile', () => {
     expect(fs.statSync(data).mode & 0o777).toBe(0o700);
     expect(fs.statSync(pidFile()).mode & 0o777).toBe(0o600);
     claim.release();
+  });
+});
+
+const WORKER = fileURLToPath(new URL('./support/claimWorker.ts', import.meta.url));
+const PKG = fileURLToPath(new URL('..', import.meta.url));
+describe('one runner at a time', () => {
+  it('lets exactly one of 8 simultaneous claimers win', { timeout: 30_000 }, async () => {
+    const startAt = Date.now() + 1500;
+    const outs = await Promise.all(
+      Array.from({ length: 8 }, () => {
+        const c = spawn(process.execPath, ['--import', 'tsx', WORKER, data, String(startAt)], {
+          cwd: PKG,
+          stdio: ['ignore', 'pipe', 'inherit'],
+        });
+        let out = '';
+        c.stdout?.on('data', (d) => (out += d));
+        return new Promise<string>((r) => c.on('close', () => r(out.trim())));
+      }),
+    );
+    expect(outs.filter((o) => o.startsWith('won'))).toHaveLength(1);
+    expect(outs.filter((o) => o === 'lost')).toHaveLength(7);
+  });
+
+  it('throws AlreadyRunningError for a live holder, and a repeat claim here is the same handle', () => {
+    write({ pid: process.ppid, since: iso(Date.now()), token: 'other' });
+    expect(() => claimPidFile(data)).toThrow(AlreadyRunningError);
+    expect(() => claimPidFile(data)).toThrow('goat-runner is already running');
+    fs.rmSync(pidFile());
+    const claim = claimPidFile(data);
+    expect(claimPidFile(data)).toBe(claim); // our own file: the same handle
+    claim.release();
+    expect(fs.existsSync(pidFile())).toBe(false);
+  });
+
+  it('does not delete a stale file that someone replaced after we read it', async () => {
+    // A live claim planted between our read and removal is simulated by a file that is stale
+    // (dead pid) but replaced mid-claim via the test seam.
+    write({ pid: await deadPid(), since: iso(Date.now()), token: 'old' });
+    const fresh = JSON.stringify({ pid: process.ppid, since: iso(Date.now()), token: 'new' });
+    expect(() => claimPidFile(data, { onStale: () => write(fresh) })).toThrow(AlreadyRunningError);
+    expect(fs.readFileSync(pidFile(), 'utf8')).toBe(fresh);
+  });
+
+  it('does not take a fresh half-written (empty) file for a stale one', () => {
+    write('');
+    expect(() => claimPidFile(data)).toThrow(AlreadyRunningError);
+    expect(fs.existsSync(pidFile())).toBe(true);
+    age(10); // an old malformed file is stale
+    claimPidFile(data).release();
+  });
+});
+
+describe('stale pid files', () => {
+  it('a file older than the boot is stale even though its pid is alive', () => {
+    write({ pid: process.pid, since: iso(Date.now() - 3600_000), token: 't' });
+    expect(daemonStatus(data, { uptimeSeconds: 60 }).running).toBe(false);
+    expect(fs.existsSync(pidFile())).toBe(false);
+  });
+
+  it('the same file written since boot is running', () => {
+    write({ pid: process.pid, since: iso(Date.now()), token: 't' });
+    expect(daemonStatus(data, { uptimeSeconds: 60 }).running).toBe(true);
+  });
+
+  it('claim takes over a boot-stale file', () => {
+    write({ pid: process.ppid, since: iso(Date.now() - 3600_000), token: 't' });
+    const claim = claimPidFile(data, { uptimeSeconds: 60 });
+    expect(daemonStatus(data).pid).toBe(process.pid);
+    claim.release();
+  });
+
+  it('stop does not signal a boot-stale file', async () => {
+    write({ pid: process.ppid, since: iso(Date.now() - 3600_000), token: 't' });
+    expect(await stopDaemon(data, { uptimeSeconds: 60 })).toBe(false);
+    expect(alive(process.ppid)).toBe(true);
+  });
+
+  it.skipIf(process.platform !== 'linux')(
+    'on Linux a file older than its process is stale (recycled pid)',
+    () => {
+      write({ pid: process.pid, since: iso(Date.now() - 3600_000), token: 't' });
+      expect(daemonStatus(data, { uptimeSeconds: 1e9 }).running).toBe(false);
+    },
+  );
+
+  it('does not delete a dead pid file that changed since it was read', async () => {
+    write({ pid: await deadPid(), since: iso(Date.now()), token: 'old' });
+    const fresh = JSON.stringify({ pid: process.ppid, since: iso(Date.now()), token: 'new' });
+    daemonStatus(data, { onStale: () => write(fresh) });
+    expect(fs.readFileSync(pidFile(), 'utf8')).toBe(fresh);
+  });
+});
+
+describe('startDaemon outcomes', () => {
+  it('returns the running daemon when the spawned child lost the claim', async () => {
+    const t0 = Date.now();
+    const p = startDaemon({
+      cliPath: FAKE,
+      dataDir: data,
+      env: { ...env(), GOAT_FAKE_MODE: 'exit' },
+    });
+    write({ pid: process.ppid, since: iso(Date.now()), token: 'winner' });
+    const s = await p;
+    expect(s.running).toBe(true);
+    expect(s.pid).toBe(process.ppid);
+    expect(Date.now() - t0).toBeLessThan(2500);
+  });
+
+  it('returns at once when the child exits without a daemon running', async () => {
+    const t0 = Date.now();
+    const s = await startDaemon({
+      cliPath: FAKE,
+      dataDir: data,
+      env: { ...env(), GOAT_FAKE_MODE: 'exit' },
+      waitMs: 5000,
+    });
+    expect(s.running).toBe(false);
+    expect(Date.now() - t0).toBeLessThan(2500);
+  });
+
+  it('returns not running when the spawn fails', async () => {
+    const s = await startDaemon({
+      cliPath: FAKE,
+      dataDir: data,
+      nodePath: path.join(home, 'no-such-node'),
+      env: env(),
+    });
+    expect(s).toEqual({ running: false, pid: null, since: null });
+  });
+});
+
+describe('stopDaemon honesty', () => {
+  const planted = () => {
+    const c = spawn(process.execPath, [FAKE], {
+      stdio: 'ignore',
+      env: { ...env(), GOAT_FAKE_MODE: 'silent' },
+    });
+    return c;
+  };
+
+  it('does not signal when the pid file changed identity between reads', async () => {
+    const c = planted();
+    try {
+      write({ pid: c.pid, since: iso(Date.now()), token: 'a' });
+      const r = await stopDaemon(data, {
+        politeWaitMs: 300,
+        onRead: () => write({ pid: c.pid, since: iso(Date.now()), token: 'b' }),
+      });
+      expect(r).toBe(false);
+      expect(alive(c.pid as number)).toBe(true);
+    } finally {
+      c.kill('SIGKILL');
+    }
+  });
+
+  it('never accepts pid 1 or below (kill(-1) would signal everything)', () => {
+    write({ pid: 1, since: iso(Date.now()), token: 'init' });
+    expect(daemonStatus(data).running).toBe(false);
   });
 });
