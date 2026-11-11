@@ -36,19 +36,19 @@ export function writePrivate(file: string, text: string): void {
 
 export const personaOf = (turn: RunnerTurn) => turn.persona ?? DEFAULT_PERSONA;
 
-/** Writes prompt.txt and persona.txt and returns the files object with the given MCP config. */
+/** Writes prompt.txt, persona.txt and (unless null) the MCP config; returns their paths. */
 export function writeTurnFiles(
   turn: RunnerTurn,
   dir: string,
   mcpConfigFile: string,
-  mcpConfigText: string,
+  mcpConfigText: string | null,
 ): TurnFiles {
   const dirAbs = path.resolve(dir);
   const promptFile = path.join(dirAbs, 'prompt.txt');
   const personaFile = path.join(dirAbs, 'persona.txt');
   writePrivate(promptFile, turn.prompt);
   writePrivate(personaFile, personaOf(turn));
-  writePrivate(mcpConfigFile, mcpConfigText);
+  if (mcpConfigText !== null) writePrivate(mcpConfigFile, mcpConfigText);
   return { dir: dirAbs, promptFile, personaFile, mcpConfigFile };
 }
 

@@ -1,15 +1,15 @@
 import type { Preset } from '@chess-goat/shared';
 import type { RunnerConfig } from '../config.js';
 import { claude } from './claude.js';
-import { onPath, type HarnessPreset } from './common.js';
+import { type HarnessPreset } from './common.js';
 import { customPreset } from './custom.js';
 import { codex, goose, opencode } from './others.js';
 
 export { DEFAULT_PERSONA, onPath } from './common.js';
+export { UNVERIFIED_NOTES } from './others.js';
 export type { HarnessPreset, TurnFiles } from './common.js';
 
 const BY_NAME = { claude, codex, opencode, goose } as const;
-const EXECUTABLE = { claude: 'claude', codex: 'codex', opencode: 'opencode', goose: 'goose' };
 
 export function presetFor(config: RunnerConfig): HarnessPreset | 'lean' {
   if (config.preset === 'lean') return 'lean';
@@ -20,10 +20,10 @@ export function presetFor(config: RunnerConfig): HarnessPreset | 'lean' {
   return BY_NAME[config.preset];
 }
 
-/** The first of claude, codex, opencode, goose found on PATH. Never lean or custom. */
+/**
+ * Only claude is ever auto-selected. codex, opencode, goose, lean and custom are chosen by an
+ * explicit `--preset`, never by what happens to be installed.
+ */
 export async function detectPreset(): Promise<Preset | null> {
-  for (const name of Object.keys(EXECUTABLE) as (keyof typeof EXECUTABLE)[]) {
-    if (onPath(EXECUTABLE[name])) return name;
-  }
-  return null;
+  return (await claude.detect()) ? 'claude' : null;
 }

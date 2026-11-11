@@ -3,14 +3,17 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { RunnerTurn } from '@chess-goat/shared';
+import type { SessionSpec } from '../src/session.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { RunnerConfig } from '../src/config.js';
 import {
   DEFAULT_PERSONA,
   detectPreset,
   onPath,
+  UNVERIFIED_NOTES,
   presetFor,
   type HarnessPreset,
+  type TurnFiles,
 } from '../src/presets/index.js';
 
 const TOKEN = 'cgturn_TESTTOKEN_do_not_use';
@@ -57,6 +60,17 @@ const named = (preset: RunnerConfig['preset']) =>
   presetFor(config(preset, { custom: CUSTOM })) as HarnessPreset;
 const ALL = ['claude', 'codex', 'opencode', 'goose', 'custom'] as const;
 
+function restoreEnv(key: string, value: string | undefined) {
+  if (value === undefined) delete process.env[key];
+  else process.env[key] = value;
+}
+
+function filesUnder(d: string): string[] {
+  return fs
+    .readdirSync(d, { withFileTypes: true })
+    .flatMap((e) => (e.isDirectory() ? filesUnder(path.join(d, e.name)) : [path.join(d, e.name)]));
+}
+
 function relative(files: Record<string, string>, text: string) {
   return text.split(dir).join('<dir>').split(files.dir!).join('<dir>');
 }
@@ -70,10 +84,14 @@ describe('presetFor', () => {
     }
   });
 
-  it('marks only claude and custom as verified-by-design', () => {
-    expect(named('claude').status).toBe('verified');
-    for (const n of ['codex', 'opencode', 'goose'] as const)
+  it('marks every harness preset unverified until a real run confirms it', () => {
+    for (const n of ['claude', 'codex', 'opencode', 'goose'] as const)
       expect(named(n).status).toBe('unverified');
+  });
+
+  it('lists known gaps for each unverified preset', () => {
+    for (const n of ['codex', 'opencode', 'goose'] as const)
+      expect(UNVERIFIED_NOTES[n].length).toBeGreaterThan(0);
   });
 
   it('throws when custom has no section', () => {
@@ -91,6 +109,7 @@ describe('every preset', () => {
 
       expect(spec.command).not.toContain(TOKEN);
       for (const a of spec.args) expect(a).not.toContain(TOKEN);
+      expect(spec.stdin ?? '').not.toContain(TOKEN);
       expect(spec.env.GOAT_TURN_TOKEN).toBe(TOKEN);
       expect(spec.cwd).toBe('/bots/deep-goat');
       expect(Object.keys(spec.env).filter((k) => /TOKEN|KEY|SECRET/i.test(k))).toEqual([
@@ -99,7 +118,9 @@ describe('every preset', () => {
 
       // Everything written is inside dir, and nothing else was created next to it.
       expect(fs.readdirSync(root)).toEqual(['session']);
-      const written = [files.promptFile, files.personaFile, files.mcpConfigFile];
+      const written = [files.promptFile, files.personaFile, files.mcpConfigFile].filter(
+        (f) => name !== 'codex' || f !== files.mcpConfigFile, // codex takes its server through -c
+      );
       for (const f of written) {
         expect(path.isAbsolute(f)).toBe(true);
         expect(path.relative(dir, f).startsWith('..')).toBe(false);
@@ -109,7 +130,7 @@ describe('every preset', () => {
       expect(fs.readFileSync(files.personaFile, 'utf8')).toBe(t.persona);
 
       // Only goose has no env expansion for headers and so writes the token, in a 0600 file.
-      const holders = written.filter((f) => fs.readFileSync(f, 'utf8').includes(TOKEN));
+      const holders = filesUnder(dir).filter((f) => fs.readFileSync(f, 'utf8').includes(TOKEN));
       expect(holders).toEqual(name === 'goose' ? [files.mcpConfigFile] : []);
     });
   }
@@ -121,7 +142,10 @@ describe('every preset', () => {
       const t = turn({ persona: null });
       const files = await p.writeFiles(t, d);
       expect(fs.readFileSync(files.personaFile, 'utf8')).toBe(DEFAULT_PERSONA);
-      expect(p.session(t, files, d).args.join('\n')).toContain(DEFAULT_PERSONA);
+      const spec = p.session(t, files, d);
+      // Delivered by file (claude) or inline (the others).
+      const sent = [...spec.args, spec.stdin ?? ''].join('\n');
+      expect(sent.includes(DEFAULT_PERSONA) || sent.includes(files.personaFile)).toBe(true);
     }
   });
 
@@ -141,7 +165,8 @@ describe('claude', () => {
     expect(relative(files, JSON.stringify(spec.args, null, 2))).toMatchInlineSnapshot(`
       "[
         "-p",
-        "--system-prompt=You are Deep Goat. Be bold.",
+        "--system-prompt-file",
+        "<dir>/persona.txt",
         "--mcp-config",
         "<dir>/mcp.json",
         "--strict-mcp-config",
@@ -152,13 +177,11 @@ describe('claude', () => {
         "--permission-mode",
         "dontAsk",
         "--setting-sources",
-        "user",
+        "user,project",
         "--disable-slash-commands",
         "--no-session-persistence",
         "--output-format",
-        "json",
-        "--",
-        "It is your move in game 12."
+        "json"
       ]"
     `);
     expect(fs.readFileSync(files.mcpConfigFile, 'utf8')).toMatchInlineSnapshot(`
@@ -178,18 +201,62 @@ describe('claude', () => {
     expect(spec.env).toEqual({ GOAT_TURN_TOKEN: TOKEN });
   });
 
-  it('passes awkward text through unchanged as single elements', async () => {
-    const nasty = (s: string) => `${s} "q" 'q'\nline2 $HOME \`id\` $(id) ${'${X}'} --flag`;
-    const t = turn({ persona: nasty('-persona'), prompt: nasty('-prompt') });
+  it('sends the prompt on stdin and the persona by file', async () => {
     const p = named('claude');
-    const files = await p.writeFiles(t, dir);
-    const { args } = p.session(t, files, '/b');
-    expect(args).toContain(`--system-prompt=${t.persona}`);
-    // After "--", so a prompt starting with "-" cannot be read as a flag.
-    expect(args.slice(-2)).toEqual(['--', t.prompt]);
-    expect(args.filter((a) => a.includes('line2'))).toHaveLength(2);
-    expect(fs.readFileSync(files.promptFile, 'utf8')).toBe(t.prompt);
+    const files = await p.writeFiles(turn(), dir);
+    const spec = p.session(turn(), files, '/b');
+    expect(spec.stdin).toBe(turn().prompt);
+    expect(spec.args).toContain('--system-prompt-file');
+    expect(spec.args).not.toContain('--');
+    expect(spec.args.join('\n')).not.toContain(turn().prompt);
+    expect(spec.args.join('\n')).not.toContain(turn().persona!);
   });
+});
+
+describe('awkward text, every preset', () => {
+  const nasty = (s: string) => `${s} "q" 'q'\nline2 $HOME \`id\` $(id) ${'${X}'} --flag`;
+  const t = turn({ persona: nasty('-persona'), prompt: nasty('-prompt') });
+  const fileText = (f: string) => fs.readFileSync(f, 'utf8');
+
+  // How each preset delivers the two texts without a flag-shaped value on argv.
+  const cases = {
+    claude: (spec: SessionSpec, files: TurnFiles) => {
+      expect(spec.stdin).toBe(t.prompt);
+      expect(fileText(files.personaFile)).toBe(t.persona);
+      expect(spec.args.slice(spec.args.indexOf('--system-prompt-file'))[1]).toBe(files.personaFile);
+      expect(spec.args.join('\n')).not.toContain('line2');
+    },
+    codex: (spec: SessionSpec) => {
+      expect(spec.stdin).toBe(t.prompt);
+      expect(spec.args.at(-1)).toBe('-');
+      // One TOML-escaped argv element starting with the key, so it cannot read as a flag.
+      expect(spec.args).toContain(`developer_instructions=${JSON.stringify(t.persona)}`);
+      expect(spec.args.join('\n')).not.toContain(t.prompt);
+    },
+    opencode: (spec: SessionSpec) => {
+      expect(spec.stdin).toBe(`${t.persona}\n\n${t.prompt}`);
+      expect(spec.args).toEqual(['run']);
+    },
+    goose: (spec: SessionSpec) => {
+      expect(spec.stdin).toBe(t.prompt);
+      expect(spec.args).toContain(`--system=${t.persona}`); // "=" form: no flag-shaped value
+      expect(spec.args.join('\n')).not.toContain(t.prompt);
+    },
+    custom: (spec: SessionSpec, files: TurnFiles) => {
+      expect(spec.stdin).toBe(t.prompt);
+      expect(fileText(files.promptFile)).toBe(t.prompt);
+      expect(fileText(files.personaFile)).toBe(t.persona);
+      expect(spec.args.join('\n')).not.toContain('line2');
+    },
+  };
+
+  for (const name of ALL) {
+    it(`${name} delivers a persona and prompt with quotes, newlines, $VAR and a leading dash intact`, async () => {
+      const p = named(name);
+      const files = await p.writeFiles(t, dir);
+      cases[name](p.session(t, files, '/b'), files);
+    });
+  }
 });
 
 async function shown(name: 'codex' | 'opencode' | 'goose') {
@@ -200,7 +267,10 @@ async function shown(name: 'codex' | 'opencode' | 'goose') {
     command: spec.command,
     args: spec.args,
     env: spec.env,
-    config: fs.readFileSync(files.mcpConfigFile, 'utf8').split(TOKEN).join('<token>'),
+    stdin: spec.stdin,
+    config: fs.existsSync(files.mcpConfigFile)
+      ? fs.readFileSync(files.mcpConfigFile, 'utf8').split(TOKEN).join('<token>')
+      : null,
   };
   return relative(files, JSON.stringify(out, null, 2));
 }
@@ -213,6 +283,8 @@ describe('codex, opencode, goose (unverified)', () => {
         "args": [
           "exec",
           "--json",
+          "--sandbox",
+          "read-only",
           "-c",
           "mcp_servers.chess-goat.url=\\"https://goat.example/mcp/turn\\"",
           "-c",
@@ -221,13 +293,13 @@ describe('codex, opencode, goose (unverified)', () => {
           "mcp_servers.chess-goat.default_tools_approval_mode=\\"approve\\"",
           "-c",
           "developer_instructions=\\"You are Deep Goat. Be bold.\\"",
-          "--",
-          "It is your move in game 12."
+          "-"
         ],
         "env": {
           "GOAT_TURN_TOKEN": "cgturn_TESTTOKEN_do_not_use"
         },
-        "config": "{\\n  \\"mcpServers\\": {\\n    \\"chess-goat\\": {\\n      \\"type\\": \\"http\\",\\n      \\"url\\": \\"https://goat.example/mcp/turn\\",\\n      \\"headers\\": {\\n        \\"Authorization\\": \\"Bearer \${GOAT_TURN_TOKEN}\\"\\n      }\\n    }\\n  }\\n}\\n"
+        "stdin": "It is your move in game 12.",
+        "config": null
       }"
     `);
   });
@@ -236,15 +308,14 @@ describe('codex, opencode, goose (unverified)', () => {
       "{
         "command": "opencode",
         "args": [
-          "run",
-          "--",
-          "You are Deep Goat. Be bold.\\n\\nIt is your move in game 12."
+          "run"
         ],
         "env": {
           "GOAT_TURN_TOKEN": "cgturn_TESTTOKEN_do_not_use",
           "OPENCODE_CONFIG": "<dir>/mcp.json"
         },
-        "config": "{\\n  \\"$schema\\": \\"https://opencode.ai/config.json\\",\\n  \\"mcp\\": {\\n    \\"chess-goat\\": {\\n      \\"type\\": \\"remote\\",\\n      \\"url\\": \\"https://goat.example/mcp/turn\\",\\n      \\"enabled\\": true,\\n      \\"headers\\": {\\n        \\"Authorization\\": \\"Bearer {env:GOAT_TURN_TOKEN}\\"\\n      }\\n    }\\n  },\\n  \\"permission\\": {\\n    \\"bash\\": \\"deny\\",\\n    \\"edit\\": \\"deny\\",\\n    \\"webfetch\\": \\"deny\\"\\n  }\\n}\\n"
+        "stdin": "You are Deep Goat. Be bold.\\n\\nIt is your move in game 12.",
+        "config": "{\\n  \\"$schema\\": \\"https://opencode.ai/config.json\\",\\n  \\"mcp\\": {\\n    \\"chess-goat\\": {\\n      \\"type\\": \\"remote\\",\\n      \\"url\\": \\"https://goat.example/mcp/turn\\",\\n      \\"enabled\\": true,\\n      \\"headers\\": {\\n        \\"Authorization\\": \\"Bearer {env:GOAT_TURN_TOKEN}\\"\\n      }\\n    }\\n  },\\n  \\"permission\\": {\\n    \\"*\\": \\"deny\\",\\n    \\"chess-goat_*\\": \\"allow\\"\\n  }\\n}\\n"
       }"
     `);
   });
@@ -255,15 +326,15 @@ describe('codex, opencode, goose (unverified)', () => {
         "args": [
           "run",
           "--no-session",
-          "--system",
-          "You are Deep Goat. Be bold.",
-          "-t",
-          "It is your move in game 12."
+          "--system=You are Deep Goat. Be bold.",
+          "-i",
+          "-"
         ],
         "env": {
           "GOAT_TURN_TOKEN": "cgturn_TESTTOKEN_do_not_use",
           "GOOSE_PATH_ROOT": "<dir>/goose"
         },
+        "stdin": "It is your move in game 12.",
         "config": "extensions:\\n  chess-goat:\\n    type: streamable_http\\n    enabled: true\\n    name: chess-goat\\n    uri: \\"https://goat.example/mcp/turn\\"\\n    headers:\\n      Authorization: \\"Bearer <token>\\"\\n    timeout: 300\\n"
       }"
     `);
@@ -319,6 +390,21 @@ describe('custom', () => {
     );
   });
 
+  it('also sends the prompt on stdin', async () => {
+    const { spec } = await run(['{prompt_file}'], turn());
+    expect(spec.stdin).toBe(turn().prompt);
+  });
+
+  it.each(['./run.sh', 'bin/run', '..\\run.cmd'])(
+    'rejects the relative command %s from presetFor and detect',
+    async (command) => {
+      const cfg = config('custom', { custom: { command, args: [] } });
+      expect(() => presetFor(cfg)).toThrow(
+        'custom.command must be a command name on PATH or an absolute path',
+      );
+    },
+  );
+
   it('detects an absolute command directly and a bare one on PATH', async () => {
     const bin = path.join(root, 'bin');
     fs.mkdirSync(bin);
@@ -333,7 +419,7 @@ describe('custom', () => {
     try {
       expect(await mk('mybot').detect()).toBe(posix);
     } finally {
-      process.env.PATH = saved;
+      restoreEnv('PATH', saved);
     }
   });
 });
@@ -363,6 +449,29 @@ describe('onPath', () => {
     expect(onPath('goat-fake', { PATH: upper }, 'win32')).toBe(true); // default PATHEXT has .CMD
   });
 
+  it('prefers what PATHEXT lists: claude.cmd and claude.exe on win32', () => {
+    const cmd = path.join(root, 'only-cmd');
+    const exe = path.join(root, 'only-exe');
+    fs.mkdirSync(cmd);
+    fs.mkdirSync(exe);
+    fs.writeFileSync(path.join(cmd, 'claude.cmd'), '@echo off\r\n');
+    fs.writeFileSync(path.join(exe, 'claude.exe'), 'MZ');
+    const ext = '.COM;.EXE;.BAT;.cmd';
+    expect(onPath('claude', { PATH: cmd, PATHEXT: ext }, 'win32')).toBe(true);
+    expect(
+      onPath('claude', { PATH: exe, PATHEXT: '.EXE;.cmd'.replace('.EXE', '.exe') }, 'win32'),
+    ).toBe(true);
+    expect(onPath('claude', { PATH: exe, PATHEXT: '.cmd' }, 'win32')).toBe(false);
+    expect(onPath('claude', { PATH: cmd, PATHEXT: '.exe' }, 'win32')).toBe(false);
+  });
+
+  it('accepts a quoted PATH entry on win32', () => {
+    const bin = path.join(root, 'quoted dir');
+    fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin, 'claude.exe'), 'MZ');
+    expect(onPath('claude', { PATH: `"${bin}"`, PATHEXT: '.exe' }, 'win32')).toBe(true);
+  });
+
   it('does not accept a directory with the right name', () => {
     fs.mkdirSync(path.join(root, 'claude'));
     expect(onPath('claude', { PATH: root }, 'linux')).toBe(false);
@@ -372,28 +481,24 @@ describe('onPath', () => {
 describe('detectPreset', () => {
   const saved = { PATH: process.env.PATH, PATHEXT: process.env.PATHEXT };
   afterEach(() => {
-    process.env.PATH = saved.PATH;
+    restoreEnv('PATH', saved.PATH);
+    restoreEnv('PATHEXT', saved.PATHEXT);
   });
   const put = (...names: string[]) => {
     const bin = fs.mkdtempSync(path.join(root, 'bin-'));
     for (const n of names)
       fs.writeFileSync(path.join(bin, n + (posix ? '' : '.cmd')), '#!/bin/sh\n', { mode: 0o755 });
     process.env.PATH = bin;
+    if (!posix) process.env.PATHEXT = '.cmd';
   };
 
-  it('returns the first of claude, codex, opencode, goose that is present', async () => {
+  it('returns claude when it is on PATH', async () => {
     put('goose', 'opencode', 'codex', 'claude');
     expect(await detectPreset()).toBe('claude');
-    put('goose', 'opencode', 'codex');
-    expect(await detectPreset()).toBe('codex');
-    put('goose', 'opencode');
-    expect(await detectPreset()).toBe('opencode');
-    put('goose');
-    expect(await detectPreset()).toBe('goose');
   });
 
-  it('returns null when none is present, never lean or custom', async () => {
-    put('lean', 'custom');
+  it('never auto-selects codex, opencode, goose, lean or custom', async () => {
+    put('goose', 'opencode', 'codex', 'lean', 'custom');
     expect(await detectPreset()).toBeNull();
   });
 });
