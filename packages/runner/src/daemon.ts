@@ -6,9 +6,22 @@ import path from 'node:path';
 import { killTree } from './session.js';
 
 export type DaemonStatus = { running: boolean; pid: number | null; since: string | null };
-type PidFile = { pid: number; since: string; token: string };
-/** Injectable clock and uptime, so tests can pretend a reboot happened. */
-type Clock = { now?: () => number; uptimeSeconds?: number };
+// bootId/startTicks (Linux) and uptime are optional: older files lack them.
+type PidFile = {
+  pid: number;
+  since: string;
+  token: string;
+  bootId?: string;
+  startTicks?: number;
+  uptime?: number;
+};
+/** Injectable system readers, so tests need no real clock or /proc tricks. */
+type Clock = {
+  now?: () => number;
+  uptimeSeconds?: number;
+  platform?: NodeJS.Platform;
+  readProc?: (file: string) => string;
+};
 // onStale/onRead are test seams: they run between a read and the action taken on it.
 type Seams = { onStale?: () => void };
 
@@ -26,18 +39,15 @@ const POLITE_WAIT_MS = 10_000;
 const DEATH_WAIT_MS = 2000;
 const POLL_MS = 100;
 const BOOT_TOLERANCE_MS = 5000;
-const START_TOLERANCE_MS = 5000;
 const MALFORMED_GRACE_MS = 2000;
-const CLK_TCK = 100; // every Linux in practice
 const posix = process.platform !== 'win32';
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const pidPath = (dataDir: string) => path.join(dataDir, 'runner.pid');
 
-// kill(pid, 0) cannot tell a recycled pid from the daemon. Two further checks only ever make a
-// file MORE likely to be judged stale: it predates the machine's boot, or (Linux) its process
-// started after the file says the daemon did. Anything else that recycles a pid within one boot
-// stays undetected; stopDaemon only signals a pid whose file (pid and token) it has just re-read.
+// kill(pid, 0) cannot tell a recycled pid from the daemon, so sameProcess() adds an identity check
+// that only ever makes a file MORE likely to be judged stale (see there). stopDaemon also signals
+// only a pid whose file (pid and token) it has just re-read.
 function isAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -47,20 +57,59 @@ function isAlive(pid: number): boolean {
   }
 }
 
-// Process start (epoch ms) from /proc, or null when it cannot be read.
-function linuxStartMs(pid: number): number | null {
-  if (process.platform !== 'linux') return null;
+// Field 22 of /proc/<pid>/stat (start time in ticks since boot). The command name (field 2) may
+// hold spaces and parentheses, so parse from the last ')'; fields from 3 on make it the 20th.
+function startTicks(stat: string): number | null {
+  const n = Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19]);
+  return Number.isSafeInteger(n) ? n : null;
+}
+
+const readText = (file: string) => fs.readFileSync(file, 'utf8');
+
+// What identifies this process within one boot, clock-free. Linux only; {} when unreadable.
+function identity(clock: Clock): Pick<PidFile, 'bootId' | 'startTicks'> {
+  if ((clock.platform ?? process.platform) !== 'linux') return {};
   try {
-    const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8');
-    // Field 2 (comm) may contain spaces and parens: parse from the last ')'. Field 22 is the
-    // 20th after it (fields from 3 on).
-    const ticks = Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19]);
-    const btime = /^btime (\d+)$/m.exec(fs.readFileSync('/proc/stat', 'utf8'));
-    if (!Number.isFinite(ticks) || !btime) return null;
-    return (Number(btime[1]) + ticks / CLK_TCK) * 1000;
+    const read = clock.readProc ?? readText;
+    const bootId = read('/proc/sys/kernel/random/boot_id').trim();
+    const ticks = startTicks(read('/proc/self/stat'));
+    return bootId && ticks !== null ? { bootId, startTicks: ticks } : {};
   } catch {
-    return null;
+    return {};
   }
+}
+
+/**
+ * Is the (alive) process still the one that wrote this file? Linux: same kernel boot id and same
+ * start ticks, with no wall clock anywhere (a clock stepped by NTP after an RTC-less boot must not
+ * make a live runner look stale). Anything unreadable, or missing from an older file, falls back
+ * to "alive means live". Elsewhere: an uptime lower than the one recorded means a reboot; else the
+ * wall-clock boot check, accepting that a clock stepped forward by over 5 s could fool it (those
+ * machines have hardware clocks).
+ */
+function sameProcess(f: PidFile, clock: Clock): boolean {
+  if ((clock.platform ?? process.platform) === 'linux') {
+    if (f.bootId === undefined || f.startTicks === undefined) return true;
+    const read = clock.readProc ?? readText;
+    let boot: string;
+    try {
+      boot = read('/proc/sys/kernel/random/boot_id').trim();
+    } catch {
+      return true;
+    }
+    if (boot !== f.bootId) return false;
+    try {
+      const ticks = startTicks(read(`/proc/${f.pid}/stat`));
+      return ticks === null || ticks === f.startTicks;
+    } catch (e) {
+      return (e as NodeJS.ErrnoException).code !== 'ENOENT'; // gone: stale; unreadable: live
+    }
+  }
+  const uptime = clock.uptimeSeconds ?? os.uptime();
+  if (typeof f.uptime === 'number' && uptime < f.uptime) return false;
+  const since = Date.parse(f.since);
+  if (!Number.isFinite(since)) return false;
+  return since >= (clock.now ?? Date.now)() - uptime * 1000 - BOOT_TOLERANCE_MS;
 }
 
 type Loaded = { raw: string; file: PidFile | null; fresh: boolean };
@@ -70,7 +119,9 @@ function load(dataDir: string): Loaded | null {
   let fresh: boolean;
   try {
     raw = fs.readFileSync(pidPath(dataDir), 'utf8');
-    fresh = Date.now() - fs.statSync(pidPath(dataDir)).mtimeMs < MALFORMED_GRACE_MS;
+    const age = Date.now() - fs.statSync(pidPath(dataDir)).mtimeMs;
+    // A far-future mtime is not fresh; 1 s of slack covers sub-ms rounding against Date.now().
+    fresh = age > -1000 && age < MALFORMED_GRACE_MS;
   } catch {
     return null;
   }
@@ -93,13 +144,7 @@ function load(dataDir: string): Loaded | null {
 function isLive(l: Loaded, clock: Clock): boolean {
   // A file another process is still writing looks malformed for a moment: not stale yet.
   if (!l.file) return l.fresh;
-  const since = Date.parse(l.file.since);
-  const now = (clock.now ?? Date.now)();
-  const uptime = clock.uptimeSeconds ?? os.uptime();
-  if (!Number.isFinite(since) || since < now - uptime * 1000 - BOOT_TOLERANCE_MS) return false;
-  if (!isAlive(l.file.pid)) return false;
-  const started = linuxStartMs(l.file.pid);
-  return started === null || started <= since + START_TOLERANCE_MS;
+  return isAlive(l.file.pid) && sameProcess(l.file, clock);
 }
 
 // Removes the file only if it still holds what we judged stale: it may have been re-claimed.
@@ -143,6 +188,8 @@ export function claimPidFile(dataDir: string, opts: Clock & Seams = {}): { relea
     pid: process.pid,
     since: new Date((opts.now ?? Date.now)()).toISOString(),
     token,
+    ...identity(opts),
+    uptime: opts.uptimeSeconds ?? os.uptime(),
   } satisfies PidFile);
 
   let created = false;

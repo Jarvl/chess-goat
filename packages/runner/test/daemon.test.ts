@@ -168,17 +168,25 @@ const PKG = fileURLToPath(new URL('..', import.meta.url));
 describe('one runner at a time', () => {
   it('lets exactly one of 8 simultaneous claimers win', { timeout: 30_000 }, async () => {
     const startAt = Date.now() + 1500;
-    const outs = await Promise.all(
-      Array.from({ length: 8 }, () => {
-        const c = spawn(process.execPath, ['--import', 'tsx', WORKER, data, String(startAt)], {
-          cwd: PKG,
-          stdio: ['ignore', 'pipe', 'inherit'],
-        });
-        let out = '';
-        c.stdout?.on('data', (d) => (out += d));
-        return new Promise<string>((r) => c.on('close', () => r(out.trim())));
-      }),
-    );
+    const workers = Array.from({ length: 8 }, () => {
+      const c = spawn(process.execPath, ['--import', 'tsx', WORKER, data, String(startAt)], {
+        cwd: PKG,
+        stdio: ['pipe', 'pipe', 'inherit'],
+      });
+      let out = '';
+      const first = new Promise<string>((r) =>
+        c.stdout?.on('data', (d) => {
+          out += d;
+          if (out.includes('\n')) r(out.trim());
+        }),
+      );
+      const closed = new Promise<void>((r) => c.on('close', () => r()));
+      return { c, first, closed };
+    });
+    // Every worker has answered while the winner still holds the claim; only then let go.
+    const outs = await Promise.all(workers.map((w) => w.first));
+    for (const w of workers) w.c.stdin?.end();
+    await Promise.all(workers.map((w) => w.closed));
     expect(outs.filter((o) => o.startsWith('won'))).toHaveLength(1);
     expect(outs.filter((o) => o === 'lost')).toHaveLength(7);
   });
@@ -212,38 +220,107 @@ describe('one runner at a time', () => {
   });
 });
 
+// Fake /proc: a boot id, and a stat line whose field 22 is `ticks` (the comm holds a paren).
+const fakeProc = (boot: string, ticks: number) => (file: string) => {
+  if (file.endsWith('boot_id')) return `${boot}\n`;
+  return `1 (we ird)) ${['S', ...Array(18).fill('0'), String(ticks)].join(' ')} 0 0`;
+};
+
 describe('stale pid files', () => {
   it('a file older than the boot is stale even though its pid is alive', () => {
     write({ pid: process.pid, since: iso(Date.now() - 3600_000), token: 't' });
-    expect(daemonStatus(data, { uptimeSeconds: 60 }).running).toBe(false);
+    expect(daemonStatus(data, { uptimeSeconds: 60, platform: 'darwin' }).running).toBe(false);
     expect(fs.existsSync(pidFile())).toBe(false);
   });
 
   it('the same file written since boot is running', () => {
     write({ pid: process.pid, since: iso(Date.now()), token: 't' });
-    expect(daemonStatus(data, { uptimeSeconds: 60 }).running).toBe(true);
+    expect(daemonStatus(data, { uptimeSeconds: 60, platform: 'darwin' }).running).toBe(true);
   });
 
   it('claim takes over a boot-stale file', () => {
     write({ pid: process.ppid, since: iso(Date.now() - 3600_000), token: 't' });
-    const claim = claimPidFile(data, { uptimeSeconds: 60 });
+    const claim = claimPidFile(data, { uptimeSeconds: 60, platform: 'darwin' });
     expect(daemonStatus(data).pid).toBe(process.pid);
     claim.release();
   });
 
   it('stop does not signal a boot-stale file', async () => {
     write({ pid: process.ppid, since: iso(Date.now() - 3600_000), token: 't' });
-    expect(await stopDaemon(data, { uptimeSeconds: 60 })).toBe(false);
+    expect(await stopDaemon(data, { uptimeSeconds: 60, platform: 'darwin' })).toBe(false);
     expect(alive(process.ppid)).toBe(true);
   });
 
-  it.skipIf(process.platform !== 'linux')(
-    'on Linux a file older than its process is stale (recycled pid)',
-    () => {
-      write({ pid: process.pid, since: iso(Date.now() - 3600_000), token: 't' });
-      expect(daemonStatus(data, { uptimeSeconds: 1e9 }).running).toBe(false);
-    },
-  );
+  it('a live daemon stays live when the wall clock steps forward (Linux identity)', () => {
+    const f = {
+      pid: process.pid,
+      since: iso(Date.now()),
+      token: 't',
+      bootId: 'B1',
+      startTicks: 777,
+    };
+    write(f);
+    const clock = {
+      platform: 'linux' as const,
+      readProc: fakeProc('B1', 777),
+      now: () => Date.now() + 3600_000,
+      uptimeSeconds: 60,
+    };
+    expect(daemonStatus(data, clock).running).toBe(true);
+  });
+
+  it('a different boot id is stale although the pid is alive', () => {
+    write({ pid: process.pid, since: iso(Date.now()), token: 't', bootId: 'B1', startTicks: 777 });
+    expect(daemonStatus(data, { platform: 'linux', readProc: fakeProc('B2', 777) }).running).toBe(
+      false,
+    );
+    expect(fs.existsSync(pidFile())).toBe(false);
+  });
+
+  it('the same boot but different start ticks is stale (pid reused)', () => {
+    write({ pid: process.pid, since: iso(Date.now()), token: 't', bootId: 'B1', startTicks: 777 });
+    expect(daemonStatus(data, { platform: 'linux', readProc: fakeProc('B1', 778) }).running).toBe(
+      false,
+    );
+  });
+
+  it('unreadable /proc falls back to alive means live', () => {
+    write({ pid: process.pid, since: iso(Date.now()), token: 't', bootId: 'B1', startTicks: 777 });
+    const broken = () => {
+      throw new Error('EACCES');
+    };
+    expect(daemonStatus(data, { platform: 'linux', readProc: broken }).running).toBe(true);
+  });
+
+  it('a file without identity fields (older) is live when the pid is alive, whatever the clock', () => {
+    write({ pid: process.pid, since: iso(Date.now() - 3600_000), token: 't' });
+    expect(
+      daemonStatus(data, { platform: 'linux', uptimeSeconds: 60, readProc: fakeProc('B1', 1) })
+        .running,
+    ).toBe(true);
+  });
+
+  it('claim records the boot id and start ticks on Linux', () => {
+    const claim = claimPidFile(data, { platform: 'linux', readProc: fakeProc('B9', 4242) });
+    const f = JSON.parse(fs.readFileSync(pidFile(), 'utf8'));
+    expect([f.bootId, f.startTicks]).toEqual(['B9', 4242]);
+    claim.release();
+  });
+
+  it('elsewhere, a current uptime below the recorded one is stale (a reboot)', () => {
+    write({ pid: process.pid, since: iso(Date.now()), token: 't', uptime: 5000 });
+    expect(daemonStatus(data, { platform: 'darwin', uptimeSeconds: 100 }).running).toBe(false);
+    write({ pid: process.pid, since: iso(Date.now()), token: 't', uptime: 5000 });
+    expect(daemonStatus(data, { platform: 'darwin', uptimeSeconds: 6000 }).running).toBe(true);
+  });
+
+  it('a malformed file with a future mtime is not fresh', () => {
+    write('');
+    const t = new Date(Date.now() + 3600_000);
+    fs.utimesSync(pidFile(), t, t);
+    expect(daemonStatus(data).running).toBe(false);
+    expect(fs.existsSync(pidFile())).toBe(false);
+  });
 
   it('does not delete a dead pid file that changed since it was read', async () => {
     write({ pid: await deadPid(), since: iso(Date.now()), token: 'old' });
