@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -16,18 +16,20 @@ describe('autostartPlan snapshots', () => {
   it('linux', () => {
     expect(autostartPlan('linux', lin)).toMatchInlineSnapshot(`
       {
-        "describe": "a systemd user unit at /home/u/.config/systemd/user/goat-runner.service",
+        "afterRemove": [
+          [
+            "systemctl",
+            "--user",
+            "daemon-reload",
+          ],
+        ],
+        "describe": "a systemd user unit at /home/u/.config/systemd/user/goat-runner.service; remove it with systemctl --user disable goat-runner.service and delete that file",
         "disable": [
           [
             "systemctl",
             "--user",
             "disable",
             "goat-runner.service",
-          ],
-          [
-            "systemctl",
-            "--user",
-            "daemon-reload",
           ],
         ],
         "enable": [
@@ -47,7 +49,6 @@ describe('autostartPlan snapshots', () => {
           {
             "content": "[Unit]
       Description=goat-runner (Chess Goat bot runner)
-      After=network-online.target
 
       [Service]
       Type=simple
@@ -66,6 +67,7 @@ describe('autostartPlan snapshots', () => {
         "remove": [
           "/home/u/.config/systemd/user/goat-runner.service",
         ],
+        "startsNow": false,
       }
     `);
   });
@@ -90,7 +92,8 @@ describe('autostartPlan snapshots', () => {
   it('darwin', () => {
     expect(autostartPlan('darwin', mac)).toMatchInlineSnapshot(`
       {
-        "describe": "a LaunchAgent at /Users/u/Library/LaunchAgents/casa.glob.goat-runner.plist",
+        "afterRemove": [],
+        "describe": "a LaunchAgent at /Users/u/Library/LaunchAgents/casa.glob.goat-runner.plist; remove it with launchctl bootout gui/501/casa.glob.goat-runner and delete that file",
         "disable": [
           [
             "launchctl",
@@ -124,7 +127,12 @@ describe('autostartPlan snapshots', () => {
         <key>RunAtLoad</key>
         <true/>
         <key>KeepAlive</key>
-        <false/>
+        <dict>
+          <key>SuccessfulExit</key>
+          <false/>
+        </dict>
+        <key>ThrottleInterval</key>
+        <integer>30</integer>
         <key>ProcessType</key>
         <string>Background</string>
       </dict>
@@ -138,6 +146,7 @@ describe('autostartPlan snapshots', () => {
         "remove": [
           "/Users/u/Library/LaunchAgents/casa.glob.goat-runner.plist",
         ],
+        "startsNow": true,
       }
     `);
   });
@@ -156,42 +165,44 @@ describe('autostartPlan snapshots', () => {
   it('win32', () => {
     expect(autostartPlan('win32', win)).toMatchInlineSnapshot(`
       {
-        "describe": "a scheduled task named goat-runner that runs at logon",
+        "afterRemove": [],
+        "describe": "a Run entry named goat-runner under HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run; remove it with reg delete in that key or in Settings > Apps > Startup",
         "disable": [
           [
-            "C:\\Windows\\System32\\schtasks.exe",
-            "/Delete",
-            "/TN",
+            "C:\\Windows\\System32\\reg.exe",
+            "delete",
+            "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+            "/v",
             "goat-runner",
-            "/F",
+            "/f",
           ],
         ],
         "enable": [
           [
-            "C:\\Windows\\System32\\schtasks.exe",
-            "/Create",
-            "/SC",
-            "ONLOGON",
-            "/TN",
+            "C:\\Windows\\System32\\reg.exe",
+            "add",
+            "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+            "/v",
             "goat-runner",
-            "/TR",
-            ""C:\\Program Files\\nodejs\\node.exe" "C:\\Users\\u\\goat\\cli.js" run --daemon",
-            "/RL",
-            "LIMITED",
-            "/F",
+            "/t",
+            "REG_SZ",
+            "/d",
+            ""C:\\Program Files\\nodejs\\node.exe" "C:\\Users\\u\\goat\\cli.js" start",
+            "/f",
           ],
         ],
         "files": [],
         "platform": "win32",
         "remove": [],
+        "startsNow": false,
       }
     `);
   });
   it('win32 with spaces and a custom SystemRoot', () => {
     const plan = autostartPlan('win32', { ...win, env: { SystemRoot: 'D:\\Win' } });
-    expect(plan.enable[0]![0]).toBe('D:\\Win\\System32\\schtasks.exe');
-    expect(plan.enable[0]![7]).toBe(
-      '"C:\\Program Files\\nodejs\\node.exe" "C:\\Users\\u\\goat\\cli.js" run --daemon',
+    expect(plan.enable[0]![0]).toBe('D:\\Win\\System32\\reg.exe');
+    expect(plan.enable[0]![8]).toBe(
+      '"C:\\Program Files\\nodejs\\node.exe" "C:\\Users\\u\\goat\\cli.js" start',
     );
   });
   it('win32 refuses GOAT_RUNNER_HOME, a double quote and an over-long command', () => {
@@ -200,8 +211,104 @@ describe('autostartPlan snapshots', () => {
     );
     expect(() => autostartPlan('win32', { ...win, cliPath: 'C:\\a"b.js' })).toThrow(/double quote/);
     expect(() => autostartPlan('win32', { ...win, cliPath: `C:\\${'a'.repeat(250)}.js` })).toThrow(
-      /261/,
+      /260/,
     );
+  });
+});
+
+describe('autostartPlan details', () => {
+  const PATHV = '/home/u/.local/bin:/opt/my dir/%bin:/a&b';
+  it('linux registers PATH and GOAT_RUNNER_HOME as two Environment lines', () => {
+    const c = autostartPlan('linux', { ...lin, env: { PATH: PATHV, GOAT_RUNNER_HOME: '/r' } })
+      .files[0]!.content;
+    expect(c).toContain(
+      'Environment="PATH=/home/u/.local/bin:/opt/my dir/%%bin:/a&b"\nEnvironment="GOAT_RUNNER_HOME=/r"\nExecStart=',
+    );
+  });
+  it('linux writes no Environment line without PATH', () => {
+    expect(autostartPlan('linux', { ...lin, env: { PATH: '' } }).files[0]!.content).not.toContain(
+      'Environment=',
+    );
+  });
+  it('linux escapes " and \\ in ExecStart arguments', () => {
+    const plan = autostartPlan('linux', { ...lin, nodePath: '/a"b/node', cliPath: '/c\\d/cli.js' });
+    expect(plan.files[0]!.content).toContain(
+      'ExecStart="/a\\"b/node" "/c\\\\d/cli.js" run --daemon\n',
+    );
+  });
+  it('linux unit has no After= and keeps daemon-reload for after the unit is removed', () => {
+    const plan = autostartPlan('linux', lin);
+    expect(plan.files[0]!.content).not.toContain('After=');
+    expect(plan.disable).toEqual([['systemctl', '--user', 'disable', 'goat-runner.service']]);
+    expect(plan.afterRemove).toEqual([['systemctl', '--user', 'daemon-reload']]);
+  });
+  it('darwin registers PATH and GOAT_RUNNER_HOME, XML-escaped, in one dict', () => {
+    const c = autostartPlan('darwin', {
+      ...mac,
+      env: { PATH: PATHV, GOAT_RUNNER_HOME: '/r<h' },
+    }).files[0]!.content;
+    expect(c).toContain(
+      '<key>EnvironmentVariables</key>\n  <dict>\n    <key>PATH</key>\n    <string>/home/u/.local/bin:/opt/my dir/%bin:/a&amp;b</string>\n    <key>GOAT_RUNNER_HOME</key>\n    <string>/r&lt;h</string>\n  </dict>',
+    );
+    expect(autostartPlan('darwin', mac).files[0]!.content).not.toContain('EnvironmentVariables');
+  });
+  it('darwin plist is well-formed XML with balanced tags', () => {
+    const c = autostartPlan('darwin', {
+      ...mac,
+      nodePath: '/a&b/<n>',
+      env: { PATH: PATHV, GOAT_RUNNER_HOME: '/r&h' },
+    }).files[0]!.content;
+    const body = c.replace(/<\?xml[^>]*\?>/, '').replace(/<!DOCTYPE[^>]*>/, '');
+    // Text content may not hold a raw < or a bare &.
+    expect(body.replace(/<[^>]+>/g, '')).not.toMatch(/<|&(?!(amp|lt|gt);)/);
+    const stack: string[] = [];
+    for (const m of body.matchAll(/<(\/?)([A-Za-z]+)([^>]*?)(\/?)>/g)) {
+      if (m[4]) continue;
+      if (m[1]) expect(stack.pop()).toBe(m[2]);
+      else stack.push(m[2]!);
+    }
+    expect(stack).toEqual([]);
+  });
+  it('darwin keeps the job alive only after a crash', () => {
+    const c = autostartPlan('darwin', mac).files[0]!.content;
+    expect(c).toContain(
+      '<key>KeepAlive</key>\n  <dict>\n    <key>SuccessfulExit</key>\n    <false/>',
+    );
+    expect(c).toContain('<key>ThrottleInterval</key>\n  <integer>30</integer>');
+  });
+  it('startsNow is true only on macOS', () => {
+    expect(autostartPlan('darwin', mac).startsNow).toBe(true);
+    expect(autostartPlan('linux', lin).startsNow).toBe(false);
+    expect(autostartPlan('win32', win).startsNow).toBe(false);
+  });
+  it('win32 disable argv, and the registered command ends in start', () => {
+    const plan = autostartPlan('win32', win);
+    expect(plan.disable).toEqual([
+      [
+        'C:\\Windows\\System32\\reg.exe',
+        'delete',
+        'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run',
+        '/v',
+        'goat-runner',
+        '/f',
+      ],
+    ]);
+  });
+  it('win32 accepts a command of exactly 260 characters and refuses 261', () => {
+    const base = `"${win.nodePath}" "" start`.length;
+    const make = (n: number) => `C:\\${'a'.repeat(n - base - 3)}`;
+    expect(() => autostartPlan('win32', { ...win, cliPath: make(260) })).not.toThrow();
+    expect(() => autostartPlan('win32', { ...win, cliPath: make(261) })).toThrow(/260/);
+  });
+  it.each(['linux', 'darwin', 'win32'] as const)('%s refuses CR, LF and NUL in any path', (pf) => {
+    const base = pf === 'win32' ? win : pf === 'darwin' ? mac : lin;
+    for (const bad of ['\r', '\n', '\0']) {
+      expect(() => autostartPlan(pf, { ...base, nodePath: `/a${bad}b` })).toThrow(/line break/);
+      expect(() => autostartPlan(pf, { ...base, cliPath: `/a${bad}b` })).toThrow(/line break/);
+    }
+  });
+  it('macOS without a uid throws a clear Error', () => {
+    expect(() => autostartPlan('darwin', { ...lin, home: '/Users/u' })).toThrow(/uid is required/);
   });
 });
 
@@ -266,7 +373,7 @@ describe('setAutostart / autostartEnabled', () => {
       throw new Error('boom');
     };
     expect((await setAutostart(false, plan, { run })).ok).toBe(true);
-    expect(calls).toEqual(plan.disable);
+    expect(calls).toEqual([...plan.disable, ...plan.afterRemove]);
     await expect(stat(plan.files[0]!.path)).rejects.toThrow();
     // Turning off when nothing is registered is fine too.
     expect((await setAutostart(false, plan, { run: ok })).ok).toBe(true);
@@ -281,13 +388,123 @@ describe('setAutostart / autostartEnabled', () => {
     expect(calls).toEqual([bootout, bootstrap, bootout, bootstrap]);
   });
 
-  it('windows: enabled follows schtasks /Query through the injected run', async () => {
+  it.skipIf(skip)('a timed-out command reports the timeout', async () => {
+    const plan = autostartPlan('linux', { ...lin, home });
+    const run: RunFn = async () => {
+      throw Object.assign(new Error('timed out'), { code: 'ETIMEDOUT' });
+    };
+    expect(await setAutostart(true, plan, { run })).toEqual({
+      ok: false,
+      detail: 'systemctl timed out after 15 s',
+    });
+    expect(await autostartEnabled(plan)).toBe(false);
+  });
+
+  it.skipIf(skip)('macOS retries bootstrap once after a wait, then succeeds', async () => {
+    const plan = autostartPlan('darwin', { ...mac, home });
+    const sleeps: number[] = [];
+    let bootstraps = 0;
+    const run: RunFn = async (argv) => {
+      calls.push(argv);
+      if (argv[1] === 'bootstrap' && ++bootstraps === 1) {
+        return { code: 5, output: 'Bootstrap failed: 5: Input/output error\n' };
+      }
+      return { code: 0, output: '' };
+    };
+    const res = await setAutostart(true, plan, { run, sleep: async (ms) => void sleeps.push(ms) });
+    expect(res.ok).toBe(true);
+    expect(sleeps).toEqual([1000]);
+    expect(calls.map((c) => c[1])).toEqual(['bootout', 'bootstrap', 'bootstrap']);
+    expect(await autostartEnabled(plan)).toBe(true);
+  });
+
+  it.skipIf(skip)('macOS gives up after the second failed bootstrap and rolls back', async () => {
+    const plan = autostartPlan('darwin', { ...mac, home });
+    const sleeps: number[] = [];
+    const run: RunFn = async (argv) => {
+      calls.push(argv);
+      return argv[1] === 'bootstrap'
+        ? { code: 5, output: 'Bootstrap failed: 5: Input/output error\n' }
+        : { code: 0, output: '' };
+    };
+    const res = await setAutostart(true, plan, { run, sleep: async (ms) => void sleeps.push(ms) });
+    expect(res).toEqual({
+      ok: false,
+      detail: 'launchctl failed: Bootstrap failed: 5: Input/output error',
+    });
+    expect(calls.filter((c) => c[1] === 'bootstrap')).toHaveLength(2);
+    expect(sleeps).toEqual([1000]);
+    expect(await autostartEnabled(plan)).toBe(false);
+  });
+
+  it.skipIf(skip)('linux does not retry a failing command', async () => {
+    const plan = autostartPlan('linux', { ...lin, home });
+    const run: RunFn = async (argv) => (calls.push(argv), { code: 1, output: 'x' });
+    await setAutostart(true, plan, { run, sleep: async () => expect.fail('no wait expected') });
+    expect(calls).toHaveLength(1);
+  });
+
+  it.skipIf(skip)('off on linux reloads systemd after the unit file is gone', async () => {
+    const plan = autostartPlan('linux', { ...lin, home });
+    await setAutostart(true, plan, { run: ok });
+    calls = [];
+    let existedAtReload: boolean | undefined;
+    const run: RunFn = async (argv) => {
+      calls.push(argv);
+      if (argv[2] === 'daemon-reload') {
+        existedAtReload = await stat(plan.files[0]!.path).then(
+          () => true,
+          () => false,
+        );
+      }
+      return { code: 0, output: '' };
+    };
+    await setAutostart(false, plan, { run });
+    expect(calls.map((c) => c[2])).toEqual(['disable', 'daemon-reload']);
+    expect(existedAtReload).toBe(false);
+  });
+
+  it.skipIf(skip)('a file whose parent is a regular file gives ok:false, not a throw', async () => {
+    const plan = autostartPlan('linux', { ...lin, home });
+    const blocker = path.dirname(path.dirname(path.dirname(plan.files[0]!.path)));
+    await mkdir(path.dirname(blocker), { recursive: true });
+    await writeFile(blocker, 'x');
+    const res = await setAutostart(true, plan, { run: ok });
+    expect(res.ok).toBe(false);
+    expect(res.detail).not.toBe('');
+    expect(calls).toEqual([]);
+  });
+
+  it.skipIf(skip)('a file that cannot be written gives ok:false and is rolled back', async () => {
+    const plan = autostartPlan('linux', { ...lin, home });
+    // The target is a directory, so the write fails; an earlier file of the plan is removed.
+    const first = path.join(home, 'first.txt');
+    await mkdir(plan.files[0]!.path, { recursive: true });
+    const two = {
+      ...plan,
+      files: [{ path: first, content: 'a' }, plan.files[0]!],
+    };
+    const res = await setAutostart(true, two, { run: ok });
+    expect(res.ok).toBe(false);
+    await expect(stat(first)).rejects.toThrow();
+    expect(calls).toEqual([]);
+  });
+
+  it('windows: enabled follows reg query through the injected run', async () => {
     const plan = autostartPlan('win32', win);
     const seen: string[][] = [];
     expect(
       await autostartEnabled(plan, { run: async (a) => (seen.push(a), { code: 0, output: '' }) }),
     ).toBe(true);
-    expect(seen).toEqual([['C:\\Windows\\System32\\schtasks.exe', '/Query', '/TN', 'goat-runner']]);
+    expect(seen).toEqual([
+      [
+        'C:\\Windows\\System32\\reg.exe',
+        'query',
+        'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run',
+        '/v',
+        'goat-runner',
+      ],
+    ]);
     expect(await autostartEnabled(plan, { run: async () => ({ code: 1, output: '' }) })).toBe(
       false,
     );
