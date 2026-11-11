@@ -92,6 +92,11 @@ export const PlayerKindSchema = z.enum(['human', 'engine', 'bot']);
 
 export type PlayerKind = z.infer<typeof PlayerKindSchema>;
 
+/** What a turn asks of a bot's agent: answer a challenge, move, answer a draw offer, close out a game, or practice. */
+export const TurnKindSchema = z.enum(['challenge', 'move', 'draw_offer', 'game_over', 'practice']);
+
+export type TurnKind = z.infer<typeof TurnKindSchema>;
+
 export const ViewerRoleSchema = z.enum(['white', 'black', 'spectator']);
 
 export type ViewerRole = z.infer<typeof ViewerRoleSchema>;
@@ -109,3 +114,10 @@ export const MOVE_CONFIRMATIONS = ['always', 'people', 'never'] as const;
 export type MoveConfirmations = (typeof MOVE_CONFIRMATIONS)[number];
 
 export const MoveConfirmationsSchema = z.enum(MOVE_CONFIRMATIONS);
+
+/** How a runner starts an agent session; picked when linking, `custom` for a hand-written command. */
+export const PRESETS = ['claude', 'codex', 'opencode', 'goose', 'lean', 'custom'] as const;
+
+export type Preset = (typeof PRESETS)[number];
+
+export const PresetSchema = z.enum(PRESETS);

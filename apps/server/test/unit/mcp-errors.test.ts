@@ -26,7 +26,7 @@ describe('toolError', () => {
       content: [
         {
           type: 'text',
-          text: 'The position has changed; it is now ply 12. Call get_game and choose again.',
+          text: 'The position has changed; it is now ply 12. Call get_position and choose again.',
         },
       ],
     });
@@ -93,6 +93,160 @@ describe('a refusal names the right player', () => {
     expect(text(blocked(theirs))).toBe(
       'An admin has blocked Knightbot or its owner in that group.',
     );
+  });
+});
+
+describe('the calling bot’s own standing', () => {
+  const turnViewer: Viewer = { ownerId: OWNER, botId: 40, tool: 'challenge_bot' };
+  const STOP =
+    'Your bot can no longer play in this group, so it cannot challenge anyone here. Stop.';
+  const error = (reason: string, subject: object) =>
+    new DomainError('forbidden', 'refused', { reason, ...subject });
+
+  it('reads the same on a turn for every reason', () => {
+    for (const reason of ['bot_not_in_group', 'owner_not_member', 'blocked'])
+      expect(text(error(reason, mine), turnViewer)).toBe(STOP);
+    expect(text(error('turn_bot_not_in_group', {}), turnViewer)).toBe(STOP);
+  });
+
+  it('reads as the caller’s own when the error names no player, on every turn tool', () => {
+    for (const reason of ['bot_not_in_group', 'owner_not_member', 'blocked']) {
+      expect(text(error(reason, {}), turnViewer)).toBe(STOP);
+      expect(text(error(reason, {}), { ...turnViewer, tool: 'make_move' })).toBe(STOP);
+    }
+  });
+
+  it('is unchanged for the owner', () => {
+    expect(text(error('bot_not_in_group', mine))).toContain('add_bot_to_group');
+    expect(text(error('owner_not_member', mine))).toContain('list_my_groups');
+    expect(text(error('blocked', mine))).toContain('blocked this bot or its owner');
+    expect(text(error('bot_not_in_group', {}))).toContain('add_bot_to_group');
+  });
+
+  it('hides any other bot’s standing on a turn, a sibling of the same owner included', () => {
+    const sibling = { subjectId: 43, subjectOwnerId: OWNER, name: 'Pawn' };
+    const notFound = 'Opponent bot not found. Use a bot id from find_bots for that group.';
+    for (const reason of ['bot_not_in_group', 'owner_not_member', 'blocked']) {
+      for (const subject of [sibling, theirs]) {
+        const out = text(error(reason, subject), turnViewer);
+        expect(out).toBe(notFound);
+        expect(out).not.toContain('add_bot_to_group');
+        expect(out).not.toContain('list_my_groups');
+      }
+    }
+  });
+
+  it('leaves a sibling’s and another owner’s standing as it was for the owner', () => {
+    const sibling = { subjectId: 43, subjectOwnerId: OWNER, name: 'Pawn' };
+    expect(text(error('bot_not_in_group', sibling))).toContain('add_bot_to_group');
+    expect(text(error('owner_not_member', sibling))).toContain('list_my_groups');
+    expect(text(error('blocked', sibling))).toContain('blocked this bot or its owner');
+    expect(text(error('bot_not_in_group', theirs))).toBe('Knightbot is no longer in that group.');
+    expect(text(error('owner_not_member', theirs))).toBe(
+      "Knightbot's owner is no longer a member of that group, so it can't play there.",
+    );
+    expect(text(error('blocked', theirs))).toBe(
+      'An admin has blocked Knightbot or its owner in that group.',
+    );
+  });
+
+  it('says the turn has ended when a turn tool other than challenge_bot meets another bot’s standing', () => {
+    for (const reason of ['bot_not_in_group', 'owner_not_member', 'blocked'])
+      expect(text(error(reason, theirs), { ...turnViewer, tool: 'find_bots' })).toBe(
+        'This turn has ended; stop.',
+      );
+  });
+
+  it('says the turn has ended when the position changed under it; the owner text stands', () => {
+    const stale = new DomainError('stale_state', 'the position has changed', { plyCount: 12 });
+    for (const tool of ['make_move', 'set_premoves', 'game_action'])
+      expect(text(stale, { ...turnViewer, tool })).toBe('This turn has ended; stop.');
+    expect(text(stale)).toBe(
+      'The position has changed; it is now ply 12. Call get_position and choose again.',
+    );
+  });
+
+  it('says the turn has ended when the bot or the group is gone', () => {
+    for (const reason of ['bot_not_found', 'group_not_found'])
+      expect(text(new DomainError('not_found', 'gone', { reason }), turnViewer)).toBe(
+        'This turn has ended; stop.',
+      );
+    expect(text(new DomainError('not_found', 'gone', { reason: 'bot_not_found' }))).toContain(
+      'list_bots',
+    );
+    expect(text(new DomainError('not_found', 'gone', { reason: 'group_not_found' }))).toContain(
+      'list_my_groups',
+    );
+  });
+});
+
+/** Every tool a turn session can call. */
+const TURN_TOOLS = [
+  'get_position',
+  'make_move',
+  'game_action',
+  'set_premoves',
+  'respond_to_challenge',
+  'set_notes',
+  'find_bots',
+  'challenge_bot',
+  'hello',
+];
+
+/** Tools only an owner has: a turn session is never pointed at one. */
+const OWNER_ONLY_TOOLS = [
+  'add_bot_to_group',
+  'remove_bot_from_group',
+  'list_my_groups',
+  'list_bots',
+  'create_bot',
+  'update_bot',
+  'delete_bot',
+  'link_runner',
+  'list_runners',
+  'revoke_runner',
+  'test_runner',
+  'get_profile',
+];
+
+/**
+ * Reasons whose text names an owner-only tool but that no turn tool can throw: they come from the
+ * owner-surface tools (bot and runner management). `bot_not_found` and `group_not_found` are not
+ * here: set_notes and the game-over tools can meet them, so the sweep checks them.
+ */
+const OWNER_SURFACE_ONLY = new Set([
+  'too_many_link_codes',
+  'too_many_runners',
+  'link_code_invalid',
+  'runner_not_found',
+  'bot_name_taken',
+  'invalid_bot_name',
+  'persona_too_long',
+  'invalid_tagline',
+  'too_many_bots',
+  'not_a_human_owner',
+]);
+
+describe('a turn session is never pointed at an owner tool', () => {
+  const turnViewer: Viewer = { ownerId: OWNER, botId: 40, tool: 'challenge_bot' };
+  const sibling = { subjectId: 43, subjectOwnerId: OWNER, name: 'Pawn' };
+
+  it('in any refusal a turn tool can reach', () => {
+    const offenders: string[] = [];
+    for (const key of Object.keys(REFUSALS)) {
+      if (OWNER_SURFACE_ONLY.has(key)) continue;
+      for (const subject of [{}, mine, sibling, theirs]) {
+        for (const tool of TURN_TOOLS) {
+          const out = text(new DomainError('forbidden', 'refused', { reason: key, ...subject }), {
+            ...turnViewer,
+            tool,
+          });
+          for (const name of OWNER_ONLY_TOOLS)
+            if (out.includes(name)) offenders.push(`${key}: ${name}`);
+        }
+      }
+    }
+    expect([...new Set(offenders)]).toEqual([]);
   });
 });
 

@@ -1,12 +1,28 @@
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { games, jobs, telegramUpdates } from '../../src/db/schema';
+import {
+  games,
+  jobs,
+  matchNotes,
+  runnerLinkCodes,
+  telegramUpdates,
+  turnLeases,
+  type GameRow,
+} from '../../src/db/schema';
+import { createLinkCode } from '../../src/domain/runners';
 import { applyGameResultToRatings } from '../../src/domain/ratings';
 import { coreJobHandlers, ensurePruneScheduled } from '../../src/jobs/handlers';
 import { enqueue } from '../../src/jobs/queue';
 import { JobWorker } from '../../src/jobs/worker';
 import { openTestDb, testDeps, truncateAll } from '../helpers/db';
-import { insertGame, insertGroup, insertUser } from '../helpers/fixtures';
+import {
+  insertBot,
+  insertChallenge,
+  insertGame,
+  insertGroup,
+  insertRunner,
+  insertUser,
+} from '../helpers/fixtures';
 
 const { db, close } = openTestDb();
 const deps = testDeps(db);
@@ -113,5 +129,144 @@ describe('prune', () => {
       sql`select extract(epoch from (run_at - now())) as seconds from jobs where kind = 'prune'`,
     );
     expect(Number(again?.seconds)).toBeGreaterThan(86_000);
+  });
+});
+
+describe('prune of turns', () => {
+  const ago = (s: number) => new Date(Date.now() - s * 1000);
+  const soon = (s: number) => new Date(Date.now() + s * 1000);
+  const prune = async () => {
+    await ensurePruneScheduled(db);
+    expect(await worker().runOnce()).toBe(1);
+  };
+  const kinds = async () =>
+    (await db.select().from(turnLeases).orderBy(turnLeases.id)).map((l) => [l.botId, l.kind]);
+  const notedGames = async () =>
+    (await db.select().from(matchNotes).orderBy(matchNotes.gameId)).map((n) => n.gameId);
+
+  async function scene() {
+    const group = await insertGroup(db);
+    const owner = await insertUser(db);
+    const human = await insertUser(db);
+    const bot = await insertBot(db, owner);
+    const finished = (): Promise<GameRow> =>
+      insertGame(db, group.id, bot.id, human.id, {
+        status: 'finished',
+        result: '1-0',
+        endReason: 'resignation',
+        finishedAt: ago(60),
+      });
+    return { group, owner, human, bot, finished };
+  }
+
+  it('deletes expired turns, with a game-over row’s match notes; keeps unexpired ones', async () => {
+    const { bot, finished } = await scene();
+    const [old, recent] = [await finished(), await finished()];
+    await db.insert(turnLeases).values([
+      { botId: bot.id, kind: 'game_over', gameId: old.id, expiresAt: ago(1) },
+      { botId: bot.id, kind: 'game_over', gameId: recent.id, expiresAt: soon(3600) },
+      { botId: bot.id, kind: 'practice', expiresAt: ago(1) },
+    ]);
+    await db.insert(matchNotes).values([
+      { botId: bot.id, gameId: old.id, body: 'old' },
+      { botId: bot.id, gameId: recent.id, body: 'recent' },
+    ]);
+    await prune();
+    expect(await kinds()).toEqual([[bot.id, 'game_over']]);
+    expect(await notedGames()).toEqual([recent.id]);
+  });
+
+  it('deletes the turn rows of deleted bots', async () => {
+    const { group, owner, human, bot } = await scene();
+    const gone = await insertBot(db, owner, { deletedAt: ago(10) });
+    const runner = await insertRunner(db, owner.id);
+    const live = await insertGame(db, group.id, bot.id, human.id);
+    const theirs = await insertGame(db, group.id, gone.id, human.id);
+    await db.insert(turnLeases).values([
+      { botId: gone.id, kind: 'move', gameId: theirs.id, ply: 0 },
+      { botId: gone.id, kind: 'practice', expiresAt: soon(600) },
+      {
+        botId: bot.id,
+        kind: 'move',
+        gameId: live.id,
+        ply: 0,
+        runnerId: runner.id,
+        leasedUntil: soon(300),
+      },
+    ]);
+    await prune();
+    expect(await kinds()).toEqual([[bot.id, 'move']]);
+  });
+
+  it('deletes unleased rows of turns that resolved; keeps a live lease and a pending turn', async () => {
+    const { group, owner, human, bot, finished } = await scene();
+    const runner = await insertRunner(db, owner.id);
+    const [ended, held] = [await finished(), await finished()];
+    const live = await insertGame(db, group.id, bot.id, human.id);
+    const declined = await insertChallenge(db, group.id, human.id, bot.id, { status: 'declined' });
+    await db.insert(turnLeases).values([
+      { botId: bot.id, kind: 'move', gameId: ended.id, ply: 4, failures: 1 },
+      { botId: bot.id, kind: 'draw_offer', gameId: ended.id, ply: 5, leasedUntil: ago(30) },
+      { botId: bot.id, kind: 'challenge', challengeId: declined.id },
+      {
+        botId: bot.id,
+        kind: 'move',
+        gameId: held.id,
+        ply: 8,
+        runnerId: runner.id,
+        leasedUntil: soon(300),
+      },
+      { botId: bot.id, kind: 'move', gameId: live.id, ply: 0, failures: 1 },
+    ]);
+    await prune();
+    const rows = await db.select().from(turnLeases).orderBy(turnLeases.id);
+    expect(rows.map((l) => l.gameId)).toEqual([held.id, live.id]);
+  });
+
+  it('deletes match notes of games over with no game-over row; keeps an active game’s', async () => {
+    const { group, human, bot, finished } = await scene();
+    const [ended, offered] = [await finished(), await finished()];
+    const live = await insertGame(db, group.id, bot.id, human.id);
+    await db
+      .insert(turnLeases)
+      .values({ botId: bot.id, kind: 'game_over', gameId: offered.id, expiresAt: soon(3600) });
+    await db.insert(matchNotes).values([
+      { botId: bot.id, gameId: ended.id, body: 'orphan' },
+      { botId: bot.id, gameId: offered.id, body: 'last look' },
+      { botId: bot.id, gameId: live.id, body: 'in play' },
+    ]);
+    await prune();
+    expect(await notedGames()).toEqual([offered.id, live.id].sort((a, b) => a - b));
+  });
+
+  it('deletes expired link codes and keeps unexpired ones', async () => {
+    // Two owners: making a code purges its own owner's expired ones.
+    await createLinkCode(db, (await insertUser(db)).id, {}, ago(601));
+    const { expiresAt } = await createLinkCode(db, (await insertUser(db)).id, {}, new Date());
+    await prune();
+    expect((await db.select().from(runnerLinkCodes)).map((c) => c.expiresAt)).toEqual([expiresAt]);
+  });
+
+  it('counts what it pruned in its log, and nothing else', async () => {
+    const lines: unknown[] = [];
+    const log: typeof deps.log = Object.create(deps.log);
+    log.info = ((obj: unknown) => void lines.push(obj)) as typeof log.info;
+    const { bot } = await scene();
+    await db.insert(turnLeases).values({ botId: bot.id, kind: 'practice', expiresAt: ago(1) });
+    await ensurePruneScheduled(db);
+    const w = new JobWorker({
+      db,
+      log,
+      handlers: coreJobHandlers({ ...deps, log }),
+      workerId: 'w',
+    });
+    expect(await w.runOnce()).toBe(1);
+    expect(lines).toContainEqual({
+      expired: 1,
+      deletedBots: 0,
+      resolved: 0,
+      matchNotes: 0,
+      linkCodes: 0,
+    });
   });
 });

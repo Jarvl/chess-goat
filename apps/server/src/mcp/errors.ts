@@ -1,6 +1,11 @@
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import { DomainError, isDomainError } from '../domain/errors';
 import {
+  LINK_CODE_TTL_SECONDS,
+  MAX_LINK_CODES_PER_OWNER,
+  MAX_RUNNERS_PER_OWNER,
+} from '../domain/runners';
+import {
   MAX_BOTS_PER_OWNER,
   MAX_LIVE_GAMES_PER_BOT,
   MAX_PENDING_CHALLENGES,
@@ -11,8 +16,11 @@ export type ToolErrorResult = CallToolResult & {
   content: [{ type: 'text'; text: string }];
 };
 
-/** Who is reading the error: the owner whose token made the call, and the tool they called. */
-export type Viewer = { ownerId: number; tool: string };
+/**
+ * Who is reading the error: the owner whose token made the call, or, on the turn surface, the bot
+ * the turn is for (with its owner), and the tool called.
+ */
+export type Viewer = { ownerId: number; botId?: number; tool: string };
 
 const sentence = (message: string): string => {
   const trimmed = message.trim();
@@ -46,10 +54,22 @@ export const REFUSALS: Record<string, (r: Refusal) => string> = {
   bot_not_found: hint(
     "Call list_bots for your bots' names and ids. A string is always a name; pass an id as a number.",
   ),
+  too_many_link_codes: () =>
+    `You have ${MAX_LINK_CODES_PER_OWNER} unused link codes. Use one, or wait for them to expire (${LINK_CODE_TTL_SECONDS / 60} minutes).`,
+  too_many_runners: () =>
+    `You have the maximum of ${MAX_RUNNERS_PER_OWNER} runners. Call list_runners and revoke one with revoke_runner first.`,
+  link_code_invalid: () =>
+    'That link code is wrong, already used, or expired. Call link_runner for a new one.',
+  runner_not_found: () => 'No such runner. Call list_runners for your runners and their ids.',
   bot_name_taken: hint('Choose a different name.'),
   invalid_bot_name: hint(
     "Names are 1–32 characters: letters, digits, spaces, '.', '_' or '-', starting with a letter or digit.",
   ),
+  persona_too_long: hint('Shorten the persona to at most 4,000 characters.'),
+  notes_too_long: (r) =>
+    `Too long by ${typeof r.details.over === 'number' ? r.details.over : 'some'} characters; shorten and call set_notes again.`,
+  notes_changed: (r) =>
+    `Another of your games updated these notes. Current notes are below; merge yours in and call set_notes again.\n\n${typeof r.details.current === 'string' ? r.details.current : ''}`,
   invalid_tagline: hint('Taglines are one line of at most 80 characters.'),
   too_many_bots: hint(
     `You have the maximum of ${MAX_BOTS_PER_OWNER} bots. Delete one with delete_bot first.`,
@@ -69,15 +89,11 @@ export const REFUSALS: Record<string, (r: Refusal) => string> = {
       : hint('Add the bot to the group with add_bot_to_group first.')(r),
   opponent_gone: (r) => `${r.name} has been deleted.`,
   group_not_found: hint('Use a groupId from list_my_groups.'),
-  game_not_found: hint(
-    "That bot doesn't play in a game with that id. Use a gameId from get_inbox or get_profile.",
-  ),
-  // A game the bot doesn't play in reads as no such game: an agent can't probe others' games.
-  not_a_player: () =>
-    "Game not found. That bot doesn't play in a game with that id. Use a gameId from get_inbox or get_profile.",
-  challenge_not_found: hint(
-    'That bot has no pending challenge with that id. Use a challengeId from get_inbox.',
-  ),
+  // A turn session passes no game id: a game that is gone or not its own means the turn is over.
+  game_not_found: () => 'This turn has ended; stop.',
+  not_a_player: () => 'This turn has ended; stop.',
+  turn_bot_not_in_group: () =>
+    'Your bot can no longer play in this group, so it cannot challenge anyone here. Stop.',
   bots_challenge_bots_only: hint('Bots can only challenge other bots. Find one with find_bots.'),
   open_challenges_are_for_people: () => "Bots can't take open challenges.",
   invalid_cursor: hint(
@@ -85,7 +101,7 @@ export const REFUSALS: Record<string, (r: Refusal) => string> = {
   ),
   opponent_not_found: hint('Use a bot id from find_bots for that group.'),
   self: hint("A bot can't challenge itself. Pick a different bot from find_bots."),
-  game_over: hint('Call get_game to see the result, then get_inbox.'),
+  game_over: hint('The game has ended; stop playing it.'),
   pending_limit: hint(
     `This bot already has ${MAX_PENDING_CHALLENGES} pending challenges in this group. Wait for one to be answered or to expire.`,
   ),
@@ -99,34 +115,31 @@ export const REFUSALS: Record<string, (r: Refusal) => string> = {
       ? `${r.name} already has ${limit} games in progress. Try another bot from find_bots.`
       : `This bot already has ${limit} games in progress. Finish some before starting more.`;
   }),
-  too_many_inbox_waits: hint((r) => {
-    const limit = typeof r.details.limit === 'number' ? r.details.limit : 2;
-    return `You already have ${limit} inbox waits open. Wait for them to return before starting another.`;
-  }),
   bot_games_need_clock: hint('Pass a time_per_move.'),
   stale_state: (r) =>
     typeof r.details.plyCount === 'number'
-      ? `The position has changed; it is now ply ${r.details.plyCount}. Call get_game and choose again.`
-      : `${sentence(r.message)} Call get_game and choose again.`,
-  not_your_turn: () =>
-    "It isn't your move. Call get_inbox with wait_seconds to wait for your turn.",
+      ? `The position has changed; it is now ply ${r.details.plyCount}. Call get_position and choose again.`
+      : `${sentence(r.message)} Call get_position and choose again.`,
+  not_your_turn: () => "It isn't your move. Stop; you are called again when it is.",
   illegal_move: (r) => {
-    if (typeof r.details.move !== 'string') return `${sentence(r.message)} Call get_game.`;
+    if (typeof r.details.move !== 'string') return `${sentence(r.message)} Call get_position.`;
     const legal = typeof r.details.legal === 'string' ? ` Legal moves: ${r.details.legal}.` : '';
     return `${r.details.move} isn't legal here.${legal}`;
   },
-  not_your_challenge: hint(
-    'That challenge is for a different bot. Use a challengeId from get_inbox.',
-  ),
+  not_your_challenge: hint('That challenge is for a different bot. Check the challenge id.'),
   not_the_challenger: hint('Only the bot that made a challenge can withdraw it.'),
   own_challenge: hint("A bot can't accept its own challenge."),
-  challenge_gone: hint('Call get_inbox for the challenges still open.'),
-  accepted_first: hint('Call get_inbox for the challenges still open.'),
-  draw_offer_unavailable: hint('Call get_game to see what the bot can do now.'),
-  no_offer: hint('Call get_game to see what the bot can do now.'),
-  no_claim: hint('Call get_game to see what the bot can do now.'),
+  challenge_gone: hint('That challenge is no longer open.'),
+  accepted_first: hint('That challenge is no longer open.'),
+  draw_offer_unavailable: hint('Call get_position to see what the bot can do now.'),
+  no_offer: hint('Call get_position to see what the bot can do now.'),
+  no_claim: hint('Call get_position to see what the bot can do now.'),
   abort_unavailable: hint('Play on, or resign with game_action.'),
   rate_limited: hint('Wait a minute, then try again.'),
+  no_match_yet: () => 'There is no match yet, so there are no match notes. Use bot_notes.',
+  no_notes_given: () => 'Give bot_notes, match_notes or both.',
+  turn_ended: () => 'This turn has ended; stop.',
+  turn_budget_spent: () => 'This session has used its 30 tool calls; stop.',
 };
 
 /**
@@ -137,14 +150,65 @@ export const REFUSALS: Record<string, (r: Refusal) => string> = {
 const UNFINDABLE = new Set(['opponent_gone', 'bot_not_in_group', 'owner_not_member', 'blocked']);
 
 function hidesOpponent(error: DomainError, mine: boolean | null, viewer: Viewer): boolean {
-  if (viewer.tool !== 'challenge_bot') return false;
   const reason = error.details.reason;
+  if (viewer.tool !== 'challenge_bot') return false;
   // The opponent named a person (or the engine).
   if (reason === 'bots_challenge_bots_only') return true;
   // No such user at all.
   if (error.code === 'not_found' && reason === undefined) return true;
   return typeof reason === 'string' && UNFINDABLE.has(reason) && mine === false;
 }
+
+/**
+ * On a turn, the calling bot (or its owner) having lost its place in the group: one sentence for
+ * the session, whichever rule the domain broke. Others' standing keeps its own text.
+ */
+function ownStandingLost(error: DomainError, viewer: Viewer): boolean {
+  if (viewer.botId === undefined) return false;
+  const { reason, subjectId } = error.details;
+  if (reason === 'turn_bot_not_in_group') return true;
+  // An error naming no player is about the caller's own standing.
+  return (
+    typeof reason === 'string' &&
+    STANDING.has(reason) &&
+    (subjectId === undefined || subjectId === viewer.botId)
+  );
+}
+
+/**
+ * What a turn session is told in place of a refusal that only means something to an owner. The
+ * caller's own standing is `ownStandingLost`'s. Another bot's standing (a sibling of the same
+ * owner included) reads as no such opponent for `challenge_bot` and as a turn over elsewhere; a
+ * bot or group that is gone, or a position that moved on, is a turn over.
+ */
+function turnSessionError(error: DomainError, viewer: Viewer): DomainError | null {
+  if (viewer.botId === undefined) return null;
+  const { reason, subjectId } = error.details;
+  if (reason === 'bot_not_found' || reason === 'group_not_found') {
+    return new DomainError('stale_state', error.message, { reason: 'turn_ended' });
+  }
+  // The position moved on: on a turn, that turn is over (get_position would say so too).
+  if (
+    error.code === 'stale_state' &&
+    reason === undefined &&
+    typeof error.details.plyCount === 'number'
+  ) {
+    return new DomainError('stale_state', error.message, { reason: 'turn_ended' });
+  }
+  if (
+    typeof reason === 'string' &&
+    STANDING.has(reason) &&
+    typeof subjectId === 'number' &&
+    subjectId !== viewer.botId
+  ) {
+    return viewer.tool === 'challenge_bot'
+      ? opponentNotFound
+      : new DomainError('stale_state', error.message, { reason: 'turn_ended' });
+  }
+  return null;
+}
+
+const STANDING = new Set(['bot_not_in_group', 'owner_not_member', 'blocked']);
 
 const opponentNotFound = new DomainError('not_found', 'opponent bot not found', {
   reason: 'opponent_not_found',
@@ -155,9 +219,14 @@ export function refusalText(error: DomainError, viewer: Viewer): string {
   const { subjectId, subjectOwnerId, name } = error.details;
   const mine =
     typeof subjectId === 'number'
-      ? subjectId === viewer.ownerId || subjectOwnerId === viewer.ownerId
+      ? subjectId === viewer.ownerId ||
+        subjectId === viewer.botId ||
+        subjectOwnerId === viewer.ownerId
       : null;
-  const shown = hidesOpponent(error, mine, viewer) ? opponentNotFound : error;
+  const shown = ownStandingLost(error, viewer)
+    ? new DomainError('forbidden', error.message, { reason: 'turn_bot_not_in_group' })
+    : (turnSessionError(error, viewer) ??
+      (hidesOpponent(error, mine, viewer) ? opponentNotFound : error));
   const reason = shown.details.reason;
   const entry = (typeof reason === 'string' ? REFUSALS[reason] : undefined) ?? REFUSALS[shown.code];
   if (!entry) return `${sentence(shown.message)} (code: ${shown.code})`;

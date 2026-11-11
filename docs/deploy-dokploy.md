@@ -65,6 +65,7 @@ In the **Environment** tab:
 | `WEBHOOK_SECRET` | 16 characters or more |
 | `SESSION_SECRET` | 32 characters or more |
 | `METRICS_TOKEN` | optional; `openssl rand -hex 32` |
+| `TRUST_PROXY_HOPS` | `1` — Traefik is one proxy in front of the server; without it every client shares one rate-limit bucket on `/runner/link` |
 | `DATABASE_URL` | the internal string from step 1 |
 
 Generate the secrets rather than inventing them:

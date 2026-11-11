@@ -1,6 +1,15 @@
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { challenges, groupMembers, jobs, ratings, users, type UserRow } from '../../src/db/schema';
+import {
+  challenges,
+  groupMembers,
+  jobs,
+  ratings,
+  runners,
+  users,
+  type UserRow,
+} from '../../src/db/schema';
+import { pendingTurns } from '../../src/domain/turns';
 import { createOwnerToken } from '../../src/domain/ownerTokens';
 import { touchMember } from '../../src/domain/members';
 import type { TestApi } from '../helpers/api';
@@ -26,7 +35,14 @@ afterAll(async () => {
 });
 
 type Found = {
-  bots: { id: number; name: string; label: string; owner: string; rating: number }[];
+  bots: {
+    id: number;
+    name: string;
+    label: string;
+    owner: string;
+    rating: number;
+    online?: boolean;
+  }[];
   nextCursor: string | null;
 };
 const call = <O = Record<string, unknown>>(name: string, args: Record<string, unknown> = {}) =>
@@ -100,6 +116,29 @@ describe('find_bots', () => {
     expect(out.structuredContent!.bots.map((b) => b.name)).toEqual(['High', 'Mid', 'Low']);
   });
 
+  it('lists online bots first within the page, keeping the database order otherwise', async () => {
+    const { group, other } = await world();
+    await botIn(group.id, other, 'High', 1900);
+    const low = await botIn(group.id, other, 'Low', 1200);
+    await botIn(group.id, other, 'Mid', 1500);
+    await db.insert(runners).values({
+      ownerId: other.id,
+      label: 'Runner',
+      credentialHash: Buffer.from('x'),
+      botIds: [low.id],
+      lastSeenAt: new Date(),
+    });
+    const out = await call<Found>('find_bots', { group: group.publicId });
+    expect(out.structuredContent!.bots.map((b) => [b.name, b.online])).toEqual([
+      ['Low', true],
+      ['High', false],
+      ['Mid', false],
+    ]);
+    expect(resultText(out)).toMatch(
+      /^"Low" \(id \d+, 1200\) by "@bob" \(online\)\n"High" .* \(offline\)/,
+    );
+  });
+
   it('hides blocked bots, bots of blocked owners and bots that have left', async () => {
     const { group, other } = await world();
     await botIn(group.id, other, 'Shown');
@@ -124,6 +163,38 @@ describe('find_bots', () => {
     expect(out.structuredContent!.bots.map((b) => b.name)).toEqual(['Shown']);
   });
 
+  it('says so when the group has no other bots', async () => {
+    const group = await insertGroup(db);
+    await touchMember(db, group.id, owner.id);
+    const out = await call('find_bots', { group: group.publicId });
+    expect(resultText(out)).toBe(
+      'No other bots in this group yet. People can still challenge yours.',
+    );
+  });
+
+  it('says what an empty page means: a name filter, a cursor, or an empty group', async () => {
+    const { group, other } = await world();
+    const empty = await call('find_bots', { group: group.publicId });
+    expect(resultText(empty)).toBe(
+      'No other bots in this group yet. People can still challenge yours.',
+    );
+    const pawn = await botIn(group.id, other, 'Pawn');
+    const rook = await botIn(group.id, other, 'Rook');
+    const named = await call('find_bots', { group: group.publicId, query: 'zzz' });
+    expect(resultText(named)).toBe('No bots match that name in this group.');
+    const first = await call<Found>('find_bots', { group: group.publicId, limit: 1 });
+    const cursor = first.structuredContent!.nextCursor!;
+    expect(cursor).toBeTruthy();
+    for (const bot of [pawn, rook]) {
+      await db
+        .update(groupMembers)
+        .set({ status: 'left' })
+        .where(and(eq(groupMembers.groupId, group.id), eq(groupMembers.userId, bot.id)));
+    }
+    const past = await call('find_bots', { group: group.publicId, cursor });
+    expect(resultText(past)).toBe('No more bots.');
+  });
+
   it('is refused for a group the owner is not in', async () => {
     const group = await insertGroup(db);
     const out = await call('find_bots', { group: group.publicId });
@@ -140,7 +211,7 @@ describe('find_bots', () => {
 });
 
 describe('challenge_bot', () => {
-  it('creates a silent bot-vs-bot challenge that shows in the opponent inbox', async () => {
+  it('creates a silent bot-vs-bot challenge that is a challenge turn for the opponent', async () => {
     const { group, other } = await world();
     const mine = await botIn(group.id, owner, 'Rook');
     const theirs = await botIn(group.id, other, 'Pawn');
@@ -164,16 +235,12 @@ describe('challenge_bot', () => {
       expiresAt: row!.expiresAt.toISOString(),
     });
     expect(await db.select().from(jobs)).toHaveLength(0);
-
-    const otherToken = await db.transaction((tx) => createOwnerToken(tx, other.id));
-    const inbox = await callTool<{ entries: { kind: string; challengeId?: string }[] }>(
-      api.app,
-      otherToken,
-      'get_inbox',
-      { bot: 'Pawn' },
+    expect(resultText(out)).toBe(
+      `Challenge ${row!.publicId} sent. It expires at ${row!.expiresAt.toISOString()}. Your bot's runner plays the game once the other bot accepts.`,
     );
-    expect(inbox.structuredContent!.entries).toMatchObject([
-      { kind: 'challenge', challengeId: row!.publicId },
+    // The opponent bot's runner gets it as a challenge turn.
+    expect(await pendingTurns(db, [theirs.id])).toMatchObject([
+      { kind: 'challenge', challengeId: row!.id },
     ]);
   });
 

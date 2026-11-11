@@ -29,6 +29,12 @@ describe('loadConfig', () => {
     expect(config.PORT).toBe(8080);
   });
 
+  it('defaults TRUST_PROXY_HOPS to 0 and bounds it to 0-5', () => {
+    expect(loadConfig(valid).TRUST_PROXY_HOPS).toBe(0);
+    expect(loadConfig({ ...valid, TRUST_PROXY_HOPS: '1' }).TRUST_PROXY_HOPS).toBe(1);
+    expect(() => loadConfig({ ...valid, TRUST_PROXY_HOPS: '6' })).toThrow(/TRUST_PROXY_HOPS/);
+  });
+
   it('names the missing variable', () => {
     const { BOT_TOKEN: _omitted, ...rest } = valid;
     expect(() => loadConfig(rest)).toThrow(/BOT_TOKEN/);

@@ -3,22 +3,31 @@ import {
   TelemetryRequestSchema,
   type OkDto,
   type OwnerBotsDto,
+  type OwnerRunnersDto,
   type OwnerTokenCreatedDto,
   type OwnerTokenStatusDto,
   type Prefs,
 } from '@chess-goat/shared';
 import { Hono } from 'hono';
+import { z } from 'zod';
 import { RateLimiter } from '../../bot/rateLimit';
 import { ownerBots } from '../../domain/bots';
 import { deleteMyData } from '../../domain/account';
 import { DomainError } from '../../domain/errors';
 import { meGames, meGroups } from '../../domain/lobby';
 import { createOwnerToken, ownerTokenStatus, revokeOwnerToken } from '../../domain/ownerTokens';
+import { listRunners, revokeRunner } from '../../domain/runners';
 import { prefsOf, recordWriteAccess, requireUser, updatePrefs } from '../../domain/users';
 import type { ApiContext, ApiEnv } from '../context';
 import { validate } from '../validate';
 
 const OK: OkDto = { ok: true };
+const RunnerParamSchema = z.object({
+  id: z
+    .string()
+    .regex(/^[1-9]\d{0,14}$/)
+    .transform(Number),
+});
 
 export function meRoutes(ctx: ApiContext): Hono<ApiEnv> {
   const app = new Hono<ApiEnv>();
@@ -45,6 +54,21 @@ export function meRoutes(ctx: ApiContext): Hono<ApiEnv> {
       bots: bots.map(({ name: _name, ...bot }) => bot),
     };
     return c.json(dto);
+  });
+
+  app.get('/me/runners', async (c) => {
+    const found = await listRunners(ctx.deps.db, c.get('user').id, new Date());
+    const dto: OwnerRunnersDto = {
+      runners: found.map((r) => ({ ...r, lastSeenAt: r.lastSeenAt?.toISOString() ?? null })),
+    };
+    return c.json(dto);
+  });
+
+  app.delete('/me/runners/:id', validate('param', RunnerParamSchema), async (c) => {
+    await ctx.deps.db.transaction((tx) =>
+      revokeRunner(tx, c.get('user').id, c.req.valid('param').id),
+    );
+    return c.body(null, 204);
   });
 
   app.get('/me/owner-token', async (c) => {

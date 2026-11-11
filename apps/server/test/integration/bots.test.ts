@@ -1,6 +1,15 @@
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { challenges, games, groupMembers, jobs, ratings, users } from '../../src/db/schema';
+import {
+  challenges,
+  games,
+  groupMembers,
+  jobs,
+  matchNotes,
+  ratings,
+  turnLeases,
+  users,
+} from '../../src/db/schema';
 import { getLeaderboard } from '../../src/domain/ratings';
 import { listKnownPlayers } from '../../src/domain/members';
 import { awardFlairForGame } from '../../src/flair/award';
@@ -27,6 +36,8 @@ import {
   insertChallenge,
   insertGame,
   insertGroup,
+  insertRunner,
+  insertTurnData,
   insertUser,
 } from '../helpers/fixtures';
 
@@ -389,6 +400,43 @@ describe('deletion', () => {
     await deleteBot(deps, owner.id, bots[0]!.id);
     expect((await createBot(db, owner.id, { name: 'Bot 20' })).firstName).toBe('Bot 20');
     expect(await listBots(db, owner.id)).toHaveLength(20);
+  });
+
+  it('deleteBot erases its persona, notes, match notes and turn rows, and no one else’s', async () => {
+    const group = await insertGroup(db);
+    const owner = await insertUser(db);
+    const human = await insertUser(db);
+    const bot = await insertBot(db, owner);
+    const sibling = await insertBot(db, owner);
+    const runner = await insertRunner(db, owner.id);
+    await insertTurnData(db, bot, { groupId: group.id, opponentId: human.id, runnerId: runner.id });
+    await insertTurnData(db, sibling, {
+      groupId: group.id,
+      opponentId: human.id,
+      runnerId: runner.id,
+    });
+
+    await deleteBot(deps, owner.id, bot.id);
+
+    const row = await userRow(bot.id);
+    expect(row).toMatchObject({ persona: null, botNotes: '', botNotesRevision: 4 });
+    const both = [bot.id, sibling.id];
+    const notes = await db.select().from(matchNotes).where(inArray(matchNotes.botId, both));
+    expect(notes.map((n) => n.botId)).toEqual([sibling.id, sibling.id]);
+    const leases = await db
+      .select()
+      .from(turnLeases)
+      .where(inArray(turnLeases.botId, both))
+      .orderBy(turnLeases.id);
+    expect(leases.map((l) => [l.botId, l.kind])).toEqual([
+      [sibling.id, 'move'],
+      [sibling.id, 'game_over'],
+      [sibling.id, 'practice'],
+    ]);
+    expect(await userRow(sibling.id)).toMatchObject({
+      persona: 'Plays sharp.',
+      botNotesRevision: 3,
+    });
   });
 
   it("deleteBot refuses other owners' bots and already-deleted bots", async () => {

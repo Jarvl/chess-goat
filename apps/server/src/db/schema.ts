@@ -9,6 +9,7 @@ import type {
   GameStatus,
   GroupSettings,
   Prefs,
+  TurnKind,
 } from '@chess-goat/shared';
 import { sql } from 'drizzle-orm';
 import {
@@ -60,6 +61,11 @@ export const users = pgTable(
     ownerName: text(),
     /** Optional one-line description of a bot. */
     tagline: text(),
+    /** A bot's persona, what its agent is told it is; null until set. */
+    persona: text(),
+    /** The bot's standing notes to itself across games; `botNotesRevision` bumps on each write. */
+    botNotes: text().notNull().default(''),
+    botNotesRevision: integer().notNull().default(0),
     createdAt: tz().notNull().defaultNow(),
     lastSeenAt: tz().notNull().defaultNow(),
     /** A bot's last activity; null until its first. `lastSeenAt` can't say "never" (not null). */
@@ -387,6 +393,99 @@ export const botAnnouncements = pgTable(
   (t) => [primaryKey({ columns: [t.botId, t.groupId] })],
 );
 
+/** A bot's notes on one game; both ends cascade. */
+export const matchNotes = pgTable(
+  'match_notes',
+  {
+    botId: bigint({ mode: 'number' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    gameId: bigint({ mode: 'number' })
+      .notNull()
+      .references(() => games.id, { onDelete: 'cascade' }),
+    body: text().notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.botId, t.gameId] }),
+    // The game's foreign key and the daily prune look notes up by game.
+    index('match_notes_game').on(t.gameId),
+  ],
+);
+
+/** A runner on an owner's machine, linked by code. Only the hash of its credential is stored. */
+export const runners = pgTable('runners', {
+  id: id(),
+  ownerId: bigint({ mode: 'number' })
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  label: text().notNull(),
+  harness: text(),
+  /** The bots it may serve; null means all the owner's bots. */
+  botIds: bigint({ mode: 'number' }).array(),
+  credentialHash: bytea().notNull().unique(),
+  createdAt: tz().notNull().defaultNow(),
+  /** Its last claim; null until the first. */
+  lastSeenAt: tz(),
+});
+
+/** A single-use code that links a runner to its owner; only the hash is stored. */
+export const runnerLinkCodes = pgTable('runner_link_codes', {
+  codeHash: bytea().primaryKey(),
+  ownerId: bigint({ mode: 'number' })
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  label: text(),
+  botIds: bigint({ mode: 'number' }).array(),
+  preset: text(),
+  expiresAt: tz().notNull(),
+});
+
+/**
+ * A turn a bot's runner can claim. One row per (bot, kind, game, challenge, ply); a runner
+ * deleted mid-lease frees the row rather than losing the turn.
+ */
+export const turnLeases = pgTable(
+  'turn_leases',
+  {
+    id: id(),
+    botId: bigint({ mode: 'number' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    kind: text().$type<TurnKind>().notNull(),
+    gameId: bigint({ mode: 'number' }).references(() => games.id, { onDelete: 'cascade' }),
+    challengeId: bigint({ mode: 'number' }).references(() => challenges.id, {
+      onDelete: 'cascade',
+    }),
+    ply: integer(),
+    runnerId: bigint({ mode: 'number' }).references(() => runners.id, { onDelete: 'set null' }),
+    leasedUntil: tz(),
+    failures: integer().notNull().default(0),
+    claimableAt: tz().notNull().defaultNow(),
+    /** Bumped on each claim, so a session from an earlier lease of this row is told apart. */
+    claimSeq: integer().notNull().default(0),
+    /** Tool calls spent on the current turn token. */
+    callsUsed: integer().notNull().default(0),
+    notesRevisionSeen: integer(),
+    /** Set only on game-over and practice turns: when the turn is dropped. */
+    expiresAt: tz(),
+    /** Practice turns only. */
+    helloAt: tz(),
+  },
+  (t) => [
+    uniqueIndex('turn_leases_turn').on(
+      t.botId,
+      t.kind,
+      sql`coalesce(${t.gameId}, 0)`,
+      sql`coalesce(${t.challengeId}, 0)`,
+      sql`coalesce(${t.ply}, -1)`,
+    ),
+    // For the foreign keys' actions and the daily prune.
+    index('turn_leases_runner').on(t.runnerId),
+    index('turn_leases_game').on(t.gameId),
+    index('turn_leases_challenge').on(t.challengeId),
+  ],
+);
+
 export const moves = pgTable(
   'moves',
   {
@@ -515,6 +614,10 @@ export const tips = pgTable('tips', {
 
 export type UserRow = typeof users.$inferSelect;
 export type OwnerTokenRow = typeof ownerTokens.$inferSelect;
+export type RunnerRow = typeof runners.$inferSelect;
+export type RunnerLinkCodeRow = typeof runnerLinkCodes.$inferSelect;
+export type TurnLeaseRow = typeof turnLeases.$inferSelect;
+export type MatchNotesRow = typeof matchNotes.$inferSelect;
 export type UserPhotoRow = typeof userPhotos.$inferSelect;
 export type GroupRow = typeof groups.$inferSelect;
 export type GroupMemberRow = typeof groupMembers.$inferSelect;

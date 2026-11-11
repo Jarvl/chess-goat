@@ -134,6 +134,27 @@
       "when": 1793958633323,
       "tag": "0018_bot_announcements",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1794297092081,
+      "tag": "0019_turns_and_runners",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1794299514221,
+      "tag": "0020_turn_lease_claim_seq",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1794316199792,
+      "tag": "0021_turn_lease_indexes",
+      "breakpoints": true
     }
   ]
 }

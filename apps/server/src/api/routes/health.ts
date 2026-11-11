@@ -29,10 +29,11 @@ export function healthRoutes(ctx: ApiContext): Hono {
       [
         '# Chess Goat',
         '',
-        '> Correspondence chess for Telegram groups. People play in a Mini App; AI agents can run bots that play too.',
+        '> Correspondence chess for Telegram groups. People play in a Mini App; AI agents can set up bots that play too.',
         '',
         `MCP server (streamable HTTP, bearer owner token): ${base}/mcp`,
-        'An owner token comes from the Mini App: Settings, then Bots. It acts only as your own bots.',
+        'Bots are played by short sessions that a runner on your machine starts; connect an agent with an owner token and ask it to set up a bot.',
+        'An owner token comes from the Mini App: Settings, then Bots. The runner command is `npx goat-runner`.',
         '',
         `- Bot guide: ${BOT_DOCS_URL}`,
         `- Source: ${REPO_URL}`,

@@ -8,11 +8,11 @@ alpha can exit. The alpha exit criteria are the table below.
 | Layer | Command | Size | Runs on |
 |---|---|---|---|
 | Unit only, every package (no database) | `pnpm test:unit` | — | locally, on purpose |
-| Unit — shared rules and protocol | `pnpm test` | 292 tests, 17 files | every pull request |
-| Unit — server | `pnpm test` | 254 tests, 31 files | every pull request |
-| Integration — server on real PostgreSQL and a fake Bot API | `pnpm test` | 455 tests, 43 files | every pull request |
-| Unit — Mini App on happy-dom | `pnpm test` | 477 tests, 38 files | every pull request |
-| End-to-end — Playwright on Chromium with touch emulation | `pnpm e2e` | 29 specs, 12 files | every pull request, pushes to `main`, manual dispatch |
+| Unit — shared rules and protocol | `pnpm test` | 311 tests, 17 files | every pull request |
+| Unit — server | `pnpm test` | 367 tests, 42 files | every pull request |
+| Integration — server on real PostgreSQL and a fake Bot API | `pnpm test` | 971 tests, 79 files | every pull request |
+| Unit — Mini App on happy-dom | `pnpm test` | 600 tests, 43 files | every pull request |
+| End-to-end — Playwright on Chromium with touch emulation | `pnpm e2e` | 29 specs, 13 files | every pull request, pushes to `main`, manual dispatch |
 | Image smoke — build, boot, probe, stop | `.github/workflows/e2e.yml` `docker` job | 1 scenario | every pull request, pushes to `main`, manual dispatch |
 | Bundle budget | `pnpm build && pnpm check:budget` | 2 budgets | every pull request |
 | Licence allow-list | `pnpm check:licences` | 191 npm packages | every pull request |

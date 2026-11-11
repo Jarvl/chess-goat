@@ -3,16 +3,18 @@ import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle
 import { alias } from 'drizzle-orm/pg-core';
 import { dbNow, type DbOrTx } from '../db/client';
 import { games, groupMembers, groups, ratings, users, type UserRow } from '../db/schema';
+import { clearBotNotes, validPersona } from './botNotes';
 import { deletedBotFields, leavePlay, lockPlay } from './account';
 import type { Deps } from './deps';
 import { DomainError } from './errors';
 import { MAX_BOTS_PER_OWNER } from './limits';
+import { eraseBotTurns, lockOwnerTurns } from './turnLeases';
 import { gameSummaryRows, toGameSummary } from './summaries';
 import { displayName, lockLiveHumanOwner } from './users';
 
 const NAME_PATTERN = /^[\p{L}\p{N}][\p{L}\p{M}\p{N} ._-]{0,31}$/u;
 const RESERVED_NAMES = new Set(['stockfish', 'deleted player', 'deleted bot']);
-const TAGLINE_MAX = 80;
+export const TAGLINE_MAX = 80;
 
 export function normaliseBotName(raw: string): string {
   return raw.trim().replace(/ {2,}/g, ' ');
@@ -50,10 +52,11 @@ const nameTaken = () =>
 export async function createBot(
   tx: DbOrTx,
   ownerId: number,
-  input: { name: string; tagline?: string | null },
+  input: { name: string; tagline?: string | null; persona?: string | null },
 ): Promise<UserRow> {
   const name = validName(input.name);
   const tagline = validTagline(input.tagline);
+  const persona = validPersona(input.persona);
 
   const owner = await lockLiveHumanOwner(tx, ownerId);
   const [counted] = await tx
@@ -69,7 +72,7 @@ export async function createBot(
   try {
     const [row] = await tx
       .insert(users)
-      .values({ firstName: name, tagline, ownerId, ownerName: displayName(owner) })
+      .values({ firstName: name, tagline, persona, ownerId, ownerName: displayName(owner) })
       .returning();
     if (!row) throw new Error('createBot returned no row');
     return row;
@@ -126,12 +129,14 @@ export async function updateBot(
   tx: DbOrTx,
   ownerId: number,
   botId: number,
-  patch: { name?: string; tagline?: string | null },
+  patch: { name?: string; tagline?: string | null; persona?: string | null; clearNotes?: boolean },
 ): Promise<UserRow> {
   await requireOwnBot(tx, ownerId, botId);
   const set: Partial<typeof users.$inferInsert> = {};
   if (patch.name !== undefined) set.firstName = validName(patch.name);
   if (patch.tagline !== undefined) set.tagline = validTagline(patch.tagline);
+  if (patch.persona !== undefined) set.persona = validPersona(patch.persona);
+  if (patch.clearNotes) await clearBotNotes(tx, botId);
   if (Object.keys(set).length === 0) return requireOwnBot(tx, ownerId, botId);
   try {
     const [row] = await tx
@@ -155,8 +160,10 @@ export async function updateBot(
 export async function deleteBot(deps: Deps, ownerId: number, botId: number): Promise<number> {
   const finished = await deps.db.transaction(async (tx) => {
     await requireOwnBot(tx, ownerId, botId);
+    // Same lock order as `deleteMyData`: the owner's claim lock, games, challenges, then the
+    // `users` row and, last, its turn rows.
+    await lockOwnerTurns(tx, ownerId);
     const now = await dbNow(tx);
-    // Same lock order as `deleteMyData`: games, then challenges, then the `users` row.
     const play = await lockPlay(tx, [botId]);
     // Re-checked under the row lock: a concurrent deletion of the same bot leaves nothing to do.
     const [row] = await tx
@@ -166,7 +173,10 @@ export async function deleteBot(deps: Deps, ownerId: number, botId: number): Pro
       .returning({ id: users.id });
     if (!row) throw new DomainError('not_found', 'bot not found', { reason: 'bot_not_found' });
     // A bot has no DMs to retire.
-    return leavePlay(tx, play, now, []);
+    const publicIds = await leavePlay(tx, play, now, []);
+    // After its games end; soft deletion fires no cascade.
+    await eraseBotTurns(tx, [botId]);
+    return publicIds;
   });
   for (const publicId of finished) deps.bus.publish(publicId);
   return finished.length;

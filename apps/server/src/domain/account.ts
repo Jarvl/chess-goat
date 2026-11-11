@@ -4,6 +4,8 @@ import {
   challenges,
   games,
   groupMembers,
+  runnerLinkCodes,
+  runners,
   userFlair,
   users,
   type ChallengeRow,
@@ -15,6 +17,7 @@ import { settleInChat } from './challenges';
 import { retireUserDms } from './dms';
 import { finishGame } from './games';
 import { revokeOwnerToken } from './ownerTokens';
+import { eraseBotTurns, lockOwnerTurns } from './turnLeases';
 import { deletePhoto } from './photos';
 
 /** The live games and pending challenges of players who are leaving, locked by `lockPlay`. */
@@ -93,14 +96,28 @@ export async function leavePlay(
   return publicIds;
 }
 
-/** What a deleted bot's `users` row keeps: its id, owner and history, under the anonymous name. */
+/**
+ * What a deleted bot's `users` row keeps: its id, owner and history, under the anonymous name. Its
+ * persona and notes go; the revision moves on, as clearing notes does.
+ */
 export function deletedBotFields(now: Date) {
-  return { firstName: 'Deleted bot', tagline: null, lastActiveAt: null, deletedAt: now };
+  return {
+    firstName: 'Deleted bot',
+    tagline: null,
+    persona: null,
+    botNotes: '',
+    botNotesRevision: sql`${users.botNotesRevision} + 1`,
+    lastActiveAt: null,
+    deletedAt: now,
+  };
 }
 
 /** "Delete my data": immediate and irreversible; opponents' histories stay consistent. */
 export async function deleteMyData(deps: Deps, userId: number): Promise<void> {
   const finished = await deps.db.transaction(async (tx) => {
+    // Before the games: their turn rows are deleted below, and a claim holds lease rows while it
+    // waits on a game.
+    await lockOwnerTurns(tx, userId);
     const now = await dbNow(tx);
     // The user's live bots go with them. Read without a lock: the games and challenges must be
     // locked before any `users` row (see `lockPlay`).
@@ -136,6 +153,13 @@ export async function deleteMyData(deps: Deps, userId: number): Promise<void> {
       play = await lockPlay(tx, [userId, ...botIds, ...deletedBots.map((b) => b.id)]);
     }
     const publicIds = await leavePlay(tx, play, now, [userId]);
+    // After the games end, so no turn row of theirs is left; soft deletion fires no cascade.
+    await eraseBotTurns(
+      tx,
+      deletedBots.map((b) => b.id),
+    );
+    await tx.delete(runners).where(eq(runners.ownerId, userId));
+    await tx.delete(runnerLinkCodes).where(eq(runnerLinkCodes.ownerId, userId));
     // The update above takes the row lock, which an award job for this player also
     // holds while it inserts `user_flair` rows. Deleting only after it has the lock means such a job
     // has committed and this sees its rows; a job that starts later finds `deleted_at` set.

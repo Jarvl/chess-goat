@@ -16,6 +16,7 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     ROLES: ['api', 'bot', 'jobs', 'clock'],
     LOG_LEVEL: 'fatal',
     PORT: 0,
+    TRUST_PROXY_HOPS: 0,
     TELEGRAM_API_ROOT: undefined,
     TELEGRAM_POLLING: false,
     LICHESS_API_URL: 'https://lichess.org',
