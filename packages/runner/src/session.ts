@@ -70,7 +70,7 @@ export async function killTree(
     if (platform === 'win32') {
       if (opts.exited) return;
       await new Promise<void>((resolve) => {
-        const exe = win32.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'taskkill.exe');
+        const exe = win32.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'taskkill.exe');
         const tk = spawn(exe, ['/pid', String(pid), '/T', '/F'], {
           stdio: 'ignore',
           windowsHide: true,
@@ -109,8 +109,6 @@ export async function killTree(
   }
 }
 
-// With detached: true a runner crash does not reach the harness, so the caller must turn its
-// own SIGINT/SIGTERM into the abort signal passed to runSession.
 export function childEnv(
   base: NodeJS.ProcessEnv,
   extra: Record<string, string>,
@@ -147,7 +145,11 @@ function lastChars(text: string, n: number): string {
   return out;
 }
 
-/** Runs one harness turn. Always resolves; every failure is a result. */
+/**
+ * Runs one harness turn. Always resolves; every failure is a result. With detached: true a
+ * runner crash does not reach the harness, so the caller must turn its own SIGINT/SIGTERM into
+ * the abort signal passed here.
+ */
 export function runSession(
   spec: SessionSpec,
   opts: { timeoutMs: number; signal?: AbortSignal },
@@ -217,7 +219,8 @@ export function runSession(
     if (spec.stdin !== undefined) child.stdin?.end(spec.stdin);
 
     child.on('error', (e) => {
-      if (child.pid === undefined || hasExited()) return finish(notStarted(e));
+      if (child.pid === undefined) return finish(notStarted(e));
+      if (hasExited()) return; // the exit path's result stands
       // An error on a running child (a failed kill, say): stop it, then report.
       busy = true;
       void killTree(child.pid).then(() => {
@@ -232,10 +235,15 @@ export function runSession(
       if (busy) return;
       busy = true;
       void (async () => {
-        await within(closed, DRAIN_WAIT_MS); // let the remaining output arrive
-        // Reap whatever the harness left behind in its group (no-op on Windows).
-        if (child.pid !== undefined) await killTree(child.pid, undefined, { exited: true });
+        // Reap first, so a leftover pipe-holder dies and the group id is signalled as soon as the
+        // leader is gone (no-op on Windows); then let the remaining output arrive.
+        const reaped =
+          child.pid === undefined
+            ? Promise.resolve()
+            : killTree(child.pid, undefined, { exited: true });
+        await within(closed, DRAIN_WAIT_MS);
         dropStreams();
+        await reaped;
         finish(result('exited', code, tailText()));
       })();
     });

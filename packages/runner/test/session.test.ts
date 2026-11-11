@@ -30,7 +30,7 @@ async function expectGone(pid: number): Promise<void> {
 
 const grandchildPid = (tail: string) => Number(/grandchild (\d+)/.exec(tail)?.[1]);
 
-describe('runSession', () => {
+describe('runSession', { timeout: 30_000 }, () => {
   it('reports a clean exit with output', async () => {
     const r = await runSession(fake('ok'), { timeoutMs: 20_000 });
     expect(r).toMatchObject({ reason: 'exited', exitCode: 0 });
@@ -52,16 +52,21 @@ describe('runSession', () => {
     const pid = grandchildPid(r.tail);
     expect(pid).toBeGreaterThan(0);
     await expectGone(pid);
-  });
+  }, 30_000);
 
   it.skipIf(process.platform === 'win32')(
     'escalates to SIGKILL for a harness that ignores SIGTERM',
     async () => {
-      const r = await runSession(fake('ignore-term'), { timeoutMs: 500 });
+      // The limit leaves time for the SIGTERM handler to be installed ("stubborn" proves it was);
+      // the 2 s grace must then really elapse before SIGKILL, or SIGTERM alone would have won.
+      const r = await runSession(fake('ignore-term'), { timeoutMs: 2000 });
       expect(r.reason).toBe('timeout');
-      expect(r.ms).toBeLessThan(3500);
+      expect(r.tail).toContain('stubborn');
+      expect(r.ms).toBeGreaterThanOrEqual(3900);
+      expect(r.ms).toBeLessThan(15_000);
       expect(r.tail).not.toContain('did not exit');
     },
+    30_000,
   );
 
   it('treats an abort signal fired mid-run as a timeout', async () => {
@@ -71,7 +76,7 @@ describe('runSession', () => {
     expect(r.reason).toBe('timeout');
     expect(r.ms).toBeGreaterThanOrEqual(450);
     expect(r.ms).toBeLessThan(10_000);
-  });
+  }, 30_000);
 
   it('does not spawn when the signal is already aborted', async () => {
     const r = await runSession(
@@ -152,13 +157,13 @@ describe('runSession', () => {
   it('resolves on exit when a grandchild keeps stdout open, and reaps it', async () => {
     const r = await runSession(fake('orphan-stdout'), { timeoutMs: 20_000 });
     expect(r).toMatchObject({ reason: 'exited', exitCode: 0 });
-    expect(r.ms).toBeLessThan(10_000);
+    expect(r.ms).toBeLessThan(5000); // well under the drain grace plus a SIGKILL escalation
     const pid = grandchildPid(r.tail);
     expect(pid).toBeGreaterThan(0);
     if (process.platform !== 'win32') await expectGone(pid);
     else expect(alive(pid)).toBe(true); // documented limitation: not reaped on Windows
     if (process.platform === 'win32') process.kill(pid); // clean up after the test
-  });
+  }, 30_000);
 
   it.skipIf(process.platform === 'win32')(
     'reports a child killed by a signal we did not send as exited with a null code',
@@ -166,6 +171,7 @@ describe('runSession', () => {
       const r = await runSession(fake('self-kill'), { timeoutMs: 20_000 });
       expect(r).toMatchObject({ reason: 'exited', exitCode: null });
     },
+    30_000,
   );
 
   it('resolves error, not a rejection, when spawn throws, without echoing values', async () => {
