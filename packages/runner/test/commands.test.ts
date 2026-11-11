@@ -644,14 +644,23 @@ describe('start at login and the runner', () => {
       fake.calls.length = 0;
     };
 
-    it('starts the runner again when turning it off ended it', async () => {
-      await linkedRunning({ autostartOffKills: true });
+    it("waits for a login job's runner to end, then starts it again", async () => {
+      await linkedRunning({ startsNow: true, diesAfterSleeps: 3 });
       expect(await main(['autostart', 'off'], fake.ctx)).toBe(0);
       expect(fake.calls).toEqual(['autostart off', 'start']);
+      expect(fake.out()).toContain(
+        'Start at login is off. The runner was restarted and is running.',
+      );
+    });
+
+    it("leaves a login job's runner that never ends alone", async () => {
+      await linkedRunning({ startsNow: true, diesAfterSleeps: 100_000 });
+      expect(await main(['autostart', 'off'], fake.ctx)).toBe(0);
+      expect(fake.calls).toEqual(['autostart off']);
       expect(fake.out()).toContain('Start at login is off. The runner is still running.');
     });
 
-    it('leaves a runner that kept running alone', async () => {
+    it('leaves a runner alone where turning it off does not end it', async () => {
       await linkedRunning({});
       expect(await main(['autostart', 'off'], fake.ctx)).toBe(0);
       expect(fake.calls).toEqual(['autostart off']);
@@ -659,7 +668,7 @@ describe('start at login and the runner', () => {
     });
 
     it('says so, and what to run, when it cannot be restarted', async () => {
-      await linkedRunning({ autostartOffKills: true, startFails: true });
+      await linkedRunning({ startsNow: true, diesAfterSleeps: 1, startFails: true });
       expect(await main(['autostart', 'off'], fake.ctx)).toBe(0);
       expect(fake.out()).toContain('the runner stopped');
       expect(fake.out()).toContain('goat-runner start');

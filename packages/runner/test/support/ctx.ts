@@ -46,6 +46,8 @@ export function fakeContext(
     autostartOffKills?: boolean;
     /** Starting the daemon does not work. */
     startFails?: boolean;
+    /** The runner ends by itself after this many `sleep` calls (a login job being turned off). */
+    diesAfterSleeps?: number;
     writeConfig?: Context['writeConfig'];
   } = {},
 ): Fake {
@@ -56,6 +58,7 @@ export function fakeContext(
   // Far in the future so a running daemon is newer than any config the test wrote.
   const daemon = { running: false, since: '2999-01-01T00:00:00.000Z' };
   let handler: (() => void) | undefined;
+  let sleeps = 0;
   const status = (): DaemonStatus =>
     daemon.running
       ? { running: true, pid: 4242, since: daemon.since }
@@ -116,7 +119,10 @@ export function fakeContext(
     }) as Context['exit'],
     // A startsNow plan's runner "appears" while we wait for it.
     async sleep() {
-      if (opts.startsNow) daemon.running = true;
+      sleeps += 1;
+      if (opts.diesAfterSleeps !== undefined) {
+        if (sleeps >= opts.diesAfterSleeps) daemon.running = false;
+      } else if (opts.startsNow) daemon.running = true;
     },
   };
   return {

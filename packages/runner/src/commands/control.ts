@@ -131,6 +131,10 @@ export async function logs(ctx: Context, args: string[]): Promise<number> {
   return 0;
 }
 
+/** How long `autostart off` waits for a login job's runner to end: its polite stop time and a margin. */
+const OFF_WAIT_MS = 25_000;
+const OFF_POLL_MS = 250;
+
 export async function autostart(ctx: Context, args: string[]): Promise<number> {
   const { values, positionals } = parse('autostart', args, {}, 1);
   const word = positionals[0];
@@ -143,9 +147,10 @@ export async function autostart(ctx: Context, args: string[]): Promise<number> {
     if (linked.needsPreset) throw new Fail(NEEDS_PRESET, 2);
   }
   const wasRunning = ctx.daemon.status(data).running;
+  const plan = ctx.autostartPlan();
   let res: { ok: boolean; detail: string };
   try {
-    res = await ctx.autostart.set(word === 'on', ctx.autostartPlan());
+    res = await ctx.autostart.set(word === 'on', plan);
   } catch (e) {
     res = { ok: false, detail: (e as Error).message };
   }
@@ -156,12 +161,16 @@ export async function autostart(ctx: Context, args: string[]): Promise<number> {
     else say(ctx, `Start at login is on: ${res.detail}.`);
     return 0;
   }
-  // Turning it off can end the runner too (launchd stops the job it started at login). If it was
-  // running and no longer is, start it again the normal way.
+  // Where the system itself runs the runner as its login job (launchd: the plan "starts now"),
+  // turning the job off also ends the runner, and the runner may take a while to finish handing
+  // its turns back. Wait for it to be gone, then start it again the normal way. Elsewhere turning
+  // the login start off leaves the running process alone.
   let running = ctx.daemon.status(data).running;
-  if (wasRunning && running) {
-    await ctx.sleep(500); // a job that is still being stopped has not died yet
-    running = ctx.daemon.status(data).running;
+  if (wasRunning && plan.startsNow) {
+    for (let waited = 0; running && waited < OFF_WAIT_MS; waited += OFF_POLL_MS) {
+      await ctx.sleep(OFF_POLL_MS);
+      running = ctx.daemon.status(data).running;
+    }
   }
   let restarted = false;
   if (wasRunning && !running) {
@@ -177,6 +186,8 @@ export async function autostart(ctx: Context, args: string[]): Promise<number> {
     sayJson(ctx, { autostart: false, detail: res.detail, running, restarted });
   } else if (stopped) {
     say(ctx, 'Start at login is off, but the runner stopped. Run goat-runner start to start it.');
+  } else if (restarted) {
+    say(ctx, 'Start at login is off. The runner was restarted and is running.');
   } else if (wasRunning) {
     say(ctx, 'Start at login is off. The runner is still running.');
   } else say(ctx, 'Start at login is off.');
