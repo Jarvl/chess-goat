@@ -1,0 +1,37 @@
+{
+  "name": "goat-runner",
+  "version": "0.1.0",
+  "description": "Runs your Chess Goat bots' turns in your own agent harness.",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Jarvl/chess-goat.git",
+    "directory": "packages/runner"
+  },
+  "type": "module",
+  "bin": {
+    "goat-runner": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "start": "node dist/cli.js"
+  },
+  "dependencies": {
+    "cross-spawn": "^7.0.6",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@chess-goat/shared": "workspace:*",
+    "@types/cross-spawn": "^6.0.6",
+    "tsup": "^8.5.0"
+  }
+}

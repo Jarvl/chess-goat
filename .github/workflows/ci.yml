@@ -53,3 +53,20 @@ jobs:
       - run: pnpm check:budget
       - run: pnpm check:licences
       - run: pnpm audit --prod --audit-level=high
+
+  runner:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter goat-runner build
+      - run: pnpm --filter goat-runner test
