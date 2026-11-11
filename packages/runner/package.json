@@ -10,6 +10,9 @@
     "directory": "packages/runner"
   },
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "bin": {
     "goat-runner": "dist/cli.js"
   },
