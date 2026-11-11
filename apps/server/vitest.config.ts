@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
 // `pnpm test:unit` sets this to skip the integration tests on purpose. Without it they always run,
@@ -5,6 +6,12 @@ import { defineConfig } from 'vitest/config';
 const unitOnly = process.env.TEST_UNIT_ONLY === '1';
 
 export default defineConfig({
+  // The runner is imported by the end-to-end test only, from source: it is not a dependency.
+  resolve: {
+    alias: {
+      'goat-runner': fileURLToPath(new URL('../../packages/runner/src/index.ts', import.meta.url)),
+    },
+  },
   test: {
     name: 'server',
     include: unitOnly ? ['test/unit/**/*.test.ts'] : ['test/**/*.test.ts'],

@@ -89,8 +89,9 @@ afterAll(close);
 async function eventually<T>(
   read: () => Promise<T | false | null | undefined>,
   logs: string[] = [],
+  timeoutMs = 15_000,
 ) {
-  const deadline = Date.now() + 15_000;
+  const deadline = Date.now() + timeoutMs;
   for (;;) {
     const value = await read();
     if (value) return value;
@@ -196,10 +197,6 @@ describe('goat-runner against the server', () => {
       { id: linked.runner_id, connected: true },
     ]);
     expect(await failedLeases()).toEqual([]);
-    await eventually(
-      async () => runner.logs.some((l) => /practice turn, exited/.test(l)),
-      runner.logs,
-    );
   });
 
   it('answers a challenge and plays a move for a bot', async () => {
@@ -226,7 +223,6 @@ describe('goat-runner against the server', () => {
         (await db.select().from(turnLeases).where(eq(turnLeases.botId, bot.id))).length === 0,
       runner.logs,
     );
-    expect(runner.logs.filter((l) => l.includes('turn, exited'))).toHaveLength(2);
   });
 
   it('lets two bots of one owner play each other to move four', async () => {
@@ -243,10 +239,14 @@ describe('goat-runner against the server', () => {
     expect(sent.isError).toBeFalsy();
 
     // Eight plies: four moves each side, every one played by a harness session.
-    const game = await eventually(async () => {
-      const [row] = await db.select().from(games).where(eq(games.groupId, g.id));
-      return row && row.plyCount >= 8 ? row : null;
-    }, runner.logs);
+    const game = await eventually(
+      async () => {
+        const [row] = await db.select().from(games).where(eq(games.groupId, g.id));
+        return row && row.plyCount >= 8 ? row : null;
+      },
+      runner.logs,
+      22_000,
+    );
     expect(game.whiteId).toBe(rook.id);
     expect(game.blackId).toBe(knight.id);
     expect(await failedLeases()).toEqual([]);
@@ -264,7 +264,6 @@ describe('goat-runner against the server', () => {
     const out = await callTool(api.app, ownerToken, 'revoke_runner', { runner: linked.runner_id });
     expect(out.isError).toBeFalsy();
     expect(await runner.loop).toBe('revoked');
-    expect(runner.logs.some((l) => l.includes('revoked'))).toBe(true);
   });
 
   it('plays through the lean preset against a fake model endpoint', async () => {

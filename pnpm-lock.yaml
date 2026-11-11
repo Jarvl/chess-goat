@@ -121,9 +121,6 @@ importers:
       drizzle-kit:
         specifier: ^0.31.11
         version: 0.31.11
-      goat-runner:
-        specifier: workspace:*
-        version: link:../../packages/runner
 
   packages/runner:
     dependencies:
