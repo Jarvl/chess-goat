@@ -1,5 +1,6 @@
 import { PRESETS, type Preset } from '@chess-goat/shared';
 import { ConfigSchema, readConfig } from '../config.js';
+import { cleanText } from '../http.js';
 import { parse } from './args.js';
 import {
   Fail,
@@ -11,10 +12,16 @@ import {
   sentence,
   type Context,
 } from './context.js';
+import { enableAndStart } from './link.js';
 import { PRESET_OPTIONS, chooseHarness, warnUnverified } from './presetChoice.js';
 
 export async function preset(ctx: Context, args: string[]): Promise<number> {
-  const { values, positionals } = parse('preset', args, PRESET_OPTIONS, 1);
+  const { values, positionals } = parse(
+    'preset',
+    args,
+    { ...PRESET_OPTIONS, 'no-autostart': { type: 'boolean' }, 'no-start': { type: 'boolean' } },
+    1,
+  );
   const name = positionals[0]!;
   if (!(PRESETS as readonly string[]).includes(name)) {
     throw new UsageError(`unknown preset; choose one of ${PRESETS.join(', ')}`, 'preset');
@@ -31,9 +38,10 @@ export async function preset(ctx: Context, args: string[]): Promise<number> {
   const choice = chooseHarness(name as Preset, values);
   if (!choice.ok) throw new UsageError(`${choice.reason}. ${choice.hint}`, 'preset');
   // The old sections go: a stale lean or custom block must not outlive its preset.
-  const { lean: _l, custom: _c, ...rest } = config;
+  const { lean: _l, custom: _c, needsPreset: _n, ...rest } = config;
   void _l;
   void _c;
+  void _n;
   const next = { ...rest, preset: name as Preset, ...choice.extra };
   const probe = ConfigSchema.safeParse(next);
   if (!probe.success) {
@@ -48,13 +56,50 @@ export async function preset(ctx: Context, args: string[]): Promise<number> {
     throw new Fail(`Could not save the preset: ${sentence((e as Error).message)}`);
   }
 
-  let restarted = false;
-  if (ctx.daemon.status(data).running) {
-    if (!(await ctx.daemon.stop(data))) {
-      throw new Fail(
-        'Preset saved, but the running runner would not stop; stop it, then run goat-runner start.',
+  const wasRunning = ctx.daemon.status(data).running;
+  if (wasRunning && !(await ctx.daemon.stop(data))) {
+    throw new Fail(
+      'Preset saved, but the running runner would not stop; stop it, then run goat-runner start.',
+    );
+  }
+
+  if (config.needsPreset) {
+    // Finish what `link` skipped: autostart, then the process.
+    const done = await enableAndStart(ctx, data, {
+      noAutostart: values['no-autostart'] === true,
+      noStart: values['no-start'] === true,
+    });
+    if (values.json) {
+      sayJson(ctx, {
+        preset: name,
+        restarted: false,
+        started: done.started,
+        autostart: done.autostart,
+        autostart_detail: cleanText(done.detail, 300),
+      });
+    } else {
+      say(ctx, `The preset is now ${name}.`);
+      say(
+        ctx,
+        done.started
+          ? 'The background runner is running.'
+          : 'The background runner is not running.',
+      );
+      say(
+        ctx,
+        `Start at login: ${done.autostart ? 'on' : 'off'} (${cleanText(done.detail, 300)}).`,
       );
     }
+    if (values['no-start'] !== true && !done.started) {
+      throw new Fail(
+        'Preset saved, but the background runner did not start; run goat-runner run to see why.',
+      );
+    }
+    return 0;
+  }
+
+  let restarted = false;
+  if (wasRunning) {
     if (!(await ctx.daemon.start({ cliPath: ctx.cliPath, dataDir: data })).running) {
       throw new Fail(
         'Preset saved, but the runner did not restart; run goat-runner run to see why.',

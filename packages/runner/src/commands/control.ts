@@ -5,6 +5,7 @@ import { readLogTail } from '../log.js';
 import { parse } from './args.js';
 import {
   Fail,
+  NEEDS_PRESET,
   NOT_LINKED,
   UsageError,
   pathsOf,
@@ -35,7 +36,9 @@ function configMtime(dir: string): number {
 export async function start(ctx: Context, args: string[]): Promise<number> {
   const { values } = parse('start', args, {}, 0);
   const { config, data } = pathsOf(ctx);
-  if (!load(config)) throw new Fail(NOT_LINKED);
+  const linked = load(config);
+  if (!linked) throw new Fail(NOT_LINKED);
+  if (linked.needsPreset) throw new Fail(NEEDS_PRESET, 2);
   const before = ctx.daemon.status(data);
   // A runner started before the last link still holds the old credential.
   if (before.running && Date.parse(before.since ?? '') < configMtime(config)) {
@@ -94,6 +97,7 @@ export async function status(ctx: Context, args: string[]): Promise<number> {
     running: daemon.running,
     pid: daemon.pid,
     since: daemon.since,
+    needs_preset: config?.needsPreset === true,
     autostart,
   };
   if (values.json) {
@@ -103,6 +107,7 @@ export async function status(ctx: Context, args: string[]): Promise<number> {
   if (config) {
     say(ctx, `Linked: runner ${config.runnerId} on ${config.server} (${config.preset})`);
   } else say(ctx, 'Linked: no');
+  if (config?.needsPreset) say(ctx, NEEDS_PRESET);
   say(
     ctx,
     daemon.running ? `Running: yes (process ${daemon.pid}, since ${daemon.since})` : 'Running: no',
@@ -130,7 +135,11 @@ export async function autostart(ctx: Context, args: string[]): Promise<number> {
   if (word !== 'on' && word !== 'off') throw new UsageError('say on or off', 'autostart');
   const { config } = pathsOf(ctx);
   // launchd would start the runner at once, and an unlinked one only fails and restarts.
-  if (word === 'on' && !load(config)) throw new Fail(NOT_LINKED);
+  if (word === 'on') {
+    const linked = load(config);
+    if (!linked) throw new Fail(NOT_LINKED);
+    if (linked.needsPreset) throw new Fail(NEEDS_PRESET, 2);
+  }
   let res: { ok: boolean; detail: string };
   try {
     res = await ctx.autostart.set(word === 'on', ctx.autostartPlan());

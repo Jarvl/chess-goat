@@ -3,7 +3,15 @@ import { readConfig } from '../config.js';
 import { cleanLine } from '../log.js';
 import { presetFor } from '../presets/index.js';
 import { parse } from './args.js';
-import { Fail, NOT_LINKED, UsageError, pathsOf, warn, type Context } from './context.js';
+import {
+  Fail,
+  NEEDS_PRESET,
+  NOT_LINKED,
+  UsageError,
+  pathsOf,
+  warn,
+  type Context,
+} from './context.js';
 
 const REVOKED = 'This runner was revoked; link again.';
 
@@ -20,6 +28,14 @@ export async function run(ctx: Context, args: string[]): Promise<number> {
     throw new Fail((e as Error).message);
   }
   if (!config) throw new Fail(NOT_LINKED);
+  if (config.needsPreset) {
+    // A login unit left over from an earlier link lands here: log once, exit 0 so nothing restarts it.
+    if (daemon) {
+      ctx.fileLogger(data).warn(NEEDS_PRESET);
+      return 0;
+    }
+    throw new Fail(NEEDS_PRESET, 2);
+  }
   // Once, here, so a broken preset is one sentence now and not a failed turn later.
   try {
     presetFor(config);

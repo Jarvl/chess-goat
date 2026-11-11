@@ -40,6 +40,8 @@ Changes the harness of a linked runner and restarts the background runner if it 
 
 Options:
   --allow-unverified    Accept codex, opencode or goose, which have never been run for real
+  --no-autostart        After a link that chose no harness: do not turn on start at login
+  --no-start            After a link that chose no harness: do not start the runner now
   --lean-base-url <url> --lean-model <name> [--lean-api-key-env <var>]   For lean
   --custom-command <cmd> [--custom-arg=<arg>]...                         For custom
   --json                Print one JSON object`,

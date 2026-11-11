@@ -90,3 +90,5 @@ export const sentence = (text: string) => {
   const t = cleanLine(text).trim();
   return /[.!?]$/.test(t) ? t : `${t}.`;
 };
+
+export const NEEDS_PRESET = 'No harness is chosen yet. Choose one with: goat-runner preset <name>';

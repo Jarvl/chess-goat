@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { readConfig } from '../src/config.js';
@@ -434,6 +435,89 @@ describe('preset', () => {
     expect(await linkWith([], { preset: 'goose' })).toBe(2);
     expect(await main(['preset', 'goose', '--allow-unverified'], fake.ctx)).toBe(0);
     expect(configOf()).toMatchObject({ preset: 'goose', runnerId: 7 });
-    expect(fake.out()).toContain('goat-runner start');
+    expect(fake.out()).toContain('The background runner is running.');
+  });
+});
+
+describe('a link without a harness', () => {
+  const SENTENCE = 'No harness is chosen yet. Choose one with: goat-runner preset <name>';
+
+  it('stops the old runner, marks the config, and refuses start, run and autostart on', async () => {
+    let loops = 0;
+    fake = fakeContext({
+      runLoop: async () => {
+        loops++;
+        return 'stopped';
+      },
+    });
+    server = await runnerServer({ preset: 'goose' });
+    fake.daemon.running = true; // an old runner, with autostart already enabled
+    expect(await main(['link', GOOD_CODE, '--server', server.url], fake.ctx)).toBe(2);
+    expect(fake.daemon.running).toBe(false);
+    expect(fake.calls).toEqual(['stop']);
+    expect(
+      JSON.parse(fs.readFileSync(path.join(fake.home, 'config', 'config.json'), 'utf8')),
+    ).toMatchObject({
+      needsPreset: true,
+      runnerId: 7,
+    });
+    const before = fake.err().length;
+    for (const args of [['start'], ['run'], ['autostart', 'on']]) {
+      expect(await main(args, fake.ctx)).toBe(2);
+    }
+    expect(fake.err().slice(before).split(SENTENCE).length - 1).toBe(3);
+    expect(await main(['run', '--daemon'], fake.ctx)).toBe(0);
+    expect(fake.calls).toContain(`log: ${SENTENCE}`);
+    expect(loops).toBe(0);
+    expect(fake.calls).not.toContain('start');
+    expect(fake.calls).not.toContain('autostart on');
+    await main(['status', '--json'], fake.ctx);
+    expect(fake.out()).toContain('"needs_preset":true');
+  });
+
+  it('says so when the previous runner would not stop', async () => {
+    fake = fakeContext({ stopWorks: false });
+    server = await runnerServer({ preset: 'goose' });
+    fake.daemon.running = true;
+    expect(await main(['link', GOOD_CODE, '--server', server.url], fake.ctx)).toBe(2);
+    expect(fake.err()).toContain('the previous runner would not stop; run goat-runner stop.');
+    expect(fake.err()).not.toContain('Nothing is running yet');
+  });
+
+  it('preset on a marked config enables autostart, then starts, and clears the marker', async () => {
+    expect(await linkWith([], { preset: 'goose' })).toBe(2);
+    fake.calls.length = 0;
+    expect(await main(['preset', 'claude', '--json'], fake.ctx)).toBe(0);
+    expect(fake.calls).toEqual(['autostart on', 'start']);
+    expect(configOf()?.needsPreset).toBeUndefined();
+    expect(JSON.parse(fake.out().split('\n').filter(Boolean).pop()!)).toEqual({
+      preset: 'claude',
+      restarted: false,
+      started: true,
+      autostart: true,
+      autostart_detail: 'a fake unit',
+    });
+    expect(await main(['start'], fake.ctx)).toBe(0);
+  });
+
+  it('preset on a marked config honours --no-autostart and --no-start', async () => {
+    expect(await linkWith([], { preset: 'goose' })).toBe(2);
+    fake.calls.length = 0;
+    expect(await main(['preset', 'claude', '--no-autostart', '--no-start'], fake.ctx)).toBe(0);
+    expect(fake.calls).toEqual([]);
+  });
+
+  it('preset on an unmarked config never touches autostart', async () => {
+    expect(await linkWith(['--preset', 'claude', '--no-start', '--no-autostart'])).toBe(0);
+    fake.calls.length = 0;
+    expect(await main(['preset', 'claude'], fake.ctx)).toBe(0);
+    expect(fake.calls).toEqual([]);
+  });
+
+  it('start does not call a daemon started after the config stale', async () => {
+    expect(await linkWith(['--preset', 'claude', '--no-start', '--no-autostart'])).toBe(0);
+    fake.daemon.running = true; // since is in the future: started after the config was written
+    expect(await main(['start'], fake.ctx)).toBe(0);
+    expect(fake.out()).toContain('already running');
   });
 });

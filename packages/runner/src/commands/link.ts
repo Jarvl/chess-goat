@@ -34,6 +34,34 @@ async function waitRunning(ctx: Context, dataDir: string): Promise<boolean> {
   return true;
 }
 
+/** What a linked runner needs once a harness is accepted: autostart first, then the process. */
+export async function enableAndStart(
+  ctx: Context,
+  dataDir: string,
+  opts: { noAutostart: boolean; noStart: boolean },
+): Promise<{ started: boolean; autostart: boolean; detail: string }> {
+  let autostart = false;
+  let detail = 'skipped (--no-autostart)';
+  let startsNow = false;
+  if (!opts.noAutostart) {
+    try {
+      const plan = ctx.autostartPlan();
+      const res = await ctx.autostart.set(true, plan);
+      autostart = res.ok;
+      detail = res.detail;
+      startsNow = res.ok && plan.startsNow;
+    } catch (e) {
+      detail = (e as Error).message;
+    }
+  }
+  let started = false;
+  if (!opts.noStart) {
+    if (startsNow) started = await waitRunning(ctx, dataDir);
+    else started = (await ctx.daemon.start({ cliPath: ctx.cliPath, dataDir })).running;
+  }
+  return { started, autostart, detail };
+}
+
 export async function link(ctx: Context, args: string[]): Promise<number> {
   const { values, positionals } = parse(
     'link',
@@ -100,6 +128,7 @@ export async function link(ctx: Context, args: string[]): Promise<number> {
       ctx.writeConfig(configDir, {
         ...baseConfig(server.data, linked.credential, linked.runner_id, preset),
         ...(choice?.ok ? choice.extra : {}),
+        ...(accepted ? {} : { needsPreset: true as const }),
       });
     } catch (e) {
       const err = e as NodeJS.ErrnoException;
@@ -117,6 +146,12 @@ export async function link(ctx: Context, args: string[]): Promise<number> {
   if (ctx.daemon.status(dataDir).running) oldStuck = !(await ctx.daemon.stop(dataDir));
 
   if (!accepted) {
+    if (oldStuck) {
+      throw new UsageError(
+        `Linked as runner ${linked.runner_id}, but the previous runner would not stop; run goat-runner stop.\nChoose the harness with: goat-runner preset <name>`,
+        'preset',
+      );
+    }
     const why = choice && !choice.ok ? `${choice.reason}` : 'no preset was chosen, stored or found';
     const hint = choice && !choice.ok ? ` ${choice.hint}` : ` Choose one of ${PRESETS.join(', ')}.`;
     if (values.json) {
@@ -136,26 +171,10 @@ export async function link(ctx: Context, args: string[]): Promise<number> {
     );
   }
 
-  let autostart = false;
-  let detail = 'skipped (--no-autostart)';
-  let startsNow = false;
-  if (!values['no-autostart']) {
-    try {
-      const plan = ctx.autostartPlan();
-      const res = await ctx.autostart.set(true, plan);
-      autostart = res.ok;
-      detail = res.detail;
-      startsNow = res.ok && plan.startsNow;
-    } catch (e) {
-      detail = (e as Error).message;
-    }
-  }
-
-  let started = false;
-  if (!values['no-start'] && !oldStuck) {
-    if (startsNow) started = await waitRunning(ctx, dataDir);
-    else started = (await ctx.daemon.start({ cliPath: ctx.cliPath, dataDir })).running;
-  }
+  const { started, autostart, detail } = await enableAndStart(ctx, dataDir, {
+    noAutostart: values['no-autostart'] === true,
+    noStart: values['no-start'] === true || oldStuck,
+  });
 
   const result = {
     linked: true,

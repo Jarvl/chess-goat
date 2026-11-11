@@ -47,6 +47,8 @@ export const ConfigSchema = z
     credential: z.string().min(1),
     runnerId: z.number().int().positive(),
     preset: PresetSchema,
+    /** Set by a link that could not accept a harness: `preset` is a placeholder until `goat-runner preset`. */
+    needsPreset: z.literal(true).optional(),
     custom: z.object({ command: z.string().min(1), args: z.array(z.string()) }).optional(),
     lean: z
       .object({

@@ -96,7 +96,7 @@ export function fakeContext(
     runLoop: opts.runLoop ?? (async () => 'stopped'),
     detectPreset: async () => opts.detect ?? null,
     consoleLogger: () => ({ info: () => {}, warn: () => {} }),
-    fileLogger: () => ({ info: () => {}, warn: () => {} }),
+    fileLogger: () => ({ info: () => {}, warn: (l) => void calls.push(`log: ${l}`) }),
     onSignal(h) {
       handler = h;
       return () => void (handler = undefined);
