@@ -33,6 +33,7 @@ const plan = (startsNow: boolean): AutostartPlan => ({
 /** A Context that touches nothing real: temp folders, recorded calls, fake autostart and daemon. */
 export function fakeContext(
   opts: {
+    platform?: Context['platform'];
     startsNow?: boolean;
     autostartOk?: boolean;
     detect?: 'claude' | null;
@@ -55,7 +56,7 @@ export function fakeContext(
       : { running: false, pid: null, since: null };
   const ctx: Context = {
     env: {},
-    platform: 'linux',
+    platform: opts.platform ?? 'linux',
     version: '9.9.9',
     hostname: 'test-host',
     cliPath: '/fake/cli.js',

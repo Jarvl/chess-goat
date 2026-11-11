@@ -84,8 +84,9 @@ describe('presetFor', () => {
     }
   });
 
-  it('marks every harness preset unverified until a real run confirms it', () => {
-    for (const n of ['claude', 'codex', 'opencode', 'goose'] as const)
+  it('marks claude verified (a real run on Linux) and the others unverified until one confirms them', () => {
+    expect(named('claude').status).toBe('verified');
+    for (const n of ['codex', 'opencode', 'goose'] as const)
       expect(named(n).status).toBe('unverified');
   });
 

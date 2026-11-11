@@ -12,9 +12,9 @@ import {
 // - `-p` prints and exits; the prompt is read from STDIN (a multi-line argument is truncated by
 //   cmd.exe for .cmd shims on Windows, and long ones hit command-line limits).
 // - `--system-prompt-file <file>` replaces the whole system prompt. It is NOT in the options list, but
-//   it is real in 2.1.322: `claude --system-prompt-file --help` fails with "System prompt file not
-//   found: --help", and the `--bare` help mentions `--system-prompt[-file]`. Undocumented, so to be
-//   confirmed by the real run; the fallback is `--system-prompt=<persona>`.
+//   it is real in 2.1.322 and confirmed by the real run: a codeword in the file was repeated back, and
+//   bots answered in their persona. Undocumented, so a future CLI could drop it; the fallback is
+//   `--system-prompt=<persona>`.
 // - `--mcp-config` + `--strict-mcp-config`: only our server. `--allowedTools mcp__chess-goat` allows
 //   every tool of that server; `--tools ""` turns every built-in off; `--permission-mode dontAsk`
 //   denies whatever is not allowed instead of asking.
@@ -25,11 +25,13 @@ import {
 // - Hardening candidates for the real run to evaluate (not used: version-gated, would break older
 //   CLIs): `--permission-prompts none` and `--restricted`.
 // - `--disable-slash-commands` drops skills and commands.
-// - The MCP config references `${GOAT_TURN_TOKEN}`: Claude Code expands env vars in MCP config. To
-//   be confirmed by the real run (not possible from --help).
+// - The MCP config references `${GOAT_TURN_TOKEN}`: Claude Code expands env vars in MCP config
+//   (confirmed by the real run: sessions connected and called the tools; the token is not in argv).
 export const claude: HarnessPreset = {
   name: 'claude',
-  status: 'unverified',
+  // Verified by a real run on Linux (Claude Code 2.1.322); macOS and Windows have not been run. The
+  // type has one status for all platforms, so `warnUnverified` warns on the others.
+  status: 'verified',
   detect: detectOnPath('claude'),
   async writeFiles(turn, dir) {
     return writeTurnFiles(

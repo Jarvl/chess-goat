@@ -74,10 +74,21 @@ describe('link', () => {
     expect(JSON.parse(fake.out())).toMatchObject({ started: false, autostart: false });
   });
 
-  it('warns once on stderr for claude, which is unverified but not gated', async () => {
+  it('does not warn for claude on Linux, where it was verified against the real CLI', async () => {
     expect(await linkWith(['--preset', 'claude', '--no-start', '--no-autostart'])).toBe(0);
+    expect(fake.err()).toBe('');
+  });
+
+  it('warns once on stderr for claude off Linux, where it has not been run', async () => {
+    expect(
+      await linkWith(
+        ['--preset', 'claude', '--no-start', '--no-autostart'],
+        {},
+        { platform: 'darwin' },
+      ),
+    ).toBe(0);
     expect(fake.err().trim().split('\n')).toHaveLength(1);
-    expect(fake.err()).toContain('unverified');
+    expect(fake.err()).toContain('only been verified on Linux');
   });
 
   it('refuses codex without --allow-unverified, before using the code', async () => {

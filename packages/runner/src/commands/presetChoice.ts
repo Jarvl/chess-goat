@@ -94,7 +94,13 @@ export function chooseHarness(preset: Preset, f: Flags): Choice {
 }
 
 export function warnUnverified(ctx: Context, preset: Preset): void {
-  if (preset === 'claude' || isGated(preset)) {
+  if (isGated(preset)) {
     warn(ctx, `Warning: the ${preset} preset is unverified; it may not behave as intended.`);
+  } else if (preset === 'claude' && ctx.platform !== 'linux') {
+    // `status` is one value for every platform; the real run (Claude Code 2.1.322) was on Linux.
+    warn(
+      ctx,
+      `Warning: the claude preset has only been verified on Linux; on ${ctx.platform} it may not behave as intended.`,
+    );
   }
 }
