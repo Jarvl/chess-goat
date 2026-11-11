@@ -1,5 +1,6 @@
 // A stand-in agent harness for session tests. Plain Node so it runs the same on every platform.
 import { spawn } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
 import { setTimeout } from 'node:timers';
 
 const [mode, arg] = process.argv.slice(2);
@@ -53,6 +54,19 @@ switch (mode) {
     process.stdin.on('end', () => console.log(length));
     break;
   }
+  case 'chatty':
+    console.log('DISTINCT-HARNESS-OUTPUT-4417');
+    break;
+  case 'marker': // proves the harness ran at all
+    writeFileSync(arg, 'ran');
+    break;
+  case 'pidhang': // writes its pid, then hangs
+    writeFileSync(arg, String(process.pid));
+    hang();
+    break;
+  case 'nap': // runs for `arg` ms, then exits 0
+    setTimeout(() => process.exit(0), Number(arg));
+    break;
   default:
     console.error(`unknown mode ${mode}`);
     process.exitCode = 2;
