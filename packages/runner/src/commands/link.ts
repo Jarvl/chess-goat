@@ -1,73 +1,12 @@
 import { PRESETS, type Preset } from '@chess-goat/shared';
 import { NetworkError, ServerError } from '../client.js';
-import { ConfigSchema, writeConfig, type RunnerConfig } from '../config.js';
+import { ConfigSchema } from '../config.js';
 import { cleanText } from '../http.js';
-import { UNVERIFIED_NOTES } from '../presets/index.js';
 import { parse } from './args.js';
-import {
-  Fail,
-  UsageError,
-  pathsOf,
-  say,
-  sayJson,
-  sentence,
-  warn,
-  type Context,
-} from './context.js';
+import { PRESET_OPTIONS, chooseHarness, warnUnverified } from './presetChoice.js';
+import { Fail, UsageError, pathsOf, say, sayJson, sentence, type Context } from './context.js';
 
-const GATED = ['codex', 'opencode', 'goose'] as const;
 const WAIT_STARTS_MS = 5000;
-
-type Flags = {
-  'allow-unverified'?: boolean;
-  'lean-base-url'?: string;
-  'lean-model'?: string;
-  'lean-api-key-env'?: string;
-  'custom-command'?: string;
-  'custom-arg'?: string[];
-};
-
-const isGated = (p: Preset): p is (typeof GATED)[number] =>
-  (GATED as readonly string[]).includes(p);
-
-/**
- * Refusals that depend only on the chosen preset, and the lean/custom config section its flags
- * make. Runs before redeeming when the flag names the preset, after it when the server did (then
- * `burned`: the code is used up).
- */
-function checkPreset(
-  preset: Preset,
-  f: Flags,
-  burned: boolean,
-): Pick<RunnerConfig, 'lean' | 'custom'> {
-  const refuse = (message: string): never => {
-    const retry = burned ? ' The link code is used up: ask your agent for a new one.' : '';
-    throw new UsageError(`${message}${retry}`, 'link');
-  };
-  if (isGated(preset) && !f['allow-unverified']) {
-    const notes = UNVERIFIED_NOTES[preset].map((n) => `  - ${n}`).join('\n');
-    return refuse(
-      `the ${preset} preset has never been run for real. Known gaps:\n${notes}\nPass --allow-unverified to use it anyway.`,
-    );
-  }
-  if (preset === 'lean') {
-    if (!f['lean-base-url'] || !f['lean-model']) {
-      return refuse('--preset lean needs --lean-base-url and --lean-model.');
-    }
-    return {
-      lean: {
-        baseUrl: f['lean-base-url'],
-        model: f['lean-model'],
-        ...(f['lean-api-key-env'] ? { apiKeyEnv: f['lean-api-key-env'] } : {}),
-      },
-    };
-  }
-  if (preset === 'custom') {
-    if (!f['custom-command']) return refuse('--preset custom needs --custom-command.');
-    return { custom: { command: f['custom-command'], args: f['custom-arg'] ?? [] } };
-  }
-  return {};
-}
 
 const baseConfig = (server: string, credential: string, runnerId: number, preset: Preset) => ({
   server,
@@ -105,12 +44,7 @@ export async function link(ctx: Context, args: string[]): Promise<number> {
       label: { type: 'string' },
       'no-autostart': { type: 'boolean' },
       'no-start': { type: 'boolean' },
-      'allow-unverified': { type: 'boolean' },
-      'lean-base-url': { type: 'string' },
-      'lean-model': { type: 'string' },
-      'lean-api-key-env': { type: 'string' },
-      'custom-command': { type: 'string' },
-      'custom-arg': { type: 'string', multiple: true },
+      ...PRESET_OPTIONS,
     },
     1,
   );
@@ -133,10 +67,11 @@ export async function link(ctx: Context, args: string[]): Promise<number> {
   const { config: configDir, data: dataDir } = pathsOf(ctx);
   // Everything that can be refused without the server is, before the code is used up.
   if (flagPreset) {
-    const extra = checkPreset(flagPreset, values, false);
+    const choice = chooseHarness(flagPreset, values);
+    if (!choice.ok) throw new UsageError(`${choice.reason}. ${choice.hint}`, 'link');
     const probe = ConfigSchema.safeParse({
       ...baseConfig(server.data, 'x', 1, flagPreset),
-      ...extra,
+      ...choice.extra,
     });
     if (!probe.success) {
       throw new Fail(`Cannot link: ${sentence(probe.error.issues[0]?.message ?? 'bad settings')}`);
@@ -155,25 +90,51 @@ export async function link(ctx: Context, args: string[]): Promise<number> {
     throw linkFailure(e); // nothing local has changed
   }
 
-  const preset = flagPreset ?? linked.preset ?? (await ctx.detectPreset());
-  if (!preset) {
-    throw new UsageError(
-      `no preset chosen and none found; pass --preset with one of ${PRESETS.join(', ')}. The link code is used up: ask your agent for a new one.`,
-      'link',
-    );
-  }
-  const extra = checkPreset(preset, values, !flagPreset);
-  if (preset === 'claude' || isGated(preset)) {
-    warn(ctx, `Warning: the ${preset} preset is unverified; it may not behave as intended.`);
-  }
+  // The credential now exists on the server: whatever happens next, it is saved.
+  const found = flagPreset ?? linked.preset ?? (await ctx.detectPreset());
+  const choice = found ? chooseHarness(found, values) : null;
+  const accepted = found !== null && choice?.ok === true;
+  const preset: Preset = accepted ? found : 'claude'; // a placeholder when refused
+  const save = (): void => {
+    try {
+      ctx.writeConfig(configDir, {
+        ...baseConfig(server.data, linked.credential, linked.runner_id, preset),
+        ...(choice?.ok ? choice.extra : {}),
+      });
+    } catch (e) {
+      const err = e as NodeJS.ErrnoException;
+      const why = `${err.code ? `${err.code}: ` : ''}${cleanText(err.message ?? 'unknown error', 150)}`;
+      throw new Fail(
+        `Linked as runner ${linked.runner_id} but could not save the link (${why}). The link code is used up; ask your agent for a new one.`,
+      );
+    }
+  };
+  save();
+  if (accepted) warnUnverified(ctx, preset);
 
-  // A re-link: the running daemon holds the old credential, so it goes before the config does.
+  // A re-link: the old daemon holds the old credential; the new config is safe by now.
   let oldStuck = false;
   if (ctx.daemon.status(dataDir).running) oldStuck = !(await ctx.daemon.stop(dataDir));
-  writeConfig(configDir, {
-    ...baseConfig(server.data, linked.credential, linked.runner_id, preset),
-    ...extra,
-  });
+
+  if (!accepted) {
+    const why = choice && !choice.ok ? `${choice.reason}` : 'no preset was chosen, stored or found';
+    const hint = choice && !choice.ok ? ` ${choice.hint}` : ` Choose one of ${PRESETS.join(', ')}.`;
+    if (values.json) {
+      sayJson(ctx, {
+        linked: true,
+        runner_id: linked.runner_id,
+        preset,
+        started: false,
+        autostart: false,
+        autostart_detail: 'skipped (a preset is needed)',
+        needs_preset: true,
+      });
+    }
+    throw new UsageError(
+      `Linked as runner ${linked.runner_id}, but ${why}. Nothing is running yet.${hint}\nChoose the harness with: goat-runner preset <name>`,
+      'preset',
+    );
+  }
 
   let autostart = false;
   let detail = 'skipped (--no-autostart)';

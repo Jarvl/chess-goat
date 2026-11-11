@@ -3,6 +3,7 @@ import type { AutostartPlan, RunFn } from '../autostart.js';
 import type { Client, ClientOptions } from '../client.js';
 import type { DaemonStatus } from '../daemon.js';
 import type { LoopDeps, Logger } from '../loop.js';
+import type { RunnerConfig } from '../config.js';
 import type { Platform } from '../paths.js';
 import { cleanLine } from '../log.js';
 
@@ -38,6 +39,7 @@ export type Context = {
   cliPath: string;
   stdout(text: string): void;
   stderr(text: string): void;
+  writeConfig(dir: string, config: RunnerConfig): void;
   /** Throws (a relative GOAT_RUNNER_HOME), hence a function. */
   paths(): { config: string; data: string };
   autostartPlan(): AutostartPlan;

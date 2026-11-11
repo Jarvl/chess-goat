@@ -3,12 +3,13 @@ import { readConfig } from '../config.js';
 import { cleanLine } from '../log.js';
 import { presetFor } from '../presets/index.js';
 import { parse } from './args.js';
-import { Fail, NOT_LINKED, pathsOf, warn, type Context } from './context.js';
+import { Fail, NOT_LINKED, UsageError, pathsOf, warn, type Context } from './context.js';
 
 const REVOKED = 'This runner was revoked; link again.';
 
 export async function run(ctx: Context, args: string[]): Promise<number> {
   const { values } = parse('run', args, { daemon: { type: 'boolean' } }, 0);
+  if (values.json) throw new UsageError('run has no --json output', 'run');
   const daemon = values.daemon === true;
   const { config: configDir, data } = pathsOf(ctx);
 
@@ -28,17 +29,17 @@ export async function run(ctx: Context, args: string[]): Promise<number> {
     );
   }
 
-  let pid: { release(): void } | undefined;
-  if (daemon) {
-    try {
-      pid = ctx.daemon.claim(data);
-    } catch (e) {
-      // Exit 0, so systemd and launchd do not restart a second runner in a loop.
-      if (e instanceof AlreadyRunningError) return 0;
-      throw e;
+  // Foreground and daemon both hold the pid file, so start, autostart and a second run see them.
+  let pid: { release(): void };
+  try {
+    pid = ctx.daemon.claim(data);
+  } catch (e) {
+    if (e instanceof AlreadyRunningError) {
+      // The daemon exits 0, so systemd and launchd do not restart a second runner in a loop.
+      if (daemon) return 0;
+      throw new Fail('A runner is already running; use goat-runner stop first.');
     }
-  } else if (ctx.daemon.status(data).running) {
-    throw new Fail('The runner is already running in the background; use goat-runner stop first.');
+    throw e;
   }
 
   const log = daemon ? ctx.fileLogger(data) : ctx.consoleLogger();
@@ -47,7 +48,7 @@ export async function run(ctx: Context, args: string[]): Promise<number> {
   const off = ctx.onSignal(() => {
     // A second signal means "now": the loop's own shutdown releases are what it interrupts.
     if (++signals > 1) {
-      pid?.release();
+      pid.release();
       ctx.exit(1);
     }
     abort.abort();
@@ -60,8 +61,13 @@ export async function run(ctx: Context, args: string[]): Promise<number> {
     });
     const result = await ctx.runLoop({ client, config, dataDir: data, log }, abort.signal);
     if (result === 'revoked') {
-      if (daemon) log.warn(REVOKED);
-      else warn(ctx, REVOKED);
+      // Exit 0 in the daemon: systemd and launchd restart on failure, and a dead credential
+      // would be retried every 30 s for ever. Foreground tells the owner with exit 1.
+      if (daemon) {
+        log.warn(REVOKED);
+        return 0;
+      }
+      warn(ctx, REVOKED);
       return 1;
     }
     return 0;
@@ -71,6 +77,6 @@ export async function run(ctx: Context, args: string[]): Promise<number> {
     throw e;
   } finally {
     off();
-    pid?.release();
+    pid.release();
   }
 }

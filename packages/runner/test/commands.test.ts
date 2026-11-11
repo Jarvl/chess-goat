@@ -96,11 +96,48 @@ describe('link', () => {
     expect(fake.err()).toContain('unverified');
   });
 
-  it('refuses a server-stored goose too, and says the code is used up', async () => {
-    expect(await linkWith([], { preset: 'goose' })).toBe(2);
+  it('keeps the credential when the server-stored preset is refused after redeeming', async () => {
+    expect(await linkWith(['--json'], { preset: 'goose' })).toBe(2);
     expect(fake.err()).toContain('--allow-unverified');
-    expect(fake.err()).toContain('used up');
-    expect(configOf()).toBeNull();
+    expect(fake.err()).toContain('Linked as runner 7');
+    expect(fake.err()).toContain('goat-runner preset <name>');
+    expect(configOf()).toMatchObject({ runnerId: 7, credential: CREDENTIAL, preset: 'claude' });
+    expect(fake.calls).toEqual([]);
+    expect(JSON.parse(fake.out())).toMatchObject({
+      started: false,
+      autostart: false,
+      needs_preset: true,
+    });
+  });
+
+  it('keeps the credential when the server preset needs flags that were not given', async () => {
+    expect(await linkWith([], { preset: 'lean' })).toBe(2);
+    expect(fake.err()).toContain('--lean-base-url');
+    expect(configOf()?.runnerId).toBe(7);
+    expect(fake.calls).toEqual([]);
+  });
+
+  it('names a flag that belongs to another preset, before redeeming', async () => {
+    expect(await linkWith(['--preset', 'claude', '--lean-model', 'm'])).toBe(2);
+    expect(fake.err()).toContain('lean preset, not claude');
+    expect(server!.requests).toHaveLength(0);
+  });
+
+  it('exits 1 with one sentence when the config cannot be saved, starting nothing', async () => {
+    expect(
+      await linkWith(
+        ['--preset', 'claude'],
+        {},
+        {
+          writeConfig: () => {
+            throw Object.assign(new Error('permission denied'), { code: 'EACCES' });
+          },
+        },
+      ),
+    ).toBe(1);
+    expect(fake.err()).toContain('Linked as runner 7 but could not save the link (EACCES');
+    expect(fake.err()).toContain('The link code is used up');
+    expect(fake.calls).toEqual([]);
   });
 
   it('uses the server preset, then the detected one, then exits 2 listing the choices', async () => {
@@ -110,7 +147,8 @@ describe('link', () => {
     expect(await linkWith(['--no-start', '--no-autostart'], {}, { detect: 'claude' })).toBe(0);
     expect(await linkWith(['--no-start', '--no-autostart'], {}, { detect: null })).toBe(2);
     expect(fake.err()).toContain('claude, codex, opencode, goose, lean, custom');
-    expect(configOf()).toBeNull();
+    expect(configOf()?.runnerId).toBe(7); // saved with a placeholder, nothing started
+    expect(fake.calls).toEqual([]);
   });
 
   it('lean and custom take their settings from flags', async () => {
@@ -197,6 +235,20 @@ describe('start and stop', () => {
     expect(fake.calls).not.toContain('start');
   });
 
+  it('start says so when the running runner predates the last link', async () => {
+    expect(await linkWith(['--preset', 'claude', '--no-start', '--no-autostart'])).toBe(0);
+    fake.daemon.running = true;
+    fake.daemon.since = '2000-01-01T00:00:00.000Z';
+    const before = fake.out().length;
+    expect(await main(['start', '--json'], fake.ctx)).toBe(1);
+    expect(JSON.parse(fake.out().slice(before))).toEqual({
+      started: false,
+      running: true,
+      stale: true,
+    });
+    expect(fake.err()).toContain('goat-runner stop, then goat-runner start');
+  });
+
   it('start without a link exits 1', async () => {
     fake = fakeContext();
     expect(await main(['start'], fake.ctx)).toBe(1);
@@ -235,11 +287,31 @@ describe('run', () => {
     expect(fake.err().slice(before)).toBe('');
   });
 
-  it('foreground refuses to run beside a live daemon', async () => {
-    await linked();
-    fake.daemon.running = true;
+  it('foreground refuses to run beside a live runner', async () => {
+    await linked({
+      claim: () => {
+        throw new AlreadyRunningError();
+      },
+    });
     expect(await main(['run'], fake.ctx)).toBe(1);
-    expect(fake.err()).toContain('use goat-runner stop first');
+    expect(fake.err()).toContain('A runner is already running; use goat-runner stop first.');
+  });
+
+  it('foreground holds the pid file and releases it', async () => {
+    await linked();
+    expect(await main(['run'], fake.ctx)).toBe(0);
+    expect(fake.calls).toEqual(['claim pid', 'release pid']);
+  });
+
+  it('refuses --json', async () => {
+    await linked();
+    expect(await main(['run', '--json'], fake.ctx)).toBe(2);
+    expect(fake.err()).toContain('Usage: goat-runner run');
+  });
+
+  it('a revoked daemon exits 0 (no restart loop); the foreground exits 1', async () => {
+    await linked({ runLoop: async () => 'revoked' });
+    expect(await main(['run', '--daemon'], fake.ctx)).toBe(0);
   });
 
   it('--daemon releases its pid file on exit, and exits 0 when stopped by a signal', async () => {
@@ -320,5 +392,48 @@ describe('output', () => {
     }
     expect(fake.out() + fake.err()).not.toContain(CREDENTIAL);
     expect(fake.out() + fake.err()).not.toContain('cgrun_');
+  });
+});
+
+describe('preset', () => {
+  async function linkedClaude(ctxOpts: Parameters<typeof fakeContext>[0] = {}) {
+    expect(
+      await linkWith(['--preset', 'claude', '--no-start', '--no-autostart'], {}, ctxOpts),
+    ).toBe(0);
+  }
+
+  it('without a link exits 1', async () => {
+    fake = fakeContext();
+    expect(await main(['preset', 'claude'], fake.ctx)).toBe(1);
+    expect(fake.err()).toContain('Not linked.');
+  });
+
+  it('refuses codex without --allow-unverified and accepts it with', async () => {
+    await linkedClaude();
+    expect(await main(['preset', 'codex'], fake.ctx)).toBe(2);
+    expect(fake.err()).toContain('--allow-unverified');
+    expect(configOf()?.preset).toBe('claude');
+    expect(await main(['preset', 'codex', '--allow-unverified', '--json'], fake.ctx)).toBe(0);
+    expect(configOf()?.preset).toBe('codex');
+    expect(configOf()?.credential).toBe(CREDENTIAL);
+    expect(fake.out()).toContain('{"preset":"codex","restarted":false}');
+  });
+
+  it('replaces the lean section, and restarts a running runner', async () => {
+    await linkedClaude();
+    fake.daemon.running = true;
+    const lean = ['--lean-base-url', 'http://127.0.0.1:1/v1', '--lean-model', 'm'];
+    expect(await main(['preset', 'lean', ...lean, '--json'], fake.ctx)).toBe(0);
+    expect(configOf()?.lean?.model).toBe('m');
+    expect(fake.calls.slice(-2)).toEqual(['stop', 'start']);
+    expect(await main(['preset', 'claude'], fake.ctx)).toBe(0);
+    expect(configOf()?.lean).toBeUndefined();
+  });
+
+  it('a placeholder link is fixed by preset', async () => {
+    expect(await linkWith([], { preset: 'goose' })).toBe(2);
+    expect(await main(['preset', 'goose', '--allow-unverified'], fake.ctx)).toBe(0);
+    expect(configOf()).toMatchObject({ preset: 'goose', runnerId: 7 });
+    expect(fake.out()).toContain('goat-runner start');
   });
 });

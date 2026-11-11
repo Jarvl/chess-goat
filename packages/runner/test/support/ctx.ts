@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { AutostartPlan } from '../../src/autostart.js';
+import { writeConfig } from '../../src/config.js';
 import { createClient } from '../../src/client.js';
 import type { Context } from '../../src/commands/context.js';
 import type { DaemonStatus } from '../../src/daemon.js';
@@ -13,7 +14,7 @@ export type Fake = {
   err: () => string;
   /** Every fake side effect, in order. */
   calls: string[];
-  daemon: { running: boolean };
+  daemon: { running: boolean; since: string };
   signals: { fire(): void };
   cleanup(): void;
 };
@@ -38,17 +39,19 @@ export function fakeContext(
     runLoop?: Context['runLoop'];
     claim?: Context['daemon']['claim'];
     stopWorks?: boolean;
+    writeConfig?: Context['writeConfig'];
   } = {},
 ): Fake {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'goat-cli-'));
   let out = '';
   let err = '';
   const calls: string[] = [];
-  const daemon = { running: false };
+  // Far in the future so a running daemon is newer than any config the test wrote.
+  const daemon = { running: false, since: '2999-01-01T00:00:00.000Z' };
   let handler: (() => void) | undefined;
   const status = (): DaemonStatus =>
     daemon.running
-      ? { running: true, pid: 4242, since: '2026-01-01T00:00:00.000Z' }
+      ? { running: true, pid: 4242, since: daemon.since }
       : { running: false, pid: null, since: null };
   const ctx: Context = {
     env: {},
@@ -56,6 +59,7 @@ export function fakeContext(
     version: '9.9.9',
     hostname: 'test-host',
     cliPath: '/fake/cli.js',
+    writeConfig: opts.writeConfig ?? writeConfig,
     stdout: (t) => void (out += t),
     stderr: (t) => void (err += t),
     paths: () => ({ config: path.join(home, 'config'), data: path.join(home, 'data') }),
@@ -81,7 +85,12 @@ export function fakeContext(
         daemon.running = false;
         return true;
       },
-      claim: opts.claim ?? (() => ({ release: () => void calls.push('release pid') })),
+      claim:
+        opts.claim ??
+        (() => {
+          calls.push('claim pid');
+          return { release: () => void calls.push('release pid') };
+        }),
     },
     createClient,
     runLoop: opts.runLoop ?? (async () => 'stopped'),

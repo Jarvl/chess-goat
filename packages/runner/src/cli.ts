@@ -6,6 +6,7 @@ import { autostartEnabled, autostartPlan, setAutostart } from './autostart.js';
 import { createClient } from './client.js';
 import { main } from './commands/index.js';
 import type { Context } from './commands/context.js';
+import { writeConfig } from './config.js';
 import { consoleLogger, fileLogger } from './log.js';
 import { claimPidFile, daemonStatus, startDaemon, stopDaemon } from './daemon.js';
 import { runLoop } from './loop.js';
@@ -26,6 +27,7 @@ function realContext(): Context {
     cliPath,
     stdout: (t) => void process.stdout.write(t),
     stderr: (t) => void process.stderr.write(t),
+    writeConfig,
     paths: defaultPaths,
     autostartPlan: () =>
       autostartPlan(platform, {

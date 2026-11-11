@@ -2,6 +2,7 @@ export const TOP = `Usage: goat-runner <command> [options]
 
 Commands:
   link <code> --server <url>   Link this machine to a chess server and start the runner
+  preset <name>                Change the harness of a linked runner
   start                        Start the background runner
   stop                         Stop the background runner
   status                       Show whether it is linked and running
@@ -11,7 +12,9 @@ Commands:
   unlink                       Stop, remove start at login and forget the link
 
 Options:
-  --json       Print one JSON object instead of text (every command)
+  --json       Print one JSON object instead of text (not for run)
+
+Errors are always one plain sentence on stderr, also with --json.
   --version    Print the version
   --help       Print this help; "<command> --help" prints a command's own`;
 
@@ -29,7 +32,16 @@ Options:
   --no-autostart        Do not start at login
   --no-start            Do not start the background runner now
   --lean-base-url <url> --lean-model <name> [--lean-api-key-env <var>]   For --preset lean
-  --custom-command <cmd> [--custom-arg <arg>]...                         For --preset custom
+  --custom-command <cmd> [--custom-arg=<arg>]...                         For --preset custom
+  --json                Print one JSON object`,
+  preset: `Usage: goat-runner preset <name> [options]
+
+Changes the harness of a linked runner and restarts the background runner if it was running.
+
+Options:
+  --allow-unverified    Accept codex, opencode or goose, which have never been run for real
+  --lean-base-url <url> --lean-model <name> [--lean-api-key-env <var>]   For lean
+  --custom-command <cmd> [--custom-arg=<arg>]...                         For custom
   --json                Print one JSON object`,
   start: 'Usage: goat-runner start [--json]',
   stop: 'Usage: goat-runner stop [--json]',

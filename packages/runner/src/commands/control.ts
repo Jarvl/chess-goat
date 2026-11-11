@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { readConfig, removeConfig, type RunnerConfig } from '../config.js';
 import { readLogTail } from '../log.js';
 import { parse } from './args.js';
@@ -22,11 +24,26 @@ function load(dir: string): RunnerConfig | null {
   }
 }
 
+function configMtime(dir: string): number {
+  try {
+    return fs.statSync(path.join(dir, 'config.json')).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
 export async function start(ctx: Context, args: string[]): Promise<number> {
   const { values } = parse('start', args, {}, 0);
   const { config, data } = pathsOf(ctx);
   if (!load(config)) throw new Fail(NOT_LINKED);
   const before = ctx.daemon.status(data);
+  // A runner started before the last link still holds the old credential.
+  if (before.running && Date.parse(before.since ?? '') < configMtime(config)) {
+    if (values.json) sayJson(ctx, { started: false, running: true, stale: true });
+    throw new Fail(
+      'The running runner started before the last link and holds the old credential; run goat-runner stop, then goat-runner start.',
+    );
+  }
   const after = before.running
     ? before
     : await ctx.daemon.start({ cliPath: ctx.cliPath, dataDir: data });
@@ -102,7 +119,8 @@ export async function logs(ctx: Context, args: string[]): Promise<number> {
   const { data } = pathsOf(ctx);
   const text = readLogTail(data, n);
   if (values.json) sayJson(ctx, { lines: text === '' ? [] : text.split('\n') });
-  else say(ctx, text === '' ? 'No log yet.' : text);
+  else if (text === '') say(ctx, 'No log yet.');
+  else for (const line of text.split('\n')) say(ctx, line); // say() cleans, and cleaning drops newlines
   return 0;
 }
 

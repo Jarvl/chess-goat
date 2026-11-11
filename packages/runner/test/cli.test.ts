@@ -163,12 +163,22 @@ describe('status, stop, unlink', () => {
     expect(JSON.stringify(after)).not.toContain('credential');
     const text = await cli(['status']);
     expect(text.stdout).toContain('runner 7');
+    // `status` probes this machine's real login unit (read-only): never assert on its state.
   });
 
   it('stop with nothing running exits 0', async () => {
     const res = await cli(['stop']);
     expect(res.code).toBe(0);
     expect(res.stdout).toContain('was not running');
+  });
+
+  it('logs prints one log line per line', async () => {
+    fs.mkdirSync(path.join(home, 'data'), { recursive: true });
+    fs.writeFileSync(path.join(home, 'data', 'runner.log'), 'one\ntwo\nthree\n');
+    const res = await cli(['logs']);
+    expect(res.stdout.trimEnd().split('\n')).toEqual(['one', 'two', 'three']);
+    const json = JSON.parse((await cli(['logs', '-n', '2', '--json'])).stdout);
+    expect(json.lines).toEqual(['two', 'three']);
   });
 
   it('logs with no log yet exits 0', async () => {
@@ -222,6 +232,18 @@ describe('run', () => {
     expect(fs.existsSync(configFile())).toBe(true);
   });
 
+  it('a revoked daemon exits 0 so systemd does not restart it', async () => {
+    await linked({
+      claim: (res) => sendJson(res, 401, { error: { code: 'unauthorized', message: 'no' } }),
+    });
+    const res = await cli(['run', '--daemon']);
+    expect(res.code).toBe(0);
+    expect(fs.readFileSync(path.join(home, 'data', 'runner.log'), 'utf8')).toContain(
+      'This runner was revoked; link again.',
+    );
+    expect(fs.existsSync(path.join(home, 'data', 'runner.pid'))).toBe(false);
+  });
+
   async function runUntilClaiming(args: string[]) {
     await linked({
       claim: (res) => void setTimeout(() => sendJson(res, 200, { turn: null }), 100),
@@ -272,7 +294,7 @@ describe('run', () => {
     expect(res.stderr).toBe('');
     const foreground = await cli(['run']);
     expect(foreground.code).toBe(1);
-    expect(foreground.stderr).toContain('use goat-runner stop first');
+    expect(foreground.stderr).toContain('A runner is already running; use goat-runner stop first.');
   });
 });
 
