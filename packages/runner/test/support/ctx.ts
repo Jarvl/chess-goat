@@ -1,0 +1,113 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import type { AutostartPlan } from '../../src/autostart.js';
+import { createClient } from '../../src/client.js';
+import type { Context } from '../../src/commands/context.js';
+import type { DaemonStatus } from '../../src/daemon.js';
+
+export type Fake = {
+  ctx: Context;
+  home: string;
+  out: () => string;
+  err: () => string;
+  /** Every fake side effect, in order. */
+  calls: string[];
+  daemon: { running: boolean };
+  signals: { fire(): void };
+  cleanup(): void;
+};
+
+const plan = (startsNow: boolean): AutostartPlan => ({
+  platform: 'linux',
+  files: [],
+  enable: [],
+  disable: [],
+  remove: [],
+  afterRemove: [],
+  startsNow,
+  describe: 'a fake unit',
+});
+
+/** A Context that touches nothing real: temp folders, recorded calls, fake autostart and daemon. */
+export function fakeContext(
+  opts: {
+    startsNow?: boolean;
+    autostartOk?: boolean;
+    detect?: 'claude' | null;
+    runLoop?: Context['runLoop'];
+    claim?: Context['daemon']['claim'];
+    stopWorks?: boolean;
+  } = {},
+): Fake {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'goat-cli-'));
+  let out = '';
+  let err = '';
+  const calls: string[] = [];
+  const daemon = { running: false };
+  let handler: (() => void) | undefined;
+  const status = (): DaemonStatus =>
+    daemon.running
+      ? { running: true, pid: 4242, since: '2026-01-01T00:00:00.000Z' }
+      : { running: false, pid: null, since: null };
+  const ctx: Context = {
+    env: {},
+    platform: 'linux',
+    version: '9.9.9',
+    hostname: 'test-host',
+    cliPath: '/fake/cli.js',
+    stdout: (t) => void (out += t),
+    stderr: (t) => void (err += t),
+    paths: () => ({ config: path.join(home, 'config'), data: path.join(home, 'data') }),
+    autostartPlan: () => plan(opts.startsNow ?? false),
+    autostart: {
+      async set(on) {
+        calls.push(`autostart ${on ? 'on' : 'off'}`);
+        const ok = opts.autostartOk ?? true;
+        return { ok, detail: ok ? 'a fake unit' : 'systemctl is not available on this machine' };
+      },
+      enabled: async () => false,
+    },
+    daemon: {
+      status,
+      async start() {
+        calls.push('start');
+        daemon.running = true;
+        return status();
+      },
+      async stop() {
+        calls.push('stop');
+        if (opts.stopWorks === false) return false;
+        daemon.running = false;
+        return true;
+      },
+      claim: opts.claim ?? (() => ({ release: () => void calls.push('release pid') })),
+    },
+    createClient,
+    runLoop: opts.runLoop ?? (async () => 'stopped'),
+    detectPreset: async () => opts.detect ?? null,
+    consoleLogger: () => ({ info: () => {}, warn: () => {} }),
+    fileLogger: () => ({ info: () => {}, warn: () => {} }),
+    onSignal(h) {
+      handler = h;
+      return () => void (handler = undefined);
+    },
+    exit: ((code: number) => {
+      throw new Error(`exit ${code}`);
+    }) as Context['exit'],
+    // A startsNow plan's runner "appears" while we wait for it.
+    async sleep() {
+      if (opts.startsNow) daemon.running = true;
+    },
+  };
+  return {
+    ctx,
+    home,
+    out: () => out,
+    err: () => err,
+    calls,
+    daemon,
+    signals: { fire: () => handler?.() },
+    cleanup: () => fs.rmSync(home, { recursive: true, force: true }),
+  };
+}
