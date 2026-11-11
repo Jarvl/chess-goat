@@ -83,6 +83,102 @@ describe('config', () => {
     }
   });
 
+  it.each(['preset', 'server', 'runnerId', 'concurrency'])(
+    'a secret in the failing %s field is not echoed',
+    (field) => {
+      raw({ ...base, [field]: SECRET });
+      let msg = '';
+      try {
+        readConfig(dir);
+      } catch (e) {
+        msg = (e as Error).message;
+      }
+      expect(msg).toContain('not valid');
+      expect(msg).not.toContain(SECRET);
+    },
+  );
+
+  it('writeConfig throws the same not-valid error, not a ZodError, without the value', () => {
+    let err: Error | undefined;
+    try {
+      writeConfig(dir, { ...base, preset: SECRET as never });
+    } catch (e) {
+      err = e as Error;
+    }
+    expect(err?.constructor).toBe(Error);
+    expect(err?.message).toContain('not valid');
+    expect(err?.message).toContain(file());
+    expect(err?.message).not.toContain(SECRET);
+  });
+
+  it.each(['https://user:pw@s.example', 'https://s.example/?k=v', 'https://s.example/#frag'])(
+    'refuses server %s without echoing it',
+    (server) => {
+      raw({ ...base, server });
+      try {
+        readConfig(dir);
+        expect.unreachable();
+      } catch (e) {
+        expect((e as Error).message).toContain('credentials, a query or a fragment');
+        expect((e as Error).message).not.toContain('pw');
+      }
+    },
+  );
+
+  it('allows a path prefix on server', () => {
+    raw({ ...base, server: 'https://s.example/goat' });
+    expect(readConfig(dir)?.server).toBe('https://s.example/goat');
+  });
+
+  it.each(['ftp://m.example', 'http://u:p@m.example/v1', 'http://m.example/v1?x=1', 'nope'])(
+    'refuses lean.baseUrl %s',
+    (baseUrl) => {
+      raw({ ...base, preset: 'lean', lean: { baseUrl, model: 'm' } });
+      expect(() => readConfig(dir)).toThrow(/lean\.baseUrl/);
+    },
+  );
+
+  it('strips a UTF-8 BOM before parsing', () => {
+    raw('\uFEFF' + JSON.stringify(base));
+    expect(readConfig(dir)?.runnerId).toBe(4);
+  });
+
+  it.skipIf(process.platform === 'win32')(
+    'a stale tmp file at 0644 is replaced, never written into',
+    () => {
+      fs.mkdirSync(dir, { recursive: true });
+      const tmpFile = `${file()}.tmp-${process.pid}`;
+      fs.writeFileSync(tmpFile, 'stale', { mode: 0o644 });
+      writeConfig(dir, base);
+      expect(fs.statSync(file()).mode & 0o777).toBe(0o600);
+      expect(fs.existsSync(tmpFile)).toBe(false);
+    },
+  );
+
+  it.skipIf(process.platform === 'win32')('a tmp symlink is not followed', () => {
+    fs.mkdirSync(dir, { recursive: true });
+    const target = path.join(tmp, 'victim');
+    fs.writeFileSync(target, 'keep');
+    fs.symlinkSync(target, `${file()}.tmp-${process.pid}`);
+    writeConfig(dir, base);
+    expect(fs.readFileSync(target, 'utf8')).toBe('keep');
+    expect(readConfig(dir)?.credential).toBe(SECRET);
+  });
+
+  it.skipIf(process.platform === 'win32')('an existing 0644 config.json ends 0600', () => {
+    raw(base);
+    fs.chmodSync(file(), 0o644);
+    writeConfig(dir, base);
+    expect(fs.statSync(file()).mode & 0o777).toBe(0o600);
+  });
+
+  it.skipIf(process.platform === 'win32')('an existing 0755 folder ends 0700', () => {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
+    fs.chmodSync(dir, 0o755);
+    writeConfig(dir, base);
+    expect(fs.statSync(dir).mode & 0o777).toBe(0o700);
+  });
+
   it('a failed validation does not echo the credential that was in the file', () => {
     raw({ ...base, runnerId: -3 });
     try {
