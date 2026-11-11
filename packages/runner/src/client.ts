@@ -9,6 +9,9 @@ import {
   type RunnerTurn,
 } from '@chess-goat/shared';
 import type { ZodType } from 'zod';
+import { abortError, cleanText, isAbort, networkDetail, readLimited } from './http.js';
+
+export { isAbort };
 
 // Errors here carry status, code and reason only: never a body, header or request, which hold
 // the credential, link codes and turn tokens.
@@ -38,10 +41,6 @@ export class NetworkError extends Error {
     super(`could not reach ${host}: ${what}`);
     this.name = 'NetworkError';
   }
-}
-
-export function isAbort(error: unknown): boolean {
-  return error instanceof Error && error.name === 'AbortError';
 }
 
 export type Client = {
@@ -86,12 +85,6 @@ function parseServer(server: string): URL {
   return url;
 }
 
-function abortError(): Error {
-  const e = new Error('aborted');
-  e.name = 'AbortError';
-  return e;
-}
-
 /** Waits `ms`, or rejects with the abort error as soon as `signal` fires. */
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -112,48 +105,6 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-/** The first allow-listed `code` in an error's cause chain, as a fixed string; never the cause. */
-function networkDetail(error: unknown): string {
-  if (error instanceof Error && error.name === 'TimeoutError') return 'timed out';
-  let node: unknown = error;
-  for (let depth = 0; depth < 4 && node && typeof node === 'object'; depth++) {
-    const code = (node as { code?: unknown }).code;
-    if (typeof code === 'string') {
-      if (code === 'ECONNREFUSED') return 'connection refused';
-      if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return 'host not found';
-      if (code === 'ECONNRESET') return 'connection reset';
-      if (
-        code.startsWith('CERT_') ||
-        code === 'DEPTH_ZERO_SELF_SIGNED_CERT' ||
-        code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE'
-      ) {
-        return 'certificate not trusted';
-      }
-    }
-    node = (node as { cause?: unknown }).cause;
-  }
-  return 'connection failed';
-}
-
-/** The body as text, or null when it is longer than `limit` bytes (the rest is cancelled). */
-async function readLimited(res: Response, limit: number): Promise<string | null> {
-  if (!res.body) return '';
-  const reader = res.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > limit) {
-      await reader.cancel().catch(() => {});
-      return null;
-    }
-    chunks.push(value);
-  }
-  return Buffer.concat(chunks).toString('utf8');
-}
-
 export function createClient(opts: ClientOptions): Client {
   const url = parseServer(opts.server);
   const base = url.origin + url.pathname.replace(/\/+$/, '');
@@ -162,13 +113,8 @@ export function createClient(opts: ClientOptions): Client {
 
   /** Server text made safe to show: no credential, no control characters, bounded. */
   function clean(text: string, max: number): string {
-    let out = text;
-    if (opts.credential) out = out.split(opts.credential).join('[redacted]');
-    out = Array.from(out, (ch) => (ch < ' ' || ch === '\u007f' ? ' ' : ch))
-      .join('')
-      .replace(/ {2,}/g, ' ')
-      .trim();
-    return out.length > max ? out.slice(0, max).trim() : out;
+    const redacted = opts.credential ? text.split(opts.credential).join('[redacted]') : text;
+    return cleanText(redacted, max);
   }
 
   /** One JSON POST; resolves with the status and raw text of a response, or throws. */

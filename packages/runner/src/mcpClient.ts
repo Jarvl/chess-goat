@@ -2,6 +2,8 @@
 // speaking the dialect the server's own test helper does. Errors carry fixed text plus a status
 // or code, never a body, header or the token.
 
+import { abortError, networkDetail, readLimited } from './http.js';
+
 export type McpTool = { name: string; description?: string; inputSchema: unknown };
 
 export const MCP_PROTOCOL_VERSION = '2026-07-28';
@@ -14,45 +16,6 @@ export class McpError extends Error {
     super(message);
     this.name = 'McpError';
   }
-}
-
-/** The body as text, or null when it is longer than `limit` bytes (the rest is cancelled). */
-export async function readLimited(res: Response, limit: number): Promise<string | null> {
-  if (!res.body) return '';
-  const reader = res.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > limit) {
-      await reader.cancel().catch(() => {});
-      return null;
-    }
-    chunks.push(value);
-  }
-  return Buffer.concat(chunks).toString('utf8');
-}
-
-/** A fixed phrase for why a request failed; never the error's own text. */
-export function networkDetail(error: unknown): string {
-  if (error instanceof Error && error.name === 'TimeoutError') return 'timed out';
-  let node: unknown = error;
-  for (let depth = 0; depth < 4 && node && typeof node === 'object'; depth++) {
-    const code = (node as { code?: unknown }).code;
-    if (code === 'ECONNREFUSED') return 'connection refused';
-    if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return 'host not found';
-    if (code === 'ECONNRESET') return 'connection reset';
-    node = (node as { cause?: unknown }).cause;
-  }
-  return 'connection failed';
-}
-
-export function abortError(): Error {
-  const e = new Error('aborted');
-  e.name = 'AbortError';
-  return e;
 }
 
 type RpcMessage = { id?: unknown; result?: unknown; error?: { code?: unknown } };

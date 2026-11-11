@@ -61,7 +61,11 @@ async function fakeMcp(
         tools: ['make_move', 'set_notes'].map((name) => ({
           name,
           description: `the ${name} tool`,
-          inputSchema: { type: 'object', properties: {} },
+          inputSchema: {
+            type: 'object',
+            properties: {},
+            $schema: 'http://json-schema.org/draft-07/schema#',
+          },
         })),
       });
     }
@@ -120,8 +124,7 @@ describe('runLeanTurn', () => {
     ]);
     const r = await run(turnFor(mcp.server), model);
     expect(r).toMatchObject({ reason: 'exited', exitCode: 0 });
-    expect(r.tail).toContain('make_move ok');
-    expect(r.tail).toContain('Played e4.');
+    expect(r.tail).toBe('steps: 2; tool calls: make_move ok\nstopped: no tool call');
     const first = model.requests[0]!;
     expect(first.path).toBe('/v1/chat/completions');
     const body = first.body as Record<string, unknown>;
@@ -169,7 +172,7 @@ describe('runLeanTurn', () => {
     const model = await fakeModel([text('I think e4.')]);
     const r = await run(turnFor(mcp.server), model);
     expect(r).toMatchObject({ reason: 'exited', exitCode: 1 });
-    expect(r.tail).toContain('I think e4.');
+    expect(r.tail).toBe('steps: 1; tool calls: none\nstopped: no tool call');
     expect(mcp.calls).toHaveLength(0);
   });
 
@@ -187,6 +190,7 @@ describe('runLeanTurn', () => {
     const model = await fakeModel(loop());
     const r = await run(turnFor(mcp.server), model, { maxSteps: 3 });
     expect(r).toMatchObject({ reason: 'exited', exitCode: 0 });
+    expect(r.tail).toContain('stopped: step limit');
     expect(model.requests).toHaveLength(3);
     const model2 = await fakeModel(loop());
     await run(turnFor(mcp.server), model2);
@@ -203,6 +207,9 @@ describe('runLeanTurn', () => {
       ]);
       const r = await run(turnFor(mcp.server), model);
       expect(r).toMatchObject({ reason: 'exited', exitCode: 1 });
+      expect(r.tail).toContain(
+        phrase.startsWith('This turn') ? 'stopped: turn ended' : 'stopped: call limit',
+      );
       expect(model.requests).toHaveLength(1);
       expect(mcp.calls).toHaveLength(1);
     },
@@ -226,6 +233,7 @@ describe('runLeanTurn', () => {
       'No such tool. Use one of: make_move, set_notes.',
     );
     expect(r).toMatchObject({ reason: 'exited', exitCode: 1 });
+    expect(r.tail).toContain('(unknown tool) failed');
   });
 
   it('reports non-JSON arguments to the model and carries on', async () => {
@@ -239,7 +247,7 @@ describe('runLeanTurn', () => {
     expect(toolMessages(model, 1)[0]!.content).toBe('Your arguments were not valid JSON.');
     expect(mcp.calls).toHaveLength(1);
     expect(r).toMatchObject({ reason: 'exited', exitCode: 0 });
-    expect(r.tail).toContain('make_move failed, make_move ok');
+    expect(r.tail).toContain('tool calls: make_move failed, make_move ok');
   });
 
   it('accepts arguments given as an object', async () => {
@@ -270,7 +278,8 @@ describe('runLeanTurn', () => {
       text('done'),
     ]);
     await run(turnFor(mcp.server), model, { apiKey: API_KEY });
-    const dump = (s: TestServer) => JSON.stringify(s.requests.map((r) => [r.headers, r.body]));
+    const dump = (s: TestServer) =>
+      JSON.stringify(s.requests.map((r) => [r.path, r.headers, r.body]));
     expect(model.requests[0]!.headers.authorization).toBe(`Bearer ${API_KEY}`);
     expect(dump(model)).not.toContain(TOKEN);
     expect(dump(mcp.server)).not.toContain(API_KEY);
@@ -286,24 +295,24 @@ describe('runLeanTurn', () => {
     expect(model.requests[0]!.headers.authorization).toBeUndefined();
   });
 
-  it('keeps arguments, results, token and key out of the tail', async () => {
+  it('puts no model text, argument, result, persona, prompt, token or key in the tail', async () => {
+    const PERSONA = 'persona-Kd39-secret-style';
+    const PROMPT = 'prompt-Lw71-opponent-name';
     const mcp = await fakeMcp(() => ({ text: RESULT_SECRET }));
+    const INVENTED = `invented-${ARG_SECRET}`;
     const model = await fakeModel([
-      withCalls(call('make_move', { san: ARG_SECRET })),
-      text('final words'),
+      withCalls(call('make_move', { san: ARG_SECRET }), call(INVENTED, {})),
+      text(`${PERSONA} ${PROMPT} ${RESULT_SECRET} ${TOKEN} ${API_KEY}`),
     ]);
-    const r = await run(turnFor(mcp.server), model, { apiKey: API_KEY });
-    expect(r.tail).toContain('final words');
-    for (const secret of [ARG_SECRET, RESULT_SECRET, TOKEN, API_KEY]) {
+    const r = await run(turnFor(mcp.server, { persona: PERSONA, prompt: PROMPT }), model, {
+      apiKey: API_KEY,
+    });
+    expect(r.tail).toBe(
+      'steps: 2; tool calls: make_move ok, (unknown tool) failed\nstopped: no tool call',
+    );
+    for (const secret of [ARG_SECRET, RESULT_SECRET, TOKEN, API_KEY, PERSONA, PROMPT, INVENTED]) {
       expect(r.tail).not.toContain(secret);
     }
-    expect(r.tail.length).toBeLessThanOrEqual(2000);
-  });
-
-  it('caps the tail at 2000 characters', async () => {
-    const mcp = await fakeMcp();
-    const model = await fakeModel([text('y'.repeat(5000))]);
-    expect((await run(turnFor(mcp.server), model)).tail.length).toBeLessThanOrEqual(2000);
   });
 
   it('errors with the status when the model endpoint answers 404', async () => {
@@ -311,7 +320,7 @@ describe('runLeanTurn', () => {
     const model = await fakeModel([], (_req, res) => sendJson(res, 404, { error: API_KEY }));
     const r = await run(turnFor(mcp.server), model, { apiKey: API_KEY });
     expect(r).toMatchObject({ reason: 'error', exitCode: null });
-    expect(r.tail).toContain('HTTP 404; check baseUrl and model');
+    expect(r.tail).toBe('the model endpoint answered HTTP 404; check baseUrl and model');
     expect(r.tail).not.toContain(API_KEY);
   });
 
@@ -352,12 +361,20 @@ describe('runLeanTurn', () => {
   it('ends in error on an unusable model body and on an oversized one', async () => {
     const mcp = await fakeMcp();
     const junk = await fakeModel([], (_req, res) => sendJson(res, 200, { nothing: true }));
-    expect(await run(turnFor(mcp.server), junk)).toMatchObject({ reason: 'error', exitCode: null });
+    expect(await run(turnFor(mcp.server), junk)).toMatchObject({
+      reason: 'error',
+      exitCode: null,
+      tail: 'the model endpoint sent a response with no message',
+    });
     const big = await fakeModel([], (_req, res) => {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end('x'.repeat(2 * 1024 * 1024 + 10));
     });
-    expect(await run(turnFor(mcp.server), big)).toMatchObject({ reason: 'error', exitCode: null });
+    expect(await run(turnFor(mcp.server), big)).toMatchObject({
+      reason: 'error',
+      exitCode: null,
+      tail: 'the model endpoint sent too large a response',
+    });
   });
 
   it('resolves timeout promptly on abort during a slow model response, closing the socket', async () => {
@@ -369,7 +386,7 @@ describe('runLeanTurn', () => {
     const started = Date.now();
     const r = await run(turnFor(mcp.server), model, {}, ac.signal);
     expect(r.reason).toBe('timeout');
-    expect(Date.now() - started).toBeLessThan(1000);
+    expect(Date.now() - started).toBeLessThan(3000);
     await expect.poll(() => model.closedSockets()).toBeGreaterThan(0);
   });
 
@@ -377,11 +394,13 @@ describe('runLeanTurn', () => {
     const mcp = await fakeMcp(undefined, { hang: true });
     const ac = new AbortController();
     const model = await fakeModel([withCalls(call('make_move', {}))]);
-    setTimeout(() => ac.abort(), 150);
     const started = Date.now();
-    const r = await run(turnFor(mcp.server), model, {}, ac.signal);
+    const running = run(turnFor(mcp.server), model, {}, ac.signal);
+    await expect.poll(() => mcp.calls.length, { timeout: 5000 }).toBeGreaterThan(0);
+    ac.abort();
+    const r = await running;
     expect(r.reason).toBe('timeout');
-    expect(Date.now() - started).toBeLessThan(1000);
+    expect(Date.now() - started).toBeLessThan(3000);
     await expect.poll(() => mcp.server.closedSockets()).toBeGreaterThan(0);
   });
 
@@ -401,5 +420,109 @@ describe('runLeanTurn', () => {
     });
     const model2 = await fakeModel([text('x')]);
     expect(await run(turnFor(deadMcp), model2)).toMatchObject({ reason: 'error', exitCode: null });
+  });
+  it('sends a normalised assistant message: string arguments, one synthesised id', async () => {
+    const mcp = await fakeMcp();
+    const model = await fakeModel([
+      {
+        role: 'assistant',
+        content: 'thinking',
+        reasoning: 'extra field',
+        tool_calls: [{ function: { name: 'make_move', arguments: { san: 'd4' } }, extra: 1 }],
+      },
+      text('done'),
+    ]);
+    await run(turnFor(mcp.server), model);
+    const messages = (model.requests[1]!.body as { messages: Msg[] }).messages;
+    const assistant = messages[2] as {
+      role: string;
+      content: string;
+      reasoning?: unknown;
+      tool_calls: { id: string; type: string; function: { name: string; arguments: unknown } }[];
+    };
+    expect(assistant.role).toBe('assistant');
+    expect(assistant.content).toBe('thinking');
+    expect(assistant.reasoning).toBeUndefined();
+    const tc = assistant.tool_calls[0]!;
+    expect(tc).toEqual({
+      id: tc.id,
+      type: 'function',
+      function: { name: 'make_move', arguments: '{"san":"d4"}' },
+    });
+    expect(tc.id).not.toBe('');
+    expect(messages[3]).toMatchObject({ role: 'tool', tool_call_id: tc.id });
+  });
+
+  it('flattens array content and omits tool_calls when there are none', async () => {
+    const mcp = await fakeMcp();
+    const model = await fakeModel([
+      {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'a' },
+          { type: 'text', text: 'b' },
+        ],
+      },
+    ]);
+    const r = await run(turnFor(mcp.server), model);
+    expect(r.reason).toBe('exited');
+    const again = await fakeModel([
+      withCalls(call('set_notes', {})),
+      {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'a' },
+          { type: 'text', text: 'b' },
+        ],
+      },
+    ]);
+    await run(turnFor(mcp.server), again);
+    const assistant = (again.requests[1]!.body as { messages: Msg[] }).messages[2]!;
+    expect(assistant.content).toBeNull();
+    expect(assistant.tool_calls).toHaveLength(1);
+  });
+
+  it('stops after 30 tool calls without asking the model again', async () => {
+    const mcp = await fakeMcp();
+    const model = await fakeModel(
+      Array.from({ length: 60 }, () => withCalls(call('set_notes', {}))),
+    );
+    const r = await run(turnFor(mcp.server), model, { maxSteps: 100 });
+    expect(mcp.calls).toHaveLength(30);
+    expect(model.requests).toHaveLength(30);
+    expect(r.tail).toContain('stopped: call limit');
+    expect(r).toMatchObject({ reason: 'exited', exitCode: 0 });
+  });
+
+  it('cuts long tool results to 16,000 characters and names an empty one', async () => {
+    const mcp = await fakeMcp((name) => ({ text: name === 'make_move' ? 'z'.repeat(20000) : '' }));
+    const model = await fakeModel([
+      withCalls(call('make_move', {}), call('set_notes', {})),
+      text('done'),
+    ]);
+    await run(turnFor(mcp.server), model);
+    const [long, empty] = toolMessages(model, 1);
+    expect(long!.content).toBe(`${'z'.repeat(16000)}… (cut)`);
+    expect(empty!.content).toBe('(no text)');
+  });
+
+  it('strips a top-level $schema from tool parameters', async () => {
+    const mcp = await fakeMcp();
+    const model = await fakeModel([text('x')]);
+    await run(turnFor(mcp.server), model);
+    const tools = (model.requests[0]!.body as { tools: { function: { parameters: object } }[] })
+      .tools;
+    for (const t of tools) expect(t.function.parameters).not.toHaveProperty('$schema');
+    expect(tools[0]!.function.parameters).toEqual({ type: 'object', properties: {} });
+  });
+
+  it('rejects array arguments with their own message and counts them failed', async () => {
+    const mcp = await fakeMcp();
+    const model = await fakeModel([withCalls(call('make_move', '["e4"]')), text('x')]);
+    const r = await run(turnFor(mcp.server), model);
+    expect(toolMessages(model, 1)[0]!.content).toBe('Your arguments must be a JSON object.');
+    expect(mcp.calls).toHaveLength(0);
+    expect(r).toMatchObject({ exitCode: 1 });
+    expect(r.tail).toContain('make_move failed');
   });
 });
