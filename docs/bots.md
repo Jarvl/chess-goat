@@ -2,9 +2,19 @@
 
 Chess Goat lets an AI agent set up **bots**: chess players that live in your Telegram groups and play people (and each other) like anyone else. A bot is always marked with a robot (🤖). Chess Goat never runs a model and never opens a connection to your machine: a small program of yours, the **runner**, asks the server for work and starts the model itself.
 
-## Status: the runner is not released yet
+## Status: the runner is built, but not on npm yet
 
-The server side of all this is built and documented here. The runner program, `goat-runner` (run with `npx goat-runner …`), is designed but not built yet; it is tracked in [issue #149](https://github.com/Jarvl/chess-goat/issues/149), and the server design in [issue #148](https://github.com/Jarvl/chess-goat/issues/148). The old way of playing, an agent looping on an inbox tool over MCP, has been removed. Until the runner is released, **bots cannot play**: you can create and configure them, but nothing picks up their turns. Anything below about what the runner does (linking, starting in the background, starting at login, `goat-runner status`, `goat-runner logs`, `goat-runner start`, `goat-runner autostart off`) is planned, and is only what the server's own texts already promise. If you want to write a runner yourself, [The runner endpoint](#the-runner-endpoint) is the contract between a runner and the server.
+The runner program, `goat-runner`, is in this repository, in [`packages/runner`](../packages/runner/README.md). It is **not on npm yet**, so do not use `npx` for it: you clone the repository, build it and run `node packages/runner/dist/cli.js …` (see [Setting up a bot in one prompt](#setting-up-a-bot-in-one-prompt)). The design is in [issue #149](https://github.com/Jarvl/chess-goat/issues/149), and the server design in [issue #148](https://github.com/Jarvl/chess-goat/issues/148). The old way of playing, an agent looping on an inbox tool over MCP, has been removed.
+
+Which harnesses have been run for real:
+
+| Preset                                                       | Linux      | macOS      | Windows    |
+| ------------------------------------------------------------ | ---------- | ---------- | ---------- |
+| `claude` (Claude Code)                                       | verified   | unverified | unverified |
+| `codex`, `opencode`, `goose`                                 | unverified | unverified | unverified |
+| `lean` (a local model), `custom` (a command you give)        | fakes only | fakes only | fakes only |
+
+Verified means a real game was played with it. Nobody has run `codex`, `opencode` or `goose` yet, and the runner will not use them without `--allow-unverified`. Reports are welcome. The runner's code is tested in CI on Linux, macOS and Windows, but a real run has only happened on Linux. If you want to write a runner yourself, [The runner endpoint](#the-runner-endpoint) is the contract between a runner and the server.
 
 ## How it works
 
@@ -41,8 +51,8 @@ The agent then:
 
 1. Calls `list_my_groups`, and asks you which group if you are in several and did not say.
 2. Writes a **persona** from your description and calls `create_bot` with a name, the persona and the group.
-3. Calls `link_runner` if no runner serves the bot yet (if a runner is linked but not connected, the agent is told to start it instead). It returns a one-time command (`npx goat-runner link <code> --server <PUBLIC_URL>`) that the agent runs if it has a shell, or gives to you. The runner then starts in the background and at login, and `goat-runner autostart off` undoes that (planned). Running the command is not possible until the runner is released.
-4. Calls `test_runner` until it says the bot is live (not possible until the runner is released), or tells it what failed (see [Troubleshooting](#troubleshooting)).
+3. Calls `link_runner` if no runner serves the bot yet (if a runner is linked but not connected, the agent is told to start it instead with `goat-runner start`). It returns a one-time command, valid for 10 minutes, that the agent runs if it has a shell, or gives to you. It looks like `goat-runner link <code> --server <PUBLIC_URL>`, with `--preset <name>` if the agent chose a harness. Until the package is on npm, run `node <path to the clone>/packages/runner/dist/cli.js link <code> --server <PUBLIC_URL>` instead, from a clone where you have run `pnpm install` and `pnpm --filter goat-runner build`. The runner then starts in the background and at login; `goat-runner autostart off` (or `--no-autostart` when linking) turns the login start off. The link is kept and nothing starts only when the harness was not named in the command and cannot be settled: the server stored one that needs an extra flag (`codex`, `opencode` or `goose` without `--allow-unverified`, or `lean` or `custom` without their settings), or the server stored none and `claude` is not installed. Then the command says to run `goat-runner preset <name>`. If a harness is named with `--preset` and cannot be accepted (`codex`, `opencode` or `goose` without `--allow-unverified`, or `lean` or `custom` without their flags), the command is refused before the code is used, so the same code still works.
+4. Calls `test_runner` until it says the bot is live, or tells it what failed (see [Troubleshooting](#troubleshooting)).
 5. If you asked for games, calls `find_bots` and `challenge_bot` for one or two bots that are online.
 
 The token is a bearer secret for `/mcp` only. A missing, malformed or unknown token gets HTTP 401 with `WWW-Authenticate: Bearer`; Mini App session tokens are refused. Treat it like a password.
@@ -281,5 +291,7 @@ An address past the failed-authentication limit gets HTTP 429 before any runner 
 | `failed`      | The session ended without reaching Chess Goat.            | Run `goat-runner logs` on the runner's machine, fix what it shows, then call `test_runner` again.                                                                       |
 
 If a bot is online but its games stall, check `list_bots`: a non-zero `failingTurns` means sessions are starting and ending without playing, and the runner's logs will say why. A bot whose clock runs out while its runner is offline loses on time like anyone else.
+
+The runner's own page, [goat-runner](../packages/runner/README.md), lists its commands, presets, files and security notes, and has a troubleshooting list for the runner's side.
 
 See also `GET /llms.txt` on your server for a short machine-readable pointer to this page.

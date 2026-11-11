@@ -234,7 +234,7 @@ describe('/mcp surface', () => {
       lastActiveAt: null,
       online: true,
     };
-    const link = { alreadyServed: false, command: 'npx goat-runner link X', expiresAt: 'soon' };
+    const link = { alreadyServed: false, command: 'goat-runner link X', expiresAt: 'soon' };
     const texts = [
       OWNER_INSTRUCTIONS,
       setUpBotPrompt('x'),

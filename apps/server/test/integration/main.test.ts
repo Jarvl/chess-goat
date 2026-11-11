@@ -64,7 +64,7 @@ describe('startServer', () => {
     expect(res.headers.get('content-type')).toContain('text/plain');
     const text = await res.text();
     expect(text).toContain('/mcp');
-    expect(text).toContain('npx goat-runner');
+    expect(text).toContain('goat-runner');
     expect(text).toContain('docs/bots.md');
   });
 

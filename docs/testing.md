@@ -11,6 +11,7 @@ alpha can exit. The alpha exit criteria are the table below.
 | Unit — shared rules and protocol | `pnpm test` | 311 tests, 17 files | every pull request |
 | Unit — server | `pnpm test` | 367 tests, 42 files | every pull request |
 | Integration — server on real PostgreSQL and a fake Bot API | `pnpm test` | 971 tests, 79 files | every pull request |
+| Unit — runner (`goat-runner`), no database | `pnpm --filter goat-runner test` | 423 tests, 14 files | every pull request on Linux (the `check` job); on macOS and Windows when the runner's files change (the `runner` job in `.github/workflows/ci.yml`) |
 | Unit — Mini App on happy-dom | `pnpm test` | 600 tests, 43 files | every pull request |
 | End-to-end — Playwright on Chromium with touch emulation | `pnpm e2e` | 29 specs, 13 files | every pull request, pushes to `main`, manual dispatch |
 | Image smoke — build, boot, probe, stop | `.github/workflows/e2e.yml` `docker` job | 1 scenario | every pull request, pushes to `main`, manual dispatch |
@@ -24,6 +25,17 @@ The server's test setup downloads the snapshot card's fonts on first run
 (`scripts/fetch-fonts.mjs`, checksummed), so the first `pnpm test` on a fresh clone needs network
 access. A local `pnpm e2e` needs them too, since its harness boots the job worker: run `pnpm fonts`,
 or `pnpm test` once, first.
+
+The runner's tests (`pnpm --filter goat-runner test`) need no database, so they run on any machine
+without the setup below. CI runs them on Linux with everything else, in the `check` job, and on
+macOS and Windows in their own `runner` job, because the runner starts processes, writes private
+files and registers start at login differently on each. The `runner` job runs only when
+`packages/runner`, `packages/shared`, the lockfile, the root build settings or the workflow itself
+changed. Together the two jobs cover the runner's code on all three systems. It is not a real run: only the `claude`
+preset on Linux has been run for real. The runner's loop is also tested against the real server
+endpoints in `apps/server/test/integration/runner-e2e.test.ts`, with a stand-in for the agent
+harness. That file is part of the server's integration tests, so it needs the database and runs with
+`pnpm test`.
 
 Local setup is one command per machine: `scripts/local-postgres.sh start` runs PostgreSQL on port
 54329. Nothing needs exporting for the tests.

@@ -81,13 +81,13 @@ describe('link_runner', () => {
     const { code, command, expiresAt } = plain.structuredContent!;
     expect(plain.structuredContent!.alreadyServed).toBe(false);
     expect(code).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{4}$/);
-    expect(command).toBe(`npx goat-runner link ${code} --server https://chess.test`);
+    expect(command).toBe(`goat-runner link ${code} --server https://chess.test`);
     expect(resultText(plain)).toBe(
-      `Run this command on the machine that will play your bots:\n\n${command}\n\nRun it yourself if you have a shell; otherwise give it to your owner. That machine needs Node.js (for npx). It links the runner, starts it in the background and registers it to start at login (\`goat-runner autostart off\` undoes that). The code works once and expires at ${expiresAt}. Then call test_runner for one of your bots to check it works.`,
+      `Run this command on the machine that will play your bots:\n\n${command}\n\nThe \`goat-runner\` program is not on npm yet. Build it from the repository as its README describes (https://github.com/Jarvl/chess-goat/tree/main/packages/runner), then run this command with \`node <path to the clone>/packages/runner/dist/cli.js\` in place of \`goat-runner\`. Do not use \`npx\` for it. Run it yourself if you have a shell; otherwise give it to your owner. That machine needs Node.js 20.3 or later. It links the runner, starts it in the background and registers it to start at login (\`goat-runner autostart off\` undoes that). The code works once and expires at ${expiresAt}. Then call test_runner for one of your bots to check it works.`,
     );
     const withPreset = await call<Linked>('link_runner', { preset: 'claude' });
     expect(withPreset.structuredContent!.command).toBe(
-      `npx goat-runner link ${withPreset.structuredContent!.code} --server https://chess.test --preset claude`,
+      `goat-runner link ${withPreset.structuredContent!.code} --server https://chess.test --preset claude`,
     );
     const bad = await call('link_runner', { preset: 'emacs' });
     expect(bad.isError).toBe(true);
@@ -110,7 +110,7 @@ describe('link_runner', () => {
   it('still issues a code when the owner has no bots', async () => {
     const out = await call<Linked>('link_runner');
     expect(out.structuredContent!.alreadyServed).toBe(false);
-    expect(out.structuredContent!.command).toContain('npx goat-runner link ');
+    expect(out.structuredContent!.command).toContain('goat-runner link ');
   });
 
   it('says nothing to do when a connected runner serves every bot', async () => {

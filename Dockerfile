@@ -17,6 +17,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json tsconfig
 COPY packages/shared/package.json packages/shared/
 COPY apps/server/package.json apps/server/
 COPY apps/miniapp/package.json apps/miniapp/
+COPY packages/runner/package.json packages/runner/
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm install --frozen-lockfile
 COPY packages ./packages
 COPY apps ./apps
@@ -41,6 +42,8 @@ RUN apt-get update \
 ENV PATH=$PATH:/usr/games
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml LICENSE ./
 COPY packages/shared ./packages/shared
+# Only its package.json: the lockfile lists the runner, so the folder must exist for the install.
+COPY packages/runner/package.json ./packages/runner/
 COPY apps/server ./apps/server
 COPY --from=fonts /app/apps/server/fonts/ ./apps/server/fonts/
 COPY scripts ./scripts

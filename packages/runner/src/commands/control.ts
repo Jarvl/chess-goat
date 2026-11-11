@@ -1,0 +1,231 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { readConfig, removeConfig, type RunnerConfig } from '../config.js';
+import { readLogTail } from '../log.js';
+import { parse } from './args.js';
+import {
+  Fail,
+  NEEDS_PRESET,
+  NOT_LINKED,
+  UsageError,
+  pathsOf,
+  say,
+  sayJson,
+  sentence,
+  warn,
+  warnMissingHarness,
+  type Context,
+} from './context.js';
+
+/** The config, or null when unlinked; a broken file is a one-sentence failure (its own message). */
+function load(dir: string): RunnerConfig | null {
+  try {
+    return readConfig(dir);
+  } catch (e) {
+    throw new Fail((e as Error).message);
+  }
+}
+
+function configMtime(dir: string): number {
+  try {
+    return fs.statSync(path.join(dir, 'config.json')).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+export async function start(ctx: Context, args: string[]): Promise<number> {
+  const { values } = parse('start', args, {}, 0);
+  const { config, data } = pathsOf(ctx);
+  const linked = load(config);
+  if (!linked) throw new Fail(NOT_LINKED);
+  if (linked.needsPreset) throw new Fail(NEEDS_PRESET, 2);
+  await warnMissingHarness(ctx, linked);
+  const before = ctx.daemon.status(data);
+  // A runner started before the last link still holds the old credential.
+  if (before.running && Date.parse(before.since ?? '') < configMtime(config)) {
+    if (values.json) sayJson(ctx, { started: false, running: true, stale: true });
+    throw new Fail(
+      'The running runner started before the last link and holds the old credential; run goat-runner stop, then goat-runner start.',
+    );
+  }
+  const after = before.running
+    ? before
+    : await ctx.daemon.start({ cliPath: ctx.cliPath, dataDir: data });
+  if (!after.running) {
+    throw new Fail(
+      'The background runner did not start; run goat-runner run to see why, or goat-runner logs.',
+    );
+  }
+  if (values.json) sayJson(ctx, { started: !before.running, running: true, pid: after.pid });
+  else say(ctx, before.running ? 'The runner is already running.' : 'The runner started.');
+  return 0;
+}
+
+export async function stop(ctx: Context, args: string[]): Promise<number> {
+  const { values } = parse('stop', args, {}, 0);
+  const { data } = pathsOf(ctx);
+  const before = ctx.daemon.status(data);
+  if (!before.running) {
+    if (values.json) sayJson(ctx, { stopped: false, running: false });
+    else say(ctx, 'The runner was not running.');
+    return 0;
+  }
+  if (!(await ctx.daemon.stop(data))) {
+    throw new Fail(`Could not stop the runner (process ${before.pid}); end that process yourself.`);
+  }
+  if (values.json) sayJson(ctx, { stopped: true, running: false });
+  else say(ctx, 'The runner stopped.');
+  return 0;
+}
+
+export async function status(ctx: Context, args: string[]): Promise<number> {
+  const { values } = parse('status', args, {}, 0);
+  const { config: configDir, data } = pathsOf(ctx);
+  const config = load(configDir);
+  const daemon = ctx.daemon.status(data);
+  let autostart = false;
+  try {
+    autostart = await ctx.autostart.enabled(ctx.autostartPlan());
+  } catch {
+    // no plan on this machine (GOAT_RUNNER_HOME on Windows): not enabled
+  }
+  // Chosen field by field: the credential must never be in this object.
+  const out = {
+    linked: config !== null,
+    runner_id: config?.runnerId ?? null,
+    server: config?.server ?? null,
+    preset: config?.preset ?? null,
+    running: daemon.running,
+    pid: daemon.pid,
+    since: daemon.since,
+    needs_preset: config?.needsPreset === true,
+    autostart,
+  };
+  if (values.json) {
+    sayJson(ctx, out);
+    return 0;
+  }
+  if (config) {
+    say(ctx, `Linked: runner ${config.runnerId} on ${config.server} (${config.preset})`);
+  } else say(ctx, 'Linked: no');
+  if (config?.needsPreset) say(ctx, NEEDS_PRESET);
+  say(
+    ctx,
+    daemon.running ? `Running: yes (process ${daemon.pid}, since ${daemon.since})` : 'Running: no',
+  );
+  say(ctx, `Start at login: ${autostart ? 'on' : 'off'}`);
+  return 0;
+}
+
+export async function logs(ctx: Context, args: string[]): Promise<number> {
+  const { values } = parse('logs', args, { n: { type: 'string', short: 'n' } }, 0);
+  const n = values.n === undefined ? 50 : Number(values.n);
+  if (!Number.isInteger(n) || n < 1)
+    throw new UsageError('-n needs a whole number of lines', 'logs');
+  const { data } = pathsOf(ctx);
+  const text = readLogTail(data, n);
+  if (values.json) sayJson(ctx, { lines: text === '' ? [] : text.split('\n') });
+  else if (text === '') say(ctx, 'No log yet.');
+  else for (const line of text.split('\n')) say(ctx, line); // say() cleans, and cleaning drops newlines
+  return 0;
+}
+
+/** How long `autostart off` waits for a login job's runner to end: its polite stop time and a margin. */
+const OFF_WAIT_MS = 25_000;
+const OFF_POLL_MS = 250;
+
+export async function autostart(ctx: Context, args: string[]): Promise<number> {
+  const { values, positionals } = parse('autostart', args, {}, 1);
+  const word = positionals[0];
+  if (word !== 'on' && word !== 'off') throw new UsageError('say on or off', 'autostart');
+  const { config, data } = pathsOf(ctx);
+  // launchd would start the runner at once, and an unlinked one only fails and restarts.
+  if (word === 'on') {
+    const linked = load(config);
+    if (!linked) throw new Fail(NOT_LINKED);
+    if (linked.needsPreset) throw new Fail(NEEDS_PRESET, 2);
+  }
+  const wasRunning = ctx.daemon.status(data).running;
+  const plan = ctx.autostartPlan();
+  let res: { ok: boolean; detail: string };
+  try {
+    res = await ctx.autostart.set(word === 'on', plan);
+  } catch (e) {
+    res = { ok: false, detail: (e as Error).message };
+  }
+  if (!res.ok)
+    throw new Fail(`Start at login could not be turned ${word}: ${sentence(res.detail)}`);
+  if (word === 'on') {
+    if (values.json) sayJson(ctx, { autostart: true, detail: res.detail });
+    else say(ctx, `Start at login is on: ${res.detail}.`);
+    return 0;
+  }
+  // Where the system itself runs the runner as its login job (launchd: the plan "starts now"),
+  // turning the job off also ends the runner, and the runner may take a while to finish handing
+  // its turns back. Wait for it to be gone, then start it again the normal way. Elsewhere turning
+  // the login start off leaves the running process alone.
+  let running = ctx.daemon.status(data).running;
+  if (wasRunning && plan.startsNow) {
+    for (let waited = 0; running && waited < OFF_WAIT_MS; waited += OFF_POLL_MS) {
+      await ctx.sleep(OFF_POLL_MS);
+      running = ctx.daemon.status(data).running;
+    }
+  }
+  let restarted = false;
+  if (wasRunning && !running) {
+    try {
+      running = (await ctx.daemon.start({ cliPath: ctx.cliPath, dataDir: data })).running;
+    } catch {
+      running = false;
+    }
+    restarted = running;
+  }
+  const stopped = wasRunning && !running;
+  if (values.json) {
+    sayJson(ctx, { autostart: false, detail: res.detail, running, restarted });
+  } else if (stopped) {
+    say(ctx, 'Start at login is off, but the runner stopped. Run goat-runner start to start it.');
+  } else if (restarted) {
+    say(ctx, 'Start at login is off. The runner was restarted and is running.');
+  } else if (wasRunning) {
+    say(ctx, 'Start at login is off. The runner is still running.');
+  } else say(ctx, 'Start at login is off.');
+  return 0;
+}
+
+export async function unlink(ctx: Context, args: string[]): Promise<number> {
+  const { values } = parse('unlink', args, {}, 0);
+  const { config, data } = pathsOf(ctx);
+  const wasRunning = ctx.daemon.status(data).running;
+  if (wasRunning && !(await ctx.daemon.stop(data))) {
+    throw new Fail(
+      'Could not stop the runner, so nothing was removed; end that process yourself, then unlink again.',
+    );
+  }
+  let removed = false;
+  let detail: string;
+  try {
+    const res = await ctx.autostart.set(false, ctx.autostartPlan());
+    removed = res.ok;
+    detail = res.detail;
+  } catch (e) {
+    detail = (e as Error).message;
+  }
+  if (!removed) warn(ctx, `Start at login could not be removed: ${sentence(detail)}`);
+  try {
+    removeConfig(config);
+  } catch {
+    throw new Fail('Could not remove the stored link; delete the config file yourself.');
+  }
+  if (values.json) {
+    sayJson(ctx, { unlinked: true, stopped: wasRunning, autostart_removed: removed });
+  } else {
+    say(ctx, 'Unlinked: the runner is stopped and the stored link is gone.');
+    say(
+      ctx,
+      'The server still lists this runner until it is revoked with revoke_runner or in the Mini App.',
+    );
+  }
+  return 0;
+}

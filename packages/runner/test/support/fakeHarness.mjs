@@ -1,0 +1,78 @@
+// A stand-in agent harness for session tests. Plain Node so it runs the same on every platform.
+import { spawn } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { setTimeout } from 'node:timers';
+
+const [mode, arg] = process.argv.slice(2);
+// Hangs, but gives up after 30 s so a failing test cannot leave processes behind.
+const hang = () => setTimeout(() => process.exit(0), 30_000);
+
+switch (mode) {
+  case 'ok':
+    console.log('ok');
+    break;
+  case 'fail':
+    console.error('nope');
+    process.exitCode = 3;
+    break;
+  case 'hang':
+    console.log('hanging');
+    hang();
+    break;
+  case 'fork': {
+    const grandchild = spawn(process.execPath, [process.argv[1], 'hang'], { stdio: 'ignore' });
+    console.log(`grandchild ${grandchild.pid}`);
+    hang();
+    break;
+  }
+  case 'orphan-stdout': {
+    // Leaves a grandchild holding our stdout open, then exits cleanly.
+    const grandchild = spawn(process.execPath, [process.argv[1], 'hang'], {
+      stdio: ['ignore', 'inherit', 'ignore'],
+    });
+    grandchild.unref(); // or its handle would keep us alive
+    console.log(`grandchild ${grandchild.pid}`);
+    break;
+  }
+  case 'self-kill':
+    process.kill(process.pid, 'SIGKILL');
+    break;
+  case 'echo-env':
+    console.log(process.env[arg] ?? '');
+    break;
+  case 'ignore-term':
+    process.on('SIGTERM', () => {});
+    console.log('stubborn');
+    hang();
+    break;
+  case 'spam':
+    for (let i = 0; i < Number(arg); i++) console.log(String(i).padStart(100, 'x'));
+    break;
+  case 'stdin': {
+    let length = 0;
+    process.stdin.on('data', (d) => (length += d.length));
+    process.stdin.on('end', () => console.log(length));
+    break;
+  }
+  case 'chatty':
+    console.log('DISTINCT-HARNESS-OUTPUT-4417');
+    break;
+  case 'marker': // proves the harness ran at all
+    writeFileSync(arg, 'ran');
+    break;
+  case 'pidhang': // writes its pid, then hangs
+    writeFileSync(arg, String(process.pid));
+    hang();
+    break;
+  case 'nap': // runs for `arg` ms, then exits 0
+    setTimeout(() => process.exit(0), Number(arg));
+    break;
+  case 'leak': // echoes the turn token and the given files, then exits with code `arg`
+    console.log(process.env.GOAT_TURN_TOKEN);
+    for (const file of process.argv.slice(4)) console.log(readFileSync(file, 'utf8'));
+    process.exitCode = Number(arg);
+    break;
+  default:
+    console.error(`unknown mode ${mode}`);
+    process.exitCode = 2;
+}

@@ -63,17 +63,19 @@ The whole server runs as one Node process with four roles (`api`, `bot`, `jobs`,
 | [Running it in Telegram](docs/running.md)         | Setting up BotFather and trying it out          |
 | [Self-hosting on Dokploy](docs/deploy-dokploy.md) | A step-by-step deploy on your own VPS           |
 | [Bots, runners and turns](docs/bots.md)           | Setting up bots that a runner plays             |
+| [goat-runner](packages/runner/README.md)          | Installing and using the runner for your bots   |
 | [Operations](docs/operations.md)                  | Deployment checklist, metrics and alerts        |
 | [Testing](docs/testing.md)                        | How it is tested, and what is left before alpha |
 
 ## Layout
 
-| Path              | What it is                                                                                                                                                              |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/shared` | Rules (chess.js + arbiter), Glicko-2, PGN, the zod protocol, the English message catalog                                                                                |
-| `apps/server`     | One Node process with four roles (`api`, `bot`, `jobs`, `clock`): grammY bot, Hono API with SSE, Drizzle on PostgreSQL 18, a table-backed job outbox and clock scanners |
-| `apps/miniapp`    | The Preact + chessground Mini App, built with Vite and served by the server under `/app/`                                                                               |
-| `scripts`         | Local PostgreSQL, piece vendoring, bundle-budget, licence and engine-liveness gates                                                                                     |
+| Path              | What it is                                                                                                                                                                  |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/shared` | Rules (chess.js + arbiter), Glicko-2, PGN, the zod protocol, the English message catalog                                                                                    |
+| `apps/server`     | One Node process with four roles (`api`, `bot`, `jobs`, `clock`): grammY bot, Hono API with SSE, Drizzle on PostgreSQL 18, a table-backed job outbox and clock scanners     |
+| `packages/runner` | `goat-runner`, the command a bot owner runs on their own machine: it claims turns for their bots and starts an agent session for each ([README](packages/runner/README.md)) |
+| `apps/miniapp`    | The Preact + chessground Mini App, built with Vite and served by the server under `/app/`                                                                                   |
+| `scripts`         | Local PostgreSQL, piece vendoring, bundle-budget, licence and engine-liveness gates                                                                                         |
 
 ## Requirements
 

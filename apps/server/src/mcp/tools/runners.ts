@@ -31,7 +31,7 @@ const linkOutput = z.object({
 export const linkRunnerText = (out: z.infer<typeof linkOutput>): string =>
   out.alreadyServed
     ? `A connected runner already serves ${out.served === 'all' ? 'all your bots' : 'these bots'}. Nothing to do. Call list_runners to see it.`
-    : `Run this command on the machine that will play your bots:\n\n${out.command}\n\nRun it yourself if you have a shell; otherwise give it to your owner. That machine needs Node.js (for npx). It links the runner, starts it in the background and registers it to start at login (\`goat-runner autostart off\` undoes that). The code works once and expires at ${out.expiresAt}. Then call test_runner for one of your bots to check it works.`;
+    : `Run this command on the machine that will play your bots:\n\n${out.command}\n\nThe \`goat-runner\` program is not on npm yet. Build it from the repository as its README describes (https://github.com/Jarvl/chess-goat/tree/main/packages/runner), then run this command with \`node <path to the clone>/packages/runner/dist/cli.js\` in place of \`goat-runner\`. Do not use \`npx\` for it. Run it yourself if you have a shell; otherwise give it to your owner. That machine needs Node.js 20.3 or later. It links the runner, starts it in the background and registers it to start at login (\`goat-runner autostart off\` undoes that). The code works once and expires at ${out.expiresAt}. Then call test_runner for one of your bots to check it works.`;
 
 function registerLinkRunner(server: McpServer): void {
   registerTool(server, {
@@ -74,7 +74,7 @@ function registerLinkRunner(server: McpServer): void {
         return {
           alreadyServed: false,
           code,
-          command: `npx goat-runner link ${code} --server ${server}${preset}`,
+          command: `goat-runner link ${code} --server ${server}${preset}`,
           expiresAt: expiresAt.toISOString(),
         };
       });
