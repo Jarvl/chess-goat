@@ -668,6 +668,37 @@ describe('runLoop: clocks, duplicates, addresses', () => {
     expect(Date.now() - started).toBeLessThan(6000);
   });
 
+  it('measures the lease from when the turn arrives, not from when the claim was sent', async () => {
+    const fake = await fakeServer({
+      claim: async (n) => {
+        if (n === 1) await new Promise((r) => setTimeout(r, 1500)); // the long poll
+        return false;
+      },
+    });
+    // Budget 2 s: measured from the send, 1.5 s of it would be gone and the turn skipped (< 1 s).
+    const config = { ...configFor(fake.server.url), leaseSeconds: 12 };
+    fake.queue.push(turnFor(fake.server.url));
+    const run = startLoop(config, realClient(fake, config), {
+      timing: { ...fast, minLeftMs: 1000 },
+    });
+    await waitFor(() => fake.releases().length === 1);
+    await run.stop();
+    expect(fake.releases()[0]).toMatchObject({ reason: 'exited' });
+  });
+
+  it('an unparseable expiry runs on the lease length with its own warning', async () => {
+    const { client, released } = stubClient([
+      turnFor('http://localhost:1', { expires_at: 'garbage' }),
+    ]);
+    const run = startLoop(configFor('http://localhost:1'), client);
+    await waitFor(() => released.length === 1);
+    await run.stop();
+    expect(released[0]).toMatchObject({ reason: 'exited' });
+    expect(run.warns).toContain(
+      'the server sent a turn with no usable expiry; using the lease length instead',
+    );
+  });
+
   it('ignores a turn handed out again while it is still running, and does not release it', async () => {
     const fake = await fakeServer();
     const config = configFor(fake.server.url, { harness: ['nap', '600'] });

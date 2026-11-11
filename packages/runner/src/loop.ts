@@ -144,7 +144,7 @@ export async function runLoop(deps: LoopDeps, signal: AbortSignal): Promise<'sto
   }
 
   /** Runs the turn's session and says how it ended. Throws only on an unexpected fault. */
-  async function execute(turn: RunnerTurn, name: string, claimSentAt: number): Promise<Outcome> {
+  async function execute(turn: RunnerTurn, name: string, claimedAt: number): Promise<Outcome> {
     const refusal = mcpRefusal(turn.mcp_url, config.server);
     if (refusal) {
       log.warn(
@@ -155,22 +155,25 @@ export async function runLoop(deps: LoopDeps, signal: AbortSignal): Promise<'sto
       return { reason: 'error', detail: refusal };
     }
 
-    // The lease length, measured on a steady clock from just before the claim was sent, is the
+    // The lease length, measured on a steady clock from the moment the claim answer arrived (the server starts the lease when it hands the turn
+    // out, after the long poll), is the
     // trusted bound; expires_at on the local wall clock can only shorten it, and only when the
     // two roughly agree (a wrong local clock must neither skip every turn nor overrun the lease).
     const leaseMs = (config.leaseSeconds - 10) * 1000;
-    const leaseBudget = leaseMs - (mono() - claimSentAt);
+    const leaseBudget = leaseMs - (mono() - claimedAt);
     const wall = Date.parse(turn.expires_at) - now();
     let left: number;
-    if (wall >= 0 && wall <= config.leaseSeconds * 1000) {
-      left = Math.min(wall, leaseBudget);
+    // A little negative is jitter between the clocks, not skew.
+    if (wall >= -2000 && wall <= config.leaseSeconds * 1000) {
+      left = Math.min(Math.max(wall, 0), leaseBudget);
     } else {
       left = leaseBudget;
       if (!skewWarned) {
         skewWarned = true;
-        const skew = Number.isFinite(wall) ? Math.round(Math.abs(wall - leaseMs) / 1000) : 0;
         log.warn(
-          `this computer's clock disagrees with the server by about ${skew} s; using the lease length instead`,
+          Number.isFinite(wall)
+            ? `this computer's clock disagrees with the server by about ${Math.round(Math.abs(wall - leaseMs) / 1000)} s; using the lease length instead`
+            : 'the server sent a turn with no usable expiry; using the lease length instead',
         );
       }
     }
@@ -235,11 +238,11 @@ export async function runLoop(deps: LoopDeps, signal: AbortSignal): Promise<'sto
     };
   }
 
-  async function handle(turn: RunnerTurn, claimSentAt: number): Promise<void> {
+  async function handle(turn: RunnerTurn, claimedAt: number): Promise<void> {
     const name = safe(turn.bot.name);
     let outcome: Outcome;
     try {
-      outcome = await execute(turn, name, claimSentAt);
+      outcome = await execute(turn, name, claimedAt);
     } catch (e) {
       log.warn(`${name}: internal error: ${safe(messageOf(e), ERROR_MAX)}`);
       outcome = { reason: 'error', detail: 'internal error' };
@@ -262,11 +265,11 @@ export async function runLoop(deps: LoopDeps, signal: AbortSignal): Promise<'sto
       continue;
     }
     try {
-      const claimSentAt = mono();
       const turn = await client.claim(
         { wait_seconds: WAIT_SECONDS, lease_seconds: config.leaseSeconds },
         stop,
       );
+      const claimedAt = mono();
       failures = 0;
       if (failing) {
         failing = false;
@@ -277,7 +280,7 @@ export async function runLoop(deps: LoopDeps, signal: AbortSignal): Promise<'sto
         log.warn(`turn ${turn.id} was handed out again while still running; ignoring`);
       } else if (turn) {
         active.add(turn.id);
-        const p: Promise<void> = handle(turn, claimSentAt).finally(() => {
+        const p: Promise<void> = handle(turn, claimedAt).finally(() => {
           inflight.delete(p);
           active.delete(turn.id);
         });
