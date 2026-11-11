@@ -1,11 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { build } from 'tsup';
 import pkg from '../package.json';
+import { buildOnce } from './support/build';
 import { CLI, run } from './support/run';
 
 beforeAll(async () => {
-  await build({ silent: true });
+  await buildOnce();
 });
 
 describe('cli', () => {
@@ -17,6 +17,12 @@ describe('cli', () => {
 
   it('prints one help line with no arguments', async () => {
     const { stdout, code } = await run([]);
+    expect(code).toBe(0);
+    expect(stdout.trim().split('\n')).toHaveLength(1);
+  });
+
+  it('prints one help line with --help', async () => {
+    const { stdout, code } = await run(['--help']);
     expect(code).toBe(0);
     expect(stdout.trim().split('\n')).toHaveLength(1);
   });
