@@ -72,8 +72,15 @@ function filesUnder(d: string): string[] {
     .flatMap((e) => (e.isDirectory() ? filesUnder(path.join(d, e.name)) : [path.join(d, e.name)]));
 }
 
+// Replaces the temp folder with <dir> and, so one snapshot serves every platform, writes the
+// separators after it as '/'. `text` is JSON, so on Windows the folder appears with its
+// backslashes doubled; both spellings are replaced.
 function relative(files: Record<string, string>, text: string) {
-  return text.split(dir).join('<dir>').split(files.dir!).join('<dir>');
+  let out = text;
+  for (const root of [dir, files.dir!]) {
+    out = out.split(root).join('<dir>').split(root.split('\\').join('\\\\')).join('<dir>');
+  }
+  return out.replace(/<dir>(?:(?:\\\\|\\|\/)[\w.-]+)+/g, (m) => m.replace(/\\\\|\\/g, '/'));
 }
 
 describe('presetFor', () => {

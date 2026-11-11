@@ -220,7 +220,17 @@ export function runSession(
 
     child.on('error', (e) => {
       if (child.pid === undefined) return finish(notStarted(e));
-      if (hasExited()) return; // the exit path's result stands
+      if (hasExited()) {
+        // On Windows cross-spawn runs a missing command through cmd.exe and, when it exits with
+        // status 1, replaces the 'exit' event with this error (ENOENT). The child has a pid and
+        // has exited, but no 'exit' will follow, so this is the only chance to resolve.
+        if (!busy) {
+          busy = true;
+          dropStreams();
+          finish(notStarted(e));
+        }
+        return; // otherwise the exit path's result stands
+      }
       // An error on a running child (a failed kill, say): stop it, then report.
       busy = true;
       void killTree(child.pid).then(() => {

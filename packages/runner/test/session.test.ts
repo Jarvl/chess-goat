@@ -161,8 +161,10 @@ describe('runSession', { timeout: 30_000 }, () => {
     const pid = grandchildPid(r.tail);
     expect(pid).toBeGreaterThan(0);
     if (process.platform !== 'win32') await expectGone(pid);
-    else expect(alive(pid)).toBe(true); // documented limitation: not reaped on Windows
-    if (process.platform === 'win32') process.kill(pid); // clean up after the test
+    // Windows has no process groups: a descendant that outlives the harness is not reaped
+    // (documented in killTree), and one that writes to the pipe we dropped may die by itself.
+    // So the guarantee there is only the prompt resolution asserted above; end any survivor.
+    else if (alive(pid)) process.kill(pid);
   }, 30_000);
 
   it.skipIf(process.platform === 'win32')(

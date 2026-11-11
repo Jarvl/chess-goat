@@ -29,7 +29,9 @@ afterEach(async () => {
   } catch {
     // no file
   }
-  fs.rmSync(home, { recursive: true, force: true });
+  // A daemon that gave up waiting may still be running (the `silent` fake exits after 3 s) with
+  // the data folder as its working folder, which on Windows keeps the folder from being removed.
+  await fs.promises.rm(home, { recursive: true, force: true, maxRetries: 30, retryDelay: 200 });
 });
 
 const env = () => ({ ...process.env, GOAT_RUNNER_HOME: home });
