@@ -31,7 +31,7 @@ export function sendJson(res: http.ServerResponse, status: number, body: unknown
 }
 
 // A local node:http server on port 0 that records every request before calling the handler.
-export async function startServer(handler: Handler): Promise<TestServer> {
+export async function startServer(handler: Handler, host = '127.0.0.1'): Promise<TestServer> {
   const requests: Recorded[] = [];
   const sockets = new Set<Socket>();
   let closed = 0;
@@ -66,10 +66,10 @@ export async function startServer(handler: Handler): Promise<TestServer> {
       closed++;
     });
   });
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  await new Promise<void>((resolve) => server.listen(0, host, resolve));
   const port = (server.address() as { port: number }).port;
   return {
-    url: `http://127.0.0.1:${port}`,
+    url: `http://${host.includes(':') ? `[${host}]` : host}:${port}`,
     port,
     requests,
     closedSockets: () => closed,

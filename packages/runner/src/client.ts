@@ -47,7 +47,7 @@ export function isAbort(error: unknown): boolean {
 export type Client = {
   link(body: RunnerLinkRequest): Promise<RunnerLinkResponse>;
   claim(body: RunnerClaimRequest, signal: AbortSignal): Promise<RunnerTurn | null>;
-  release(body: RunnerReleaseRequest): Promise<void>;
+  release(body: RunnerReleaseRequest, signal?: AbortSignal): Promise<void>;
 };
 
 export type ClientOptions = {
@@ -65,6 +65,12 @@ const CLAIM_DEFAULT_WAIT_S = 50;
 const CLAIM_MARGIN_S = 15;
 const RELEASE_ATTEMPTS = 5;
 const DETAIL_MAX = 2000;
+const OK_BODY_MAX = 1024 * 1024;
+const ERROR_BODY_MAX = 16 * 1024;
+const MESSAGE_MAX = 500;
+const CODE_MAX = 64;
+const REDIRECT_MESSAGE = 'the server redirected; check the server URL (http or https?)';
+const UNEXPECTED = 'unexpected response from the server';
 
 function parseServer(server: string): URL {
   let url: URL;
@@ -86,13 +92,84 @@ function abortError(): Error {
   return e;
 }
 
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+/** Waits `ms`, or rejects with the abort error as soon as `signal` fires. */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(abortError());
+    const done = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+    };
+    const onAbort = () => {
+      done();
+      reject(abortError());
+    };
+    const timer = setTimeout(() => {
+      done();
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+/** The first allow-listed `code` in an error's cause chain, as a fixed string; never the cause. */
+function networkDetail(error: unknown): string {
+  if (error instanceof Error && error.name === 'TimeoutError') return 'timed out';
+  let node: unknown = error;
+  for (let depth = 0; depth < 4 && node && typeof node === 'object'; depth++) {
+    const code = (node as { code?: unknown }).code;
+    if (typeof code === 'string') {
+      if (code === 'ECONNREFUSED') return 'connection refused';
+      if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return 'host not found';
+      if (code === 'ECONNRESET') return 'connection reset';
+      if (
+        code.startsWith('CERT_') ||
+        code === 'DEPTH_ZERO_SELF_SIGNED_CERT' ||
+        code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE'
+      ) {
+        return 'certificate not trusted';
+      }
+    }
+    node = (node as { cause?: unknown }).cause;
+  }
+  return 'connection failed';
+}
+
+/** The body as text, or null when it is longer than `limit` bytes (the rest is cancelled). */
+async function readLimited(res: Response, limit: number): Promise<string | null> {
+  if (!res.body) return '';
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > limit) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
 
 export function createClient(opts: ClientOptions): Client {
   const url = parseServer(opts.server);
   const base = url.origin + url.pathname.replace(/\/+$/, '');
   const doFetch = opts.fetch ?? fetch;
   const retryBaseMs = opts.retryBaseMs ?? 1000;
+
+  /** Server text made safe to show: no credential, no control characters, bounded. */
+  function clean(text: string, max: number): string {
+    let out = text;
+    if (opts.credential) out = out.split(opts.credential).join('[redacted]');
+    out = Array.from(out, (ch) => (ch < ' ' || ch === '\u007f' ? ' ' : ch))
+      .join('')
+      .replace(/ {2,}/g, ' ')
+      .trim();
+    return out.length > max ? out.slice(0, max).trim() : out;
+  }
 
   /** One JSON POST; resolves with the status and raw text of a response, or throws. */
   async function post(
@@ -101,13 +178,13 @@ export function createClient(opts: ClientOptions): Client {
     auth: boolean,
     timeoutMs: number,
     caller?: AbortSignal,
-  ): Promise<{ status: number; text: string }> {
+  ): Promise<{ status: number; text: string | null }> {
     const headers: Record<string, string> = {
       'content-type': 'application/json',
       accept: 'application/json',
       'user-agent': opts.userAgent,
     };
-    if (auth && opts.credential) headers.authorization = `Bearer ${opts.credential}`;
+    if (auth) headers.authorization = `Bearer ${opts.credential}`;
     const signal = caller
       ? AbortSignal.any([caller, AbortSignal.timeout(timeoutMs)])
       : AbortSignal.timeout(timeoutMs);
@@ -117,41 +194,56 @@ export function createClient(opts: ClientOptions): Client {
         headers,
         body: JSON.stringify(body),
         signal,
+        // A redirect can drop Authorization and read as a revocation; never follow one.
+        redirect: 'manual',
       });
-      return { status: res.status, text: await res.text() };
+      const ok = res.status >= 200 && res.status <= 299;
+      const redirect = res.status >= 300 && res.status <= 399;
+      if (redirect) {
+        await res.body?.cancel().catch(() => {});
+        return { status: res.status, text: '' };
+      }
+      return {
+        status: res.status,
+        text: await readLimited(res, ok ? OK_BODY_MAX : ERROR_BODY_MAX),
+      };
     } catch (error) {
       if (caller?.aborted) throw abortError();
-      const timedOut = error instanceof Error && error.name === 'TimeoutError';
-      throw new NetworkError(url.host, timedOut ? 'timed out' : 'connection failed');
+      throw new NetworkError(url.host, networkDetail(error));
     }
   }
 
-  function failure(status: number, text: string, revokable: boolean): Error {
+  function failure(status: number, text: string | null, revokable: boolean): Error {
+    if (status >= 300 && status <= 399)
+      return new ServerError(status, null, 'redirect', REDIRECT_MESSAGE);
     if (status === 401 && revokable) return new RunnerRevokedError();
     let parsed: ReturnType<typeof ApiErrorBodySchema.safeParse> | undefined;
     try {
-      parsed = ApiErrorBodySchema.safeParse(JSON.parse(text));
+      parsed = text === null ? undefined : ApiErrorBodySchema.safeParse(JSON.parse(text));
     } catch {
       parsed = undefined;
     }
     if (parsed?.success) {
       const { code, reason, message } = parsed.data.error;
-      return new ServerError(status, code, reason ?? null, message);
+      return new ServerError(
+        status,
+        clean(code, CODE_MAX),
+        reason === undefined ? null : clean(reason, CODE_MAX),
+        clean(message, MESSAGE_MAX),
+      );
     }
     return new ServerError(status, null, null, `HTTP ${status}`);
   }
 
-  function parseOk<T>(text: string, schema: ZodType<T>): T {
+  function parseOk<T>(text: string | null, schema: ZodType<T>): T {
     let json: unknown;
     try {
-      json = JSON.parse(text);
+      json = text === null ? undefined : JSON.parse(text);
     } catch {
       json = undefined;
     }
     const parsed = schema.safeParse(json);
-    if (!parsed.success) {
-      throw new ServerError(502, null, null, 'unexpected response from the server');
-    }
+    if (!parsed.success) throw new ServerError(502, null, null, UNEXPECTED);
     return parsed.data;
   }
 
@@ -163,18 +255,20 @@ export function createClient(opts: ClientOptions): Client {
     },
 
     async claim(body, signal) {
+      if (!opts.credential) throw new Error('not linked');
       const timeout = ((body.wait_seconds ?? CLAIM_DEFAULT_WAIT_S) + CLAIM_MARGIN_S) * 1000;
       const { status, text } = await post('claim', body, true, timeout, signal);
       if (status < 200 || status > 299) throw failure(status, text, true);
       return parseOk(text, RunnerClaimResponseSchema).turn;
     },
 
-    async release(body) {
+    async release(body, signal) {
+      if (!opts.credential) throw new Error('not linked');
       const sent = body.detail === undefined ? body : { ...body, detail: cut(body.detail) };
       for (let attempt = 1; ; attempt++) {
         let error: Error;
         try {
-          const { status, text } = await post('release', sent, true, RELEASE_TIMEOUT_MS);
+          const { status, text } = await post('release', sent, true, RELEASE_TIMEOUT_MS, signal);
           if (status >= 200 && status <= 299) return;
           error = failure(status, text, true);
         } catch (e) {
@@ -183,7 +277,7 @@ export function createClient(opts: ClientOptions): Client {
         const retryable =
           error instanceof NetworkError || (error instanceof ServerError && error.status >= 500);
         if (!retryable || attempt >= RELEASE_ATTEMPTS) throw error;
-        await sleep(retryBaseMs * 2 ** (attempt - 1));
+        await sleep(retryBaseMs * 2 ** (attempt - 1), signal);
       }
     },
   };

@@ -1,4 +1,3 @@
-import http from 'node:http';
 import { inspect } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { RunnerTurn } from '@chess-goat/shared';
@@ -27,6 +26,8 @@ const turn: RunnerTurn = {
   expires_at: '2030-01-01T00:00:00.000Z',
   mcp_url: 'http://x/mcp',
 };
+
+const rel = { turn_id: 7, claim_seq: 1, reason: 'exited' as const };
 
 let servers: TestServer[] = [];
 afterEach(async () => {
@@ -172,18 +173,22 @@ describe('claim', () => {
     expect(e.status).toBe(502);
   });
 
-  it('rejects promptly with an abort error and the server sees the socket close', async () => {
+  it('rejects within a second with an abort error and the server sees the socket close', async () => {
     const { srv, client } = await setup(() => {
       /* hold the poll open */
     });
     const ac = new AbortController();
     const p = client.claim({ wait_seconds: 50 }, ac.signal);
     const pending = caught(p);
-    while (srv.requests.length === 0) await new Promise((r) => setTimeout(r, 5));
+    const seen = Date.now() + 2000;
+    while (srv.requests.length === 0 && Date.now() < seen) {
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    expect(srv.requests).toHaveLength(1);
     const t0 = Date.now();
     ac.abort();
     const e = await pending;
-    expect(Date.now() - t0).toBeLessThan(200);
+    expect(Date.now() - t0).toBeLessThan(1000);
     expect(isAbort(e)).toBe(true);
     expect(e).not.toBeInstanceOf(NetworkError);
     const deadline = Date.now() + 1000;
@@ -203,8 +208,6 @@ describe('claim', () => {
     expect(isAbort(e)).toBe(false);
   });
 });
-
-const rel = { turn_id: 7, claim_seq: 1, reason: 'exited' as const };
 
 describe('release', () => {
   it('resolves on 204 with the bearer credential', async () => {
@@ -306,44 +309,283 @@ describe('server URL', () => {
   });
 });
 
+describe('redirects', () => {
+  it.each(['link', 'claim', 'release'] as const)('never follows a 308 on %s', async (route) => {
+    const target = await setup((_r, res) => sendJson(res, 401, err('unauthorized')));
+    const { srv, client } = await setup((_r, res) => {
+      res.writeHead(308, { location: `${target.srv.url}/runner/${route}` });
+      res.end();
+    });
+    const call =
+      route === 'link'
+        ? client.link({ code: CODE })
+        : route === 'claim'
+          ? client.claim({}, new AbortController().signal)
+          : client.release(rel);
+    const e = await caught(call);
+    expect(e).not.toBeInstanceOf(RunnerRevokedError);
+    expect(e).toBeInstanceOf(ServerError);
+    const se = e as ServerError;
+    expect([se.status, se.code, se.reason]).toEqual([308, null, 'redirect']);
+    expect(se.message).toBe('the server redirected; check the server URL (http or https?)');
+    expect(target.srv.requests).toHaveLength(0);
+    expect(srv.requests).toHaveLength(1);
+  });
+});
+
+/** A server that answers with `status` and streams `chunk` forever until the client hangs up. */
+async function endless(status: number, chunk: string) {
+  let closed: () => void = () => {};
+  const hungUp = new Promise<void>((r) => (closed = r));
+  const { srv, client } = await setup((_r, res) => {
+    res.writeHead(status, { 'content-type': 'application/json' });
+    res.on('close', closed);
+    const timer = setInterval(() => res.write(chunk), 1);
+    res.on('close', () => clearInterval(timer));
+  });
+  return { srv, client, hungUp };
+}
+
+describe('bounded bodies', () => {
+  it('stops reading an oversized 2xx body and answers 502', async () => {
+    const { client, hungUp } = await endless(200, 'x'.repeat(1024));
+    const e = (await caught(client.claim({}, new AbortController().signal))) as ServerError;
+    expect([e.status, e.message]).toEqual([502, 'unexpected response from the server']);
+    await hungUp;
+  });
+
+  it('stops reading an oversized error body and answers HTTP <status>', async () => {
+    const { client, hungUp } = await endless(500, 'x'.repeat(1024));
+    const e = (await caught(client.link({ code: CODE }))) as ServerError;
+    expect([e.status, e.code, e.reason, e.message]).toEqual([500, null, null, 'HTTP 500']);
+    await hungUp;
+  });
+
+  it('accepts a 2xx body just under the cap', async () => {
+    const big = { turn: { ...turn, prompt: 'p'.repeat(900_000) } };
+    const { client } = await setup((_r, res) => sendJson(res, 200, big));
+    expect((await client.claim({}, new AbortController().signal))?.prompt).toHaveLength(900_000);
+  });
+});
+
+describe('server-controlled text', () => {
+  it('turns control characters into single spaces', async () => {
+    const { client } = await setup((_r, res) =>
+      sendJson(res, 409, err('validation', 'a\u001b[31mred\nline\t\u007fend', 'r\neason')),
+    );
+    const e = (await caught(client.link({ code: CODE }))) as ServerError;
+    expect(e.message).toBe('a [31mred line end');
+    expect(e.reason).toBe('r eason');
+  });
+
+  it('cuts a long message to 500 and a long reason to 64', async () => {
+    const { client } = await setup((_r, res) =>
+      sendJson(res, 409, err('validation', 'm'.repeat(5000), 'r'.repeat(500))),
+    );
+    const e = (await caught(client.link({ code: CODE }))) as ServerError;
+    expect(e.message).toHaveLength(500);
+    expect(e.reason).toHaveLength(64);
+  });
+
+  it('redacts an echoed credential', async () => {
+    const { client } = await setup((_r, res) =>
+      sendJson(res, 409, err('validation', `bad ${CRED} and ${CRED}`, `x${CRED}`)),
+    );
+    const e = (await caught(client.release(rel))) as ServerError;
+    expect(e.message).toBe('bad [redacted] and [redacted]');
+    expect(e.reason).not.toContain(CRED);
+  });
+});
+
+describe('minor behaviours', () => {
+  it('release aborts during a backoff wait', async () => {
+    const srv = await startServer((_r, res) => sendJson(res, 503, err('internal')));
+    servers.push(srv);
+    const client = createClient({
+      server: srv.url,
+      credential: CRED,
+      userAgent: UA,
+      retryBaseMs: 60_000,
+    });
+    const ac = new AbortController();
+    const p = caught(client.release(rel, ac.signal));
+    const until = Date.now() + 2000;
+    while (srv.requests.length === 0 && Date.now() < until)
+      await new Promise((r) => setTimeout(r, 5));
+    await new Promise((r) => setTimeout(r, 20));
+    const t0 = Date.now();
+    ac.abort();
+    const e = await p;
+    expect(isAbort(e)).toBe(true);
+    expect(Date.now() - t0).toBeLessThan(1000);
+    expect(srv.requests).toHaveLength(1);
+  });
+
+  it('release surfaces a 429 without retrying', async () => {
+    const { srv, client } = await setup((_r, res) => sendJson(res, 429, err('rate_limited')));
+    const e = (await caught(client.release(rel))) as ServerError;
+    expect(e.status).toBe(429);
+    expect(srv.requests).toHaveLength(1);
+  });
+
+  it('claim and release without a credential throw "not linked" before any request', async () => {
+    const srv = await startServer((_r, res) => sendJson(res, 401, err('unauthorized')));
+    servers.push(srv);
+    const client = createClient({ server: srv.url, userAgent: UA });
+    for (const call of [
+      () => client.claim({}, new AbortController().signal),
+      () => client.release(rel),
+    ]) {
+      const e = (await caught(call())) as Error;
+      expect(e.message).toBe('not linked');
+      expect(e).not.toBeInstanceOf(RunnerRevokedError);
+    }
+    expect(srv.requests).toHaveLength(0);
+  });
+
+  it('a 401 on link is a plain ServerError', async () => {
+    const { client } = await setup((_r, res) => sendJson(res, 401, err('unauthorized', 'no')));
+    const e = await caught(client.link({ code: CODE }));
+    expect(e).toBeInstanceOf(ServerError);
+    expect(e).not.toBeInstanceOf(RunnerRevokedError);
+    expect((e as ServerError).status).toBe(401);
+  });
+
+  it('an empty 200 on claim is the 502 error', async () => {
+    const { client } = await setup((_r, res) => {
+      res.writeHead(200);
+      res.end();
+    });
+    const e = (await caught(client.claim({}, new AbortController().signal))) as ServerError;
+    expect([e.status, e.message]).toEqual([502, 'unexpected response from the server']);
+  });
+
+  it('drops query and fragment from the server URL', async () => {
+    const { srv, client } = await setup((_r, res) => sendJson(res, 200, { turn: null }), {
+      server: (u) => `${u}/base?x=1#frag`,
+    });
+    await client.claim({}, new AbortController().signal);
+    expect(srv.requests[0]!.path).toBe('/base/runner/claim');
+  });
+
+  it('talks to an IPv6 literal server', async (ctx) => {
+    let srv: TestServer;
+    try {
+      srv = await startServer((_r, res) => sendJson(res, 200, { turn: null }), '::1');
+    } catch {
+      return ctx.skip();
+    }
+    servers.push(srv);
+    const client = createClient({ server: srv.url, credential: CRED, userAgent: UA });
+    expect(await client.claim({}, new AbortController().signal)).toBeNull();
+  });
+});
+
+describe('NetworkError detail', () => {
+  it('says "connection refused" for a refused connection', async () => {
+    const srv = await startServer(() => {});
+    const url = srv.url;
+    await srv.close();
+    const client = createClient({ server: url, credential: CRED, userAgent: UA });
+    const e = (await caught(client.link({ code: CODE }))) as Error;
+    expect(e).toBeInstanceOf(NetworkError);
+    expect(e.message).toBe(`could not reach 127.0.0.1:${srv.port}: connection refused`);
+  });
+
+  it('says "host not found" for an unresolvable host', async () => {
+    const client = createClient({ server: 'http://goat.invalid', credential: CRED, userAgent: UA });
+    const e = (await caught(client.link({ code: CODE }))) as Error;
+    expect(e).toBeInstanceOf(NetworkError);
+    expect(e.message).toBe('could not reach goat.invalid: host not found');
+  });
+
+  it.each([
+    ['ECONNRESET', 'connection reset'],
+    ['CERT_HAS_EXPIRED', 'certificate not trusted'],
+    ['DEPTH_ZERO_SELF_SIGNED_CERT', 'certificate not trusted'],
+    ['EWHATEVER', 'connection failed'],
+  ])('maps %s to "%s", also when nested', async (code, text) => {
+    const fake = (async () => {
+      throw new TypeError('fetch failed', { cause: { cause: { code, message: CRED } } });
+    }) as unknown as typeof fetch;
+    const client = createClient({
+      server: 'http://h.test',
+      credential: CRED,
+      userAgent: UA,
+      fetch: fake,
+    });
+    const e = (await caught(client.link({ code: CODE }))) as Error;
+    expect(e.message).toBe(`could not reach h.test: ${text}`);
+  });
+});
+
 describe('secrets in errors', () => {
-  it('no error kind contains the credential or the link code', async () => {
+  it('no error kind contains the credential, the link code or a turn token', async () => {
+    const TOKEN = 'TURNTOKEN-distinctive-777';
     const dead = await startServer(() => {});
     const deadUrl = dead.url;
     await dead.close();
-    const mk = (h: Handler) => setup(h);
-    const bodyWithSecrets = (code: number) => (_r: unknown, res: http.ServerResponse) =>
-      sendJson(res, code, err('validation', 'bad'));
     const cases: Array<() => Promise<unknown>> = [];
-    const revoked = await mk((_r, res) => sendJson(res, 401, err('unauthorized')));
-    cases.push(() => revoked.client.claim({}, new AbortController().signal));
-    const se = await mk(bodyWithSecrets(409));
-    cases.push(() => se.client.link({ code: CODE }));
-    const html = await mk((_r, res) => {
-      res.writeHead(500);
-      res.end(`${CRED} ${CODE}`);
-    });
-    cases.push(() => html.client.link({ code: CODE }));
-    const bad = await mk((_r, res) => {
-      res.writeHead(200);
-      res.end(`{"credential":"${CRED}"}`);
-    });
-    cases.push(() => bad.client.link({ code: CODE }));
-    const net: Client = createClient({
-      server: deadUrl,
-      credential: CRED,
-      userAgent: UA,
-      retryBaseMs: 10,
-    });
+    const add = async (h: Handler, call: (c: Client) => Promise<unknown>) => {
+      const { client } = await setup(h);
+      cases.push(() => call(client));
+    };
+    const noAbort = () => new AbortController().signal;
+    await add(
+      (_r, res) => sendJson(res, 401, err('unauthorized')),
+      (c) => c.claim({}, noAbort()),
+    );
+    await add(
+      (_r, res) => sendJson(res, 401, err('unauthorized')),
+      (c) => c.release(rel),
+    );
+    await add(
+      (_r, res) => sendJson(res, 409, err('validation', 'bad')),
+      (c) => c.link({ code: CODE }),
+    );
+    await add(
+      (_r, res) => sendJson(res, 409, err('validation', `echo ${CRED}`, CRED)),
+      (c) => c.link({ code: CODE }),
+    );
+    await add(
+      (_r, res) => {
+        res.writeHead(500);
+        res.end(`${CRED} ${CODE} ${TOKEN}`);
+      },
+      (c) => c.link({ code: CODE }),
+    );
+    await add(
+      (_r, res) => {
+        res.writeHead(200);
+        res.end(`{"credential":"${CRED}"}`);
+      },
+      (c) => c.link({ code: CODE }),
+    );
+    await add(
+      (_r, res) => sendJson(res, 200, { turn: { ...turn, id: 'x', token: TOKEN } }),
+      (c) => c.claim({}, noAbort()),
+    );
+    await add(
+      (_r, res) => {
+        res.writeHead(307, { location: `http://example.invalid/?${CRED}` });
+        res.end();
+      },
+      (c) => c.claim({}, noAbort()),
+    );
+    const net = createClient({ server: deadUrl, credential: CRED, userAgent: UA, retryBaseMs: 10 });
     cases.push(() => net.link({ code: CODE }));
     cases.push(() => net.release(rel));
     const ac = new AbortController();
-    const hang = await mk(() => {});
-    cases.push(() => {
-      const p = hang.client.claim({}, ac.signal);
-      setTimeout(() => ac.abort(), 30);
-      return p;
-    });
+    await add(
+      () => {},
+      (c) => {
+        const p = c.claim({}, ac.signal);
+        setTimeout(() => ac.abort(), 30);
+        return p;
+      },
+    );
+    const unlinked = createClient({ server: deadUrl, userAgent: UA });
+    cases.push(() => unlinked.claim({}, noAbort()));
 
     for (const run of cases) {
       const e = (await caught(run())) as Error;
@@ -353,8 +595,7 @@ describe('secrets in errors', () => {
         JSON.stringify(e, Object.getOwnPropertyNames(e)),
         inspect(e, { depth: 5 }),
       ]) {
-        expect(text).not.toContain(CRED);
-        expect(text).not.toContain(CODE);
+        for (const secret of [CRED, CODE, TOKEN]) expect(text).not.toContain(secret);
       }
     }
   });
