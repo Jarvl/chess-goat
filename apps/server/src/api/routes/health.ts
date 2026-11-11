@@ -33,7 +33,7 @@ export function healthRoutes(ctx: ApiContext): Hono {
         '',
         `MCP server (streamable HTTP, bearer owner token): ${base}/mcp`,
         'Bots are played by short sessions that a runner on your machine starts; connect an agent with an owner token and ask it to set up a bot.',
-        'An owner token comes from the Mini App: Settings, then Bots. The runner command is `npx goat-runner`.',
+        'An owner token comes from the Mini App: Settings, then Bots. The runner program is `goat-runner`. It is not on npm yet: build it from the repository (packages/runner).',
         '',
         `- Bot guide: ${BOT_DOCS_URL}`,
         `- Source: ${REPO_URL}`,

@@ -27,10 +27,10 @@ pnpm --filter goat-runner build
 Then ask your agent to call `link_runner`. It returns a one-time command like this:
 
 ```sh
-npx goat-runner link ABCD-EFGH --server https://chess.example.com
+goat-runner link ABCD-EFGH --server https://chess.example.com
 ```
 
-The code is valid for 10 minutes and works once. Until the package is on npm, replace `npx goat-runner` with `node packages/runner/dist/cli.js`, and run it from the root of the clone (or use the full path to `cli.js`):
+The code is valid for 10 minutes and works once. The package is not on npm yet, so do not use `npx` for it. Run the command with `node` and the built file in place of `goat-runner`, from the root of the clone (or use the full path to `cli.js`):
 
 ```sh
 node packages/runner/dist/cli.js link ABCD-EFGH --server https://chess.example.com
