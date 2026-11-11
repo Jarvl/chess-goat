@@ -60,6 +60,24 @@ describe('config', () => {
     expect(() => readConfig(dir)).toThrow(/not valid/);
   });
 
+  it.each(['http://goat.example', 'http://10.0.0.5:3000', 'http://localhost.evil.com'])(
+    'refuses a plain-http server %s that is not loopback',
+    (server) => {
+      raw({ ...base, server });
+      expect(() => readConfig(dir)).toThrow(/the server address must use https/);
+    },
+  );
+
+  it.each([
+    'http://localhost:3000',
+    'http://127.0.0.1:8080',
+    'http://127.9.9.9',
+    'http://[::1]:3000',
+  ])('accepts a plain-http loopback server %s', (server) => {
+    raw({ ...base, server });
+    expect(readConfig(dir)?.server).toBe(server);
+  });
+
   it('malformed JSON throws a message naming the file, without the contents', () => {
     raw(`{"credential":"${SECRET}"`);
     let msg = '';

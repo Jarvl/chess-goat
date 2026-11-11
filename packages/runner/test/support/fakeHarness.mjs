@@ -1,6 +1,6 @@
 // A stand-in agent harness for session tests. Plain Node so it runs the same on every platform.
 import { spawn } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { setTimeout } from 'node:timers';
 
 const [mode, arg] = process.argv.slice(2);
@@ -66,6 +66,11 @@ switch (mode) {
     break;
   case 'nap': // runs for `arg` ms, then exits 0
     setTimeout(() => process.exit(0), Number(arg));
+    break;
+  case 'leak': // echoes the turn token and the given files, then exits with code `arg`
+    console.log(process.env.GOAT_TURN_TOKEN);
+    for (const file of process.argv.slice(4)) console.log(readFileSync(file, 'utf8'));
+    process.exitCode = Number(arg);
     break;
   default:
     console.error(`unknown mode ${mode}`);

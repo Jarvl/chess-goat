@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { PresetSchema } from '@chess-goat/shared';
+import { isLoopbackHost } from './http.js';
 
 const FILE = 'config.json';
 
@@ -26,7 +27,18 @@ function httpUrl(what: string, s: string, ctx: z.RefinementCtx): void {
 
 const Server = z
   .string()
-  .superRefine((s, ctx) => httpUrl('server URL', s, ctx))
+  .superRefine((s, ctx) => {
+    httpUrl('server URL', s, ctx);
+    // Turns carry an MCP address on this origin, and the loop refuses plain http beyond loopback.
+    try {
+      const url = new URL(s);
+      if (url.protocol === 'http:' && !isLoopbackHost(url.hostname)) {
+        ctx.addIssue({ code: 'custom', message: 'the server address must use https' });
+      }
+    } catch {
+      // httpUrl reported it
+    }
+  })
   .transform((s) => s.replace(/\/+$/, ''));
 
 export const ConfigSchema = z

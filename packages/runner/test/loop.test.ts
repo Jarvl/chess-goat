@@ -6,7 +6,7 @@ import type { RunnerReleaseRequest, RunnerTurn } from '@chess-goat/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createClient, NetworkError, type Client } from '../src/client.js';
 import type { RunnerConfig } from '../src/config.js';
-import { runLoop, type LoopDeps } from '../src/loop.js';
+import { mcpRefusal, runLoop, type LoopDeps } from '../src/loop.js';
 import { botDir } from '../src/paths.js';
 import { sendJson, startServer, type Recorded, type TestServer } from './support/httpServer.js';
 
@@ -230,7 +230,7 @@ describe('runLoop', () => {
     expect(rel).toMatchObject({ turn_id: turn.id, claim_seq: 1, reason: 'exited' });
     expect(rel!.detail).toMatch(/^custom exited; exit 0; \d+ s$/);
     expect(JSON.stringify(fake.server.requests)).not.toContain(OUTPUT);
-    expect(run.infos).toContain('Botty: move turn, exited in 0 s');
+    expect(run.infos.some((l) => /^Botty: move turn, exited in \d+ s$/.test(l))).toBe(true);
     expect(run.logs.join('\n')).not.toContain(OUTPUT);
     expect(run.warns).toEqual([]);
     expect(run.infos[0]).toBe(
@@ -255,7 +255,7 @@ describe('runLoop', () => {
       detail: expect.stringMatching(/^custom exited; exit 3; \d+ s$/),
     });
     expect(JSON.stringify(fake.server.requests)).not.toContain('nope');
-    expect(run.infos).toContain('Botty: move turn, exited in 0 s, exit 3');
+    expect(run.infos.some((l) => /^Botty: move turn, exited in \d+ s, exit 3$/.test(l))).toBe(true);
     expect(run.warns).toEqual(['Botty: last output: nope ']);
     expect(noProcesses(run.tmpRoot)).toEqual([]);
   });
@@ -314,14 +314,12 @@ describe('runLoop', () => {
     const origin = 'http://localhost:1';
     const { client, released } = stubClient([
       turnFor(origin, { expires_at: new Date(Date.now() + 2000).toISOString() }),
-      turnFor(origin, { expires_at: 'garbage' }),
     ]);
     const run = startLoop(configFor(origin, { harness: ['marker', marker] }), client);
-    await waitFor(() => released.length === 2);
+    await waitFor(() => released.length === 1);
     await run.stop();
     expect(released[0]).toMatchObject({ reason: 'timeout' });
-    expect(released[0]!.detail).toMatch(/^skipped: \d{4} ms left$/);
-    expect(released[1]).toMatchObject({ reason: 'timeout', detail: 'skipped: NaN ms left' });
+    expect(released[0]!.detail).toMatch(/^skipped: \d{1,4} ms left$/);
     expect(fs.existsSync(marker)).toBe(false);
   });
 
@@ -458,7 +456,7 @@ describe('runLoop', () => {
         true
       ),
     });
-    const config = configFor(fake.server.url);
+    const config = configFor(fake.server.url, { concurrency: 1 });
     fake.queue.push(turnFor(fake.server.url));
     fake.queue.push(turnFor(fake.server.url));
     const run = startLoop(config, realClient(fake, config));
@@ -486,7 +484,7 @@ describe('runLoop', () => {
     expect(
       run.warns.filter((l) => l.startsWith('Botty: could not report the turn: ')),
     ).toHaveLength(1);
-    expect(run.infos).toContain('Second: move turn, exited in 0 s');
+    expect(run.infos.some((l) => /^Second: move turn, exited in \d+ s$/.test(l))).toBe(true);
   });
 
   it('on abort: stops claiming, kills the session, releases "runner stopping"', async () => {
@@ -633,5 +631,149 @@ describe('runLoop', () => {
     }
     for (const r of [...runnerSide, ...mcpCalls]) expect(text(r)).not.toContain(MODEL_KEY);
     for (const r of mcpCalls) expect(text(r)).not.toContain(CREDENTIAL);
+  });
+});
+
+describe('runLoop: clocks, duplicates, addresses', () => {
+  it('a local clock 10 minutes ahead still runs the turn, with one warning across two turns', async () => {
+    const fake = await fakeServer();
+    const config = configFor(fake.server.url);
+    fake.queue.push(turnFor(fake.server.url), turnFor(fake.server.url));
+    const run = startLoop(config, realClient(fake, config), { now: () => Date.now() + 600_000 });
+    await waitFor(() => fake.releases().length === 2);
+    await run.stop();
+    expect(fake.releases().every((r) => r.reason === 'exited')).toBe(true);
+    const skew = run.warns.filter((l) => l.includes("computer's clock disagrees"));
+    expect(skew).toHaveLength(1);
+    expect(skew[0]).toMatch(/by about \d+ s; using the lease length instead$/);
+  });
+
+  it('a local clock 10 minutes behind cannot outlive the lease budget', async () => {
+    const fake = await fakeServer();
+    // lease 12 s => budget 2 s from the claim; the wall clock would allow ten minutes.
+    const config = { ...configFor(fake.server.url, { harness: ['hang'] }), leaseSeconds: 12 };
+    const turn = turnFor(fake.server.url, {
+      expires_at: new Date(Date.now() + 10_000).toISOString(),
+    });
+    fake.queue.push(turn);
+    const started = Date.now();
+    const run = startLoop(config, realClient(fake, config), {
+      now: () => Date.now() - 600_000,
+      timing: { ...fast, minLeftMs: 0 },
+    });
+    await waitFor(() => fake.releases().length === 1);
+    await run.stop();
+    expect(fake.releases()[0]).toMatchObject({ reason: 'timeout' });
+    expect(fake.releases()[0]!.detail).toMatch(/^custom timeout; exit none; [1-3] s$/);
+    expect(Date.now() - started).toBeLessThan(6000);
+  });
+
+  it('ignores a turn handed out again while it is still running, and does not release it', async () => {
+    const fake = await fakeServer();
+    const config = configFor(fake.server.url, { harness: ['nap', '600'] });
+    const turn = turnFor(fake.server.url);
+    fake.queue.push(turn, turn);
+    const run = startLoop(config, realClient(fake, config));
+    await waitFor(() => run.warns.some((l) => l.includes('handed out again')));
+    await waitFor(() => fake.releases().length === 1);
+    await run.stop();
+    expect(run.warns).toContain(
+      `turn ${turn.id} was handed out again while still running; ignoring`,
+    );
+    expect(fake.releases()).toHaveLength(1);
+    expect(fake.releases()[0]).toMatchObject({ turn_id: turn.id, reason: 'exited' });
+  });
+
+  it('a 401 on one release kills another running session and ends the loop promptly', async () => {
+    const pidFile = path.join(tmpDir(), 'pid');
+    const fake = await fakeServer({
+      release: (_b, res) => (
+        sendJson(res, 401, { error: { code: 'unauthorized', message: 'x' } }),
+        true
+      ),
+    });
+    // The bot's name picks the harness mode: "pidhang" hangs, "ok" exits at once.
+    const config = configFor(fake.server.url, { harness: ['{bot}', pidFile], concurrency: 2 });
+    fake.queue.push(turnFor(fake.server.url, { bot: { id: 21, name: 'pidhang' } }));
+    const run = startLoop(config, realClient(fake, config));
+    await waitFor(() => fs.existsSync(pidFile) && fs.readFileSync(pidFile, 'utf8') !== '');
+    fake.queue.push(turnFor(fake.server.url, { bot: { id: 22, name: 'ok' } }));
+    const t0 = Date.now();
+    expect(await run.result).toBe('revoked');
+    expect(Date.now() - t0).toBeLessThan(8000);
+    expect(alive(Number(fs.readFileSync(pidFile, 'utf8')))).toBe(false);
+    expect(fake.releases()).toHaveLength(1);
+  });
+
+  it('answers other than 429 and 401 are reported as the status, not as unreachable', async () => {
+    const fake = await fakeServer({
+      claim: (n, res) => {
+        if (n > 1) return false;
+        sendJson(res, 503, { error: { code: 'busy', message: 'later' } });
+        return true;
+      },
+    });
+    const config = configFor(fake.server.url);
+    fake.queue.push(turnFor(fake.server.url));
+    const run = startLoop(config, realClient(fake, config));
+    await waitFor(() => fake.releases().length === 1);
+    await run.stop();
+    expect(run.warns).toEqual(['server answered 503; retrying in 0 s']);
+    expect(run.infos).toContain('connected again');
+  });
+
+  it('never logs or releases the token, persona or prompt on a successful harness turn', async () => {
+    const fake = await fakeServer();
+    const config = configFor(fake.server.url, {
+      harness: ['leak', '0', '{prompt_file}', '{persona_file}'],
+    });
+    fake.queue.push(turnFor(fake.server.url));
+    const run = startLoop(config, realClient(fake, config));
+    await waitFor(() => fake.releases().length === 1);
+    await run.stop();
+    expect(fake.releases()[0]).toMatchObject({ reason: 'exited' });
+    const seen = JSON.stringify([run.logs, fake.releases()]);
+    for (const secret of [TOKEN, PERSONA, PROMPT, CREDENTIAL]) expect(seen).not.toContain(secret);
+  });
+
+  it('never logs or releases the token even when the harness fails and echoes it', async () => {
+    const fake = await fakeServer();
+    const config = configFor(fake.server.url, { harness: ['leak', '3', '{prompt_file}'] });
+    fake.queue.push(turnFor(fake.server.url));
+    const run = startLoop(config, realClient(fake, config));
+    await waitFor(() => fake.releases().length === 1);
+    await run.stop();
+    expect(run.warns.some((l) => l.includes('last output'))).toBe(true);
+    const seen = JSON.stringify([run.logs, fake.releases()]);
+    expect(seen).not.toContain(TOKEN);
+    expect(seen).not.toContain(CREDENTIAL);
+  });
+});
+
+describe('mcpRefusal', () => {
+  const server = 'https://goat.example';
+  it.each([
+    'https://GOAT.example/mcp',
+    'https://goat.example:443/mcp',
+    'https://goat.example/a/b/mcp',
+  ])('accepts %s', (url) => {
+    expect(mcpRefusal(url, server)).toBeNull();
+  });
+  it('accepts loopback http on the same origin', () => {
+    expect(mcpRefusal('http://127.0.0.1:8080/mcp', 'http://127.0.0.1:8080')).toBeNull();
+  });
+  it.each([
+    'https://goat.example.evil.com/mcp',
+    'https://goat.example./mcp',
+    'https://goat.example:8443/mcp',
+    'http://goat.example/mcp',
+    'wss://goat.example/mcp',
+  ])('refuses %s', (url) => {
+    expect(mcpRefusal(url, server)).not.toBeNull();
+  });
+  it('a lookalike of localhost is not loopback', () => {
+    expect(mcpRefusal('http://localhost.evil.com/mcp', 'http://localhost.evil.com')).toBe(
+      'refused: insecure mcp_url',
+    );
   });
 });

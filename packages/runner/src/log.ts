@@ -8,10 +8,10 @@ const TAIL_READ_BYTES = 256 * 1024;
 const MAX_LINE_CHARS = 8000;
 const posix = process.platform !== 'win32';
 
-// C0, DEL, C1 and the Unicode line/paragraph separators: bot names are other people's text, and
+// C0, DEL, C1, the Unicode line/paragraph separators and bidi controls (they can reorder a line): bot names are other people's text, and
 // an escape sequence in a log must not reach the owner's terminal or split a line.
 // eslint-disable-next-line no-control-regex
-const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g;
+const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g;
 
 /** Replaces every control character (newlines included) with a space. */
 export function cleanLine(text: string): string {

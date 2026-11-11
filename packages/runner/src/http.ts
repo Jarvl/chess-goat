@@ -61,3 +61,7 @@ export function cleanText(text: string, max: number): string {
     .trim();
   return out.length > max ? out.slice(0, max).trim() : out;
 }
+
+/** localhost, 127.0.0.0/8 or ::1, as `URL.hostname` spells them. */
+export const isLoopbackHost = (host: string): boolean =>
+  host === 'localhost' || /^127\.\d+\.\d+\.\d+$/.test(host) || host === '[::1]' || host === '::1';
