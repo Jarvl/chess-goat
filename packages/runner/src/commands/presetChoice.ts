@@ -104,3 +104,12 @@ export function warnUnverified(ctx: Context, preset: Preset): void {
     );
   }
 }
+
+/** A login-started runner sees only what the system gives it, not this shell's variables. */
+export function warnLeanEnv(ctx: Context, name: string | undefined): void {
+  if (name === undefined) return;
+  warn(
+    ctx,
+    `Warning: ${name} must also be set for programs started at login; the runner started at login sees only what the system gives it.`,
+  );
+}

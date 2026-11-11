@@ -11,7 +11,7 @@ import { consoleLogger, fileLogger } from './log.js';
 import { claimPidFile, daemonStatus, startDaemon, stopDaemon } from './daemon.js';
 import { runLoop } from './loop.js';
 import { defaultPaths, type Platform } from './paths.js';
-import { detectPreset } from './presets/index.js';
+import { detectPreset, missingHarness } from './presets/index.js';
 
 // Replaced by tsup at build time with package.json's version.
 declare const __VERSION__: string;
@@ -47,6 +47,7 @@ function realContext(): Context {
     createClient,
     runLoop,
     detectPreset,
+    missingHarness,
     consoleLogger,
     fileLogger: (dir) => fileLogger(dir),
     onSignal(handler) {

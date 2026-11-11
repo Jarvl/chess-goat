@@ -74,6 +74,13 @@ describe('daemon', () => {
     expect(again).toEqual(s);
   });
 
+  it("starts it in the data folder, not in the caller's folder", async () => {
+    await start();
+    expect(fs.realpathSync(fs.readFileSync(path.join(data, 'cwd.txt'), 'utf8'))).toBe(
+      fs.realpathSync(data),
+    );
+  });
+
   it('stops it, removes the pid file, and a second stop returns false', async () => {
     const s = await start();
     expect(await stopDaemon(data)).toBe(true);

@@ -13,10 +13,10 @@ Commands:
 
 Options:
   --json       Print one JSON object instead of text (not for run)
-
-Errors are always one plain sentence on stderr, also with --json.
   --version    Print the version
-  --help       Print this help; "<command> --help" prints a command's own`;
+  --help       Print this help; "<command> --help" prints a command's own
+
+Errors are always one plain sentence on stderr, also with --json.`;
 
 export const USAGE: Record<string, string> = {
   link: `Usage: goat-runner link <code> --server <url> [options]

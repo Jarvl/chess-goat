@@ -225,7 +225,12 @@ export async function runLoop(deps: LoopDeps, signal: AbortSignal): Promise<'sto
     const seconds = Math.round(result.ms / 1000);
     const failed = result.reason !== 'exited' || result.exitCode !== 0;
     const exit = result.reason === 'exited' && failed ? `, exit ${result.exitCode ?? 'none'}` : '';
-    log.info(`${name}: ${turn.kind} turn, ${result.reason} in ${seconds} s${exit}`);
+    // A session the stop signal ended is not a timeout of its own.
+    const ended =
+      stop.aborted && result.reason === 'timeout'
+        ? `stopped after ${seconds} s`
+        : `${result.reason} in ${seconds} s`;
+    log.info(`${name}: ${turn.kind} turn, ${ended}${exit}`);
     if (failed && result.tail !== '') {
       log.warn(`${name}: last output: ${safe(result.tail.slice(-OUTPUT_MAX), OUTPUT_MAX)}`);
     }

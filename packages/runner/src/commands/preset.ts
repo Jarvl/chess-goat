@@ -1,6 +1,5 @@
 import { PRESETS, type Preset } from '@chess-goat/shared';
 import { ConfigSchema, readConfig } from '../config.js';
-import { cleanText } from '../http.js';
 import { parse } from './args.js';
 import {
   Fail,
@@ -10,10 +9,11 @@ import {
   say,
   sayJson,
   sentence,
+  warnMissingHarness,
   type Context,
 } from './context.js';
-import { enableAndStart } from './link.js';
-import { PRESET_OPTIONS, chooseHarness, warnUnverified } from './presetChoice.js';
+import { autostartDetail, enableAndStart } from './link.js';
+import { PRESET_OPTIONS, chooseHarness, warnLeanEnv, warnUnverified } from './presetChoice.js';
 
 export async function preset(ctx: Context, args: string[]): Promise<number> {
   const { values, positionals } = parse(
@@ -55,6 +55,7 @@ export async function preset(ctx: Context, args: string[]): Promise<number> {
   } catch (e) {
     throw new Fail(`Could not save the preset: ${sentence((e as Error).message)}`);
   }
+  await warnMissingHarness(ctx, next);
 
   const wasRunning = ctx.daemon.status(data).running;
   if (wasRunning && !(await ctx.daemon.stop(data))) {
@@ -69,13 +70,15 @@ export async function preset(ctx: Context, args: string[]): Promise<number> {
       noAutostart: values['no-autostart'] === true,
       noStart: values['no-start'] === true,
     });
+    const detail = autostartDetail(done.autostart, done.detail);
+    if (done.autostart) warnLeanEnv(ctx, values['lean-api-key-env']);
     if (values.json) {
       sayJson(ctx, {
         preset: name,
         restarted: false,
         started: done.started,
         autostart: done.autostart,
-        autostart_detail: cleanText(done.detail, 300),
+        autostart_detail: detail,
       });
     } else {
       say(ctx, `The preset is now ${name}.`);
@@ -85,10 +88,7 @@ export async function preset(ctx: Context, args: string[]): Promise<number> {
           ? 'The background runner is running.'
           : 'The background runner is not running.',
       );
-      say(
-        ctx,
-        `Start at login: ${done.autostart ? 'on' : 'off'} (${cleanText(done.detail, 300)}).`,
-      );
+      say(ctx, `Start at login: ${done.autostart ? 'on' : 'off'} (${detail}).`);
     }
     if (values['no-start'] !== true && !done.started) {
       throw new Fail(
@@ -96,6 +96,17 @@ export async function preset(ctx: Context, args: string[]): Promise<number> {
       );
     }
     return 0;
+  }
+
+  // Start at login may already be on: the variable matters to it as well.
+  if (values['lean-api-key-env'] !== undefined) {
+    let on = false;
+    try {
+      on = await ctx.autostart.enabled(ctx.autostartPlan());
+    } catch {
+      // no plan on this machine: not on
+    }
+    if (on) warnLeanEnv(ctx, values['lean-api-key-env']);
   }
 
   let restarted = false;

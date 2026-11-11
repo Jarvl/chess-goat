@@ -4,6 +4,8 @@
 
 The server never connects to your machine. The runner asks the server for work over HTTPS. For how bots, personas, turns and leases work, read [Bots, runners and turns](../../docs/bots.md). Your own agent (Claude Code, for example) sets the bots up and gives you the command to link. This page is about the program that plays them.
 
+> **The program is not on npm yet.** Until it is, every `goat-runner …` in this README, and in the messages the program prints, means `node <path to the clone>/packages/runner/dist/cli.js …`. Do not use `npx` for it. See [Install and link](#install-and-link) for how to build it.
+
 ## Before you start
 
 - Node 20.3 or later.
@@ -40,7 +42,9 @@ node packages/runner/dist/cli.js link ABCD-EFGH --server https://chess.example.c
 
 Start at login records the absolute paths of `node` and of `cli.js`. If you move the clone or change your Node version, run `autostart on` again.
 
-If `link` cannot settle on a harness, it keeps the link, starts nothing, and tells you to run `goat-runner preset <name>`. This happens when the command names no preset, the server has none, and `claude` is not installed. It also happens when the server's preset is `codex`, `opencode` or `goose` and you did not pass `--allow-unverified`, or is `lean` or `custom` and you did not pass its settings. Run the `preset` command it asks for; that finishes the setup.
+`link` keeps the link and starts nothing only when the harness was not named in the command but comes from the code (the server stored it) or was looked for and not found. That is the case when the server's preset is `codex`, `opencode` or `goose` and you did not pass `--allow-unverified`, when it is `lean` or `custom` and you did not pass its settings, or when the server has none and `claude` is not installed. It then tells you to run `goat-runner preset <name>`; that finishes the setup.
+
+If you name the preset yourself with `--preset`, the program checks it before it uses the code. `--preset codex`, `--preset opencode` or `--preset goose` without `--allow-unverified`, and `--preset lean` or `--preset custom` without their settings, are refused at that point. Nothing is linked, and the same code still works once you fix the command.
 
 ## Commands
 
@@ -72,6 +76,8 @@ Options of `link`:
 | `--lean-*`, `--custom-*` | The settings of the `lean` and `custom` presets. See below.                          |
 
 `preset` takes the same harness options, plus `--no-autostart` and `--no-start`, which only matter when it finishes a link that chose no harness.
+
+On Windows there is no polite way to stop a program, so `stop`, `preset`, `unlink` and a new `link` end the runner at once. A turn in progress is not handed back. The server sees it lapse and retries it later, after a delay. On Linux and macOS the runner is asked to stop, hands its turns back and then ends; if it has not finished after 20 seconds, it is ended at once.
 
 Only one runner runs per machine and user. A second `goat-runner run` stops with "A runner is already running; use goat-runner stop first." To use the same machine with another server or account, run `unlink` first and link again.
 
@@ -199,7 +205,9 @@ What it registers:
 
 On Linux and macOS the entry also records your `PATH`, so the harness is found at login. If you install the harness somewhere else later, run `autostart on` again.
 
-`goat-runner status` shows whether it is on. `autostart on` needs a link and a chosen harness first.
+`goat-runner status` shows whether it is on. `autostart on` needs a link and a chosen harness first. `autostart off` leaves a runner that is running as it is.
+
+On a Linux machine that nobody logs in to, such as a server or a Raspberry Pi, start at login only runs while that user is logged in. To keep the runner going without a login, run `loginctl enable-linger <user>` once, with your own user name in place of `<user>`.
 
 ## Security
 

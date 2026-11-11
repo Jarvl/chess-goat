@@ -3,8 +3,17 @@ import { NetworkError, ServerError } from '../client.js';
 import { ConfigSchema } from '../config.js';
 import { cleanText } from '../http.js';
 import { parse } from './args.js';
-import { PRESET_OPTIONS, chooseHarness, warnUnverified } from './presetChoice.js';
-import { Fail, UsageError, pathsOf, say, sayJson, sentence, type Context } from './context.js';
+import { PRESET_OPTIONS, chooseHarness, warnLeanEnv, warnUnverified } from './presetChoice.js';
+import {
+  Fail,
+  UsageError,
+  pathsOf,
+  say,
+  sayJson,
+  sentence,
+  warnMissingHarness,
+  type Context,
+} from './context.js';
 
 const WAIT_STARTS_MS = 5000;
 
@@ -33,6 +42,12 @@ async function waitRunning(ctx: Context, dataDir: string): Promise<boolean> {
   }
   return true;
 }
+
+const UNDO_AUTOSTART = 'undo it with goat-runner autostart off';
+
+/** The detail of a start-at-login result; when it is on, it also names the way to undo it. */
+export const autostartDetail = (on: boolean, detail: string): string =>
+  on ? `${cleanText(detail, 240)}; ${UNDO_AUTOSTART}` : cleanText(detail, 300);
 
 /** What a linked runner needs once a harness is accepted: autostart first, then the process. */
 export async function enableAndStart(
@@ -123,13 +138,14 @@ export async function link(ctx: Context, args: string[]): Promise<number> {
   const choice = found ? chooseHarness(found, values) : null;
   const accepted = found !== null && choice?.ok === true;
   const preset: Preset = accepted ? found : 'claude'; // a placeholder when refused
+  const stored = {
+    ...baseConfig(server.data, linked.credential, linked.runner_id, preset),
+    ...(choice?.ok ? choice.extra : {}),
+    ...(accepted ? {} : { needsPreset: true as const }),
+  };
   const save = (): void => {
     try {
-      ctx.writeConfig(configDir, {
-        ...baseConfig(server.data, linked.credential, linked.runner_id, preset),
-        ...(choice?.ok ? choice.extra : {}),
-        ...(accepted ? {} : { needsPreset: true as const }),
-      });
+      ctx.writeConfig(configDir, stored);
     } catch (e) {
       const err = e as NodeJS.ErrnoException;
       const why = `${err.code ? `${err.code}: ` : ''}${cleanText(err.message ?? 'unknown error', 150)}`;
@@ -139,7 +155,10 @@ export async function link(ctx: Context, args: string[]): Promise<number> {
     }
   };
   save();
-  if (accepted) warnUnverified(ctx, preset);
+  if (accepted) {
+    warnUnverified(ctx, preset);
+    await warnMissingHarness(ctx, stored);
+  }
 
   // A re-link: the old daemon holds the old credential; the new config is safe by now.
   let oldStuck = false;
@@ -182,8 +201,9 @@ export async function link(ctx: Context, args: string[]): Promise<number> {
     preset,
     started,
     autostart,
-    autostart_detail: cleanText(detail, 300),
+    autostart_detail: autostartDetail(autostart, detail),
   };
+  if (autostart) warnLeanEnv(ctx, values['lean-api-key-env']);
   if (values.json) sayJson(ctx, result);
   else {
     say(ctx, `Linked runner ${linked.runner_id} (${preset}).`);

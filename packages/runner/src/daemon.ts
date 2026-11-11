@@ -35,7 +35,8 @@ export class AlreadyRunningError extends Error {
 
 const NOT_RUNNING: DaemonStatus = { running: false, pid: null, since: null };
 const START_WAIT_MS = 5000;
-const POLITE_WAIT_MS = 10_000;
+// Longer than the loop's own 10 s budget for handing turns back, so a polite stop finishes first.
+const POLITE_WAIT_MS = 20_000;
 const DEATH_WAIT_MS = 2000;
 const POLL_MS = 100;
 const BOOT_TOLERANCE_MS = 5000;
@@ -234,10 +235,13 @@ export async function startDaemon(opts: {
   const current = daemonStatus(opts.dataDir);
   if (current.running) return current;
 
+  // Its own folder as cwd, so the caller's folder is not held open (on Windows that blocks removing it).
+  fs.mkdirSync(opts.dataDir, { recursive: true, ...(posix ? { mode: 0o700 } : {}) });
   const child = spawn(opts.nodePath ?? process.execPath, [opts.cliPath, 'run', '--daemon'], {
     detached: true,
     stdio: 'ignore',
     windowsHide: true,
+    cwd: opts.dataDir,
     env: opts.env,
   });
   const ended = new Promise<void>((resolve) => {

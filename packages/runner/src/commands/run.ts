@@ -7,6 +7,7 @@ import {
   Fail,
   NEEDS_PRESET,
   NOT_LINKED,
+  missingHarnessLine,
   UsageError,
   pathsOf,
   warn,
@@ -21,28 +22,28 @@ export async function run(ctx: Context, args: string[]): Promise<number> {
   const daemon = values.daemon === true;
   const { config: configDir, data } = pathsOf(ctx);
 
+  // The daemon has no terminal and a service manager restarts it on failure, every 30 s for ever:
+  // it writes the reason to its log and exits 0. Foreground says it and exits non-zero.
+  const bail = (message: string, code = 1): number => {
+    if (!daemon) throw new Fail(message, code);
+    ctx.fileLogger(data).warn(cleanLine(message));
+    return 0;
+  };
+
   let config;
   try {
     config = readConfig(configDir);
   } catch (e) {
-    throw new Fail((e as Error).message);
+    return bail((e as Error).message);
   }
-  if (!config) throw new Fail(NOT_LINKED);
-  if (config.needsPreset) {
-    // A login unit left over from an earlier link lands here: log once, exit 0 so nothing restarts it.
-    if (daemon) {
-      ctx.fileLogger(data).warn(NEEDS_PRESET);
-      return 0;
-    }
-    throw new Fail(NEEDS_PRESET, 2);
-  }
+  if (!config) return bail(NOT_LINKED);
+  // A login unit left over from an earlier link lands here too.
+  if (config.needsPreset) return bail(NEEDS_PRESET, 2);
   // Once, here, so a broken preset is one sentence now and not a failed turn later.
   try {
     presetFor(config);
   } catch (e) {
-    throw new Fail(
-      `The ${config.preset} preset is not usable: ${cleanLine((e as Error).message)}.`,
-    );
+    return bail(`The ${config.preset} preset is not usable: ${cleanLine((e as Error).message)}.`);
   }
 
   // Foreground and daemon both hold the pid file, so start, autostart and a second run see them.
@@ -59,13 +60,17 @@ export async function run(ctx: Context, args: string[]): Promise<number> {
   }
 
   const log = daemon ? ctx.fileLogger(data) : ctx.consoleLogger();
+  const missing = await ctx.missingHarness(config);
+  if (missing !== null) log.warn(missingHarnessLine(missing));
   const abort = new AbortController();
   let signals = 0;
   const off = ctx.onSignal(() => {
-    // A second signal means "now": the loop's own shutdown releases are what it interrupts.
+    // A second signal means "now": the loop's own shutdown releases are what it interrupts. The
+    // daemon exits 0 then: it was asked to stop, and a failure exit would have systemd or launchd
+    // start it again 30 s later.
     if (++signals > 1) {
       pid.release();
-      ctx.exit(1);
+      ctx.exit(daemon ? 0 : 1);
     }
     abort.abort();
   });

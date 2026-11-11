@@ -18,6 +18,7 @@ setTimeout(() => process.exit(0), mode === 'silent' ? 3_000 : 30_000);
 
 if (mode !== 'silent') {
   mkdirSync(data, { recursive: true });
+  writeFileSync(join(data, 'cwd.txt'), process.cwd()); // where startDaemon put us
   writeFileSync(
     file,
     JSON.stringify({ pid: process.pid, since: new Date().toISOString(), token }),

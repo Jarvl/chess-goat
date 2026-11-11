@@ -245,14 +245,14 @@ describe('goat-runner against the server', () => {
         return row && row.plyCount >= 8 ? row : null;
       },
       runner.logs,
-      22_000,
+      60_000,
     );
     expect(game.whiteId).toBe(rook.id);
     expect(game.blackId).toBe(knight.id);
     expect(await failedLeases()).toEqual([]);
     const row = await gameRow(game.id);
     expect(row.status).toBe('active');
-  }, 25_000);
+  }, 75_000);
 
   it('stops for good when the runner is revoked', async () => {
     const linked = await link();

@@ -67,6 +67,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      # Only the runner and what it needs (the shared package), not the server's native dependencies.
+      - run: pnpm install --frozen-lockfile --filter goat-runner...
       - run: pnpm --filter goat-runner build
       - run: pnpm --filter goat-runner test

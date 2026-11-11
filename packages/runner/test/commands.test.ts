@@ -40,7 +40,7 @@ describe('link', () => {
       preset: 'claude',
       started: true,
       autostart: true,
-      autostart_detail: 'a fake unit',
+      autostart_detail: 'a fake unit; undo it with goat-runner autostart off',
     });
   });
 
@@ -348,6 +348,59 @@ describe('run', () => {
     expect(() => fake.signals.fire()).toThrow('exit 1');
   });
 
+  it('in the daemon a second signal exits 0, so nothing restarts a runner that was told to stop', async () => {
+    await linked({ runLoop: () => new Promise(() => {}) });
+    void main(['run', '--daemon'], fake.ctx);
+    await new Promise((r) => setTimeout(r, 50));
+    fake.signals.fire();
+    expect(() => fake.signals.fire()).toThrow('exit 0');
+    expect(fake.calls).toContain('release pid');
+  });
+
+  it('--daemon with no link logs the reason and exits 0; the foreground exits 1', async () => {
+    fake = fakeContext();
+    expect(await main(['run', '--daemon'], fake.ctx)).toBe(0);
+    expect(fake.calls).toContain(
+      'log: Not linked. Ask your agent to call link_runner and run the command it gives.',
+    );
+    expect(fake.err()).toBe('');
+    expect(await main(['run'], fake.ctx)).toBe(1);
+  });
+
+  it('--daemon with an unreadable config logs the reason and exits 0', async () => {
+    fake = fakeContext();
+    fs.mkdirSync(path.join(fake.home, 'config'), { recursive: true });
+    fs.writeFileSync(path.join(fake.home, 'config', 'config.json'), '{ not json');
+    expect(await main(['run', '--daemon'], fake.ctx)).toBe(0);
+    expect(fake.calls.filter((c) => c.startsWith('log: '))).toHaveLength(1);
+    expect(fake.err()).toBe('');
+    expect(await main(['run'], fake.ctx)).toBe(1);
+    expect(fake.err()).not.toBe('');
+  });
+
+  it('--daemon with an unusable preset logs the reason and exits 0; the foreground exits 1', async () => {
+    await linked();
+    const file = path.join(fake.home, 'config', 'config.json');
+    const cfg = JSON.parse(fs.readFileSync(file, 'utf8'));
+    fs.writeFileSync(
+      file,
+      JSON.stringify({ ...cfg, preset: 'custom', custom: { command: './x', args: [] } }),
+    );
+    expect(await main(['run', '--daemon'], fake.ctx)).toBe(0);
+    expect(fake.calls.some((c) => c.startsWith('log: The custom preset is not usable'))).toBe(true);
+    expect(await main(['run'], fake.ctx)).toBe(1);
+  });
+
+  it('warns once when the harness is not on PATH: in the log for the daemon, on stderr otherwise', async () => {
+    await linked({ missing: 'claude' });
+    const line =
+      "claude was not found on this computer's PATH; turns will fail until it is installed.";
+    const before = fake.err().length;
+    expect(await main(['run', '--daemon'], fake.ctx)).toBe(0);
+    expect(fake.calls).toContain(`log: ${line}`);
+    expect(fake.err().slice(before)).not.toContain(line);
+  });
+
   it('a revoked runner exits 1 with the sentence and removes nothing', async () => {
     await linked({ runLoop: async () => 'revoked' });
     expect(await main(['run'], fake.ctx)).toBe(1);
@@ -506,7 +559,7 @@ describe('a link without a harness', () => {
       restarted: false,
       started: true,
       autostart: true,
-      autostart_detail: 'a fake unit',
+      autostart_detail: 'a fake unit; undo it with goat-runner autostart off',
     });
     expect(await main(['start'], fake.ctx)).toBe(0);
   });
@@ -530,5 +583,99 @@ describe('a link without a harness', () => {
     fake.daemon.running = true; // since is in the future: started after the config was written
     expect(await main(['start'], fake.ctx)).toBe(0);
     expect(fake.out()).toContain('already running');
+  });
+});
+
+describe('a harness that is not installed', () => {
+  const LINE =
+    "claude was not found on this computer's PATH; turns will fail until it is installed.";
+  const count = () => fake.err().split(LINE).length - 1;
+
+  it('link, preset and start each warn once and still succeed', async () => {
+    expect(await linkWith(['--preset', 'claude'], {}, { missing: 'claude' })).toBe(0);
+    expect(count()).toBe(1);
+    expect(await main(['preset', 'claude'], fake.ctx)).toBe(0);
+    expect(count()).toBe(2);
+    expect(await main(['start'], fake.ctx)).toBe(0);
+    expect(count()).toBe(3);
+  });
+
+  it('says nothing when it is found, and does not warn for a link that chose no harness', async () => {
+    expect(await linkWith(['--preset', 'claude'], {})).toBe(0);
+    expect(fake.err()).not.toContain('PATH');
+  });
+});
+
+describe('start at login and the runner', () => {
+  it('link names the way to undo start at login', async () => {
+    expect(await linkWith(['--preset', 'claude'])).toBe(0);
+    expect(fake.out()).toContain('goat-runner autostart off');
+  });
+
+  it('link does not name it when start at login is off', async () => {
+    expect(await linkWith(['--preset', 'claude', '--no-autostart'])).toBe(0);
+    expect(fake.out()).not.toContain('autostart off');
+  });
+
+  const LEAN = [
+    '--preset',
+    'lean',
+    '--lean-base-url',
+    'http://localhost:1/v1',
+    '--lean-model',
+    'm',
+  ];
+  it('warns once that the key variable must be set at login, only when start at login is on', async () => {
+    expect(await linkWith([...LEAN, '--lean-api-key-env', 'MY_KEY'])).toBe(0);
+    const warning = 'MY_KEY must also be set for programs started at login';
+    expect(fake.err().split(warning).length - 1).toBe(1);
+    fake.cleanup();
+    expect(await linkWith([...LEAN, '--lean-api-key-env', 'MY_KEY', '--no-autostart'])).toBe(0);
+    expect(fake.err()).not.toContain(warning);
+    fake.cleanup();
+    expect(await linkWith(LEAN)).toBe(0);
+    expect(fake.err()).not.toContain('started at login');
+  });
+
+  describe('autostart off', () => {
+    const linkedRunning = async (opts: Parameters<typeof fakeContext>[0]) => {
+      await linkWith(['--preset', 'claude', '--no-autostart'], {}, opts);
+      fake.daemon.running = true;
+      fake.calls.length = 0;
+    };
+
+    it('starts the runner again when turning it off ended it', async () => {
+      await linkedRunning({ autostartOffKills: true });
+      expect(await main(['autostart', 'off'], fake.ctx)).toBe(0);
+      expect(fake.calls).toEqual(['autostart off', 'start']);
+      expect(fake.out()).toContain('Start at login is off. The runner is still running.');
+    });
+
+    it('leaves a runner that kept running alone', async () => {
+      await linkedRunning({});
+      expect(await main(['autostart', 'off'], fake.ctx)).toBe(0);
+      expect(fake.calls).toEqual(['autostart off']);
+      expect(fake.out()).toContain('Start at login is off. The runner is still running.');
+    });
+
+    it('says so, and what to run, when it cannot be restarted', async () => {
+      await linkedRunning({ autostartOffKills: true, startFails: true });
+      expect(await main(['autostart', 'off'], fake.ctx)).toBe(0);
+      expect(fake.out()).toContain('the runner stopped');
+      expect(fake.out()).toContain('goat-runner start');
+    });
+
+    it('starts nothing when no runner was running', async () => {
+      await linkWith(
+        ['--preset', 'claude', '--no-start', '--no-autostart'],
+        {},
+        { autostartOffKills: true },
+      );
+      fake.calls.length = 0;
+      expect(await main(['autostart', 'off'], fake.ctx)).toBe(0);
+      expect(fake.calls).toEqual(['autostart off']);
+      expect(fake.out()).toContain('Start at login is off.');
+      expect(fake.out()).not.toContain('still running');
+    });
   });
 });

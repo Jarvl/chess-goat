@@ -21,6 +21,22 @@ export function presetFor(config: RunnerConfig): HarnessPreset | 'lean' {
 }
 
 /**
+ * The command of a harness preset that is not on PATH, or null (found, or lean, which has no
+ * command). Never runs it, and never throws: a broken preset is reported elsewhere.
+ */
+export async function missingHarness(config: RunnerConfig): Promise<string | null> {
+  if (config.preset === 'lean') return null;
+  try {
+    const preset = presetFor(config);
+    if (preset === 'lean') return null;
+    const command = config.preset === 'custom' ? config.custom!.command : config.preset;
+    return (await preset.detect()) ? null : command;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Only claude is ever auto-selected. codex, opencode, goose, lean and custom are chosen by an
  * explicit `--preset`, never by what happens to be installed.
  */

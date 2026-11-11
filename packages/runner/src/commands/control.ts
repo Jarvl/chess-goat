@@ -13,6 +13,7 @@ import {
   sayJson,
   sentence,
   warn,
+  warnMissingHarness,
   type Context,
 } from './context.js';
 
@@ -39,6 +40,7 @@ export async function start(ctx: Context, args: string[]): Promise<number> {
   const linked = load(config);
   if (!linked) throw new Fail(NOT_LINKED);
   if (linked.needsPreset) throw new Fail(NEEDS_PRESET, 2);
+  await warnMissingHarness(ctx, linked);
   const before = ctx.daemon.status(data);
   // A runner started before the last link still holds the old credential.
   if (before.running && Date.parse(before.since ?? '') < configMtime(config)) {
@@ -133,13 +135,14 @@ export async function autostart(ctx: Context, args: string[]): Promise<number> {
   const { values, positionals } = parse('autostart', args, {}, 1);
   const word = positionals[0];
   if (word !== 'on' && word !== 'off') throw new UsageError('say on or off', 'autostart');
-  const { config } = pathsOf(ctx);
+  const { config, data } = pathsOf(ctx);
   // launchd would start the runner at once, and an unlinked one only fails and restarts.
   if (word === 'on') {
     const linked = load(config);
     if (!linked) throw new Fail(NOT_LINKED);
     if (linked.needsPreset) throw new Fail(NEEDS_PRESET, 2);
   }
+  const wasRunning = ctx.daemon.status(data).running;
   let res: { ok: boolean; detail: string };
   try {
     res = await ctx.autostart.set(word === 'on', ctx.autostartPlan());
@@ -148,8 +151,35 @@ export async function autostart(ctx: Context, args: string[]): Promise<number> {
   }
   if (!res.ok)
     throw new Fail(`Start at login could not be turned ${word}: ${sentence(res.detail)}`);
-  if (values.json) sayJson(ctx, { autostart: word === 'on', detail: res.detail });
-  else say(ctx, word === 'on' ? `Start at login is on: ${res.detail}.` : 'Start at login is off.');
+  if (word === 'on') {
+    if (values.json) sayJson(ctx, { autostart: true, detail: res.detail });
+    else say(ctx, `Start at login is on: ${res.detail}.`);
+    return 0;
+  }
+  // Turning it off can end the runner too (launchd stops the job it started at login). If it was
+  // running and no longer is, start it again the normal way.
+  let running = ctx.daemon.status(data).running;
+  if (wasRunning && running) {
+    await ctx.sleep(500); // a job that is still being stopped has not died yet
+    running = ctx.daemon.status(data).running;
+  }
+  let restarted = false;
+  if (wasRunning && !running) {
+    try {
+      running = (await ctx.daemon.start({ cliPath: ctx.cliPath, dataDir: data })).running;
+    } catch {
+      running = false;
+    }
+    restarted = running;
+  }
+  const stopped = wasRunning && !running;
+  if (values.json) {
+    sayJson(ctx, { autostart: false, detail: res.detail, running, restarted });
+  } else if (stopped) {
+    say(ctx, 'Start at login is off, but the runner stopped. Run goat-runner start to start it.');
+  } else if (wasRunning) {
+    say(ctx, 'Start at login is off. The runner is still running.');
+  } else say(ctx, 'Start at login is off.');
   return 0;
 }
 

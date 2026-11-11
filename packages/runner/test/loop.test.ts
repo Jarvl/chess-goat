@@ -502,6 +502,7 @@ describe('runLoop', () => {
     expect(fake.releases()).toEqual([
       expect.objectContaining({ reason: 'timeout', detail: 'runner stopping' }),
     ]);
+    expect(run.infos.some((l) => /^Botty: move turn, stopped after \d+ s$/.test(l))).toBe(true);
     expect(noProcesses(run.tmpRoot)).toEqual([]);
     const n = fake.claims().length;
     await new Promise((r) => setTimeout(r, 150));

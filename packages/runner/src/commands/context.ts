@@ -60,6 +60,8 @@ export type Context = {
   createClient(opts: ClientOptions): Client;
   runLoop(deps: LoopDeps, signal: AbortSignal): Promise<'stopped' | 'revoked'>;
   detectPreset(): Promise<Preset | null>;
+  /** The command of the config's harness when it is not on PATH, else null. */
+  missingHarness(config: RunnerConfig): Promise<string | null>;
   consoleLogger(): Logger;
   fileLogger(dataDir: string): Logger;
   /** Registers for SIGINT and SIGTERM; returns the remover. */
@@ -92,3 +94,12 @@ export const sentence = (text: string) => {
 };
 
 export const NEEDS_PRESET = 'No harness is chosen yet. Choose one with: goat-runner preset <name>';
+
+export const missingHarnessLine = (command: string) =>
+  `${command} was not found on this computer's PATH; turns will fail until it is installed.`;
+
+/** One warning on stderr when the chosen harness is not installed. Never a failure. */
+export async function warnMissingHarness(ctx: Context, config: RunnerConfig): Promise<void> {
+  const missing = await ctx.missingHarness(config);
+  if (missing !== null) warn(ctx, missingHarnessLine(missing));
+}

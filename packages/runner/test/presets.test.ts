@@ -9,6 +9,7 @@ import type { RunnerConfig } from '../src/config.js';
 import {
   DEFAULT_PERSONA,
   detectPreset,
+  missingHarness,
   onPath,
   UNVERIFIED_NOTES,
   presetFor,
@@ -450,6 +451,25 @@ describe('onPath', () => {
     expect(onPath('goat-fake', { PATH: upper }, 'win32')).toBe(true); // default PATHEXT has .CMD
   });
 
+  it('on win32 finds nothing without an executable extension, whatever the host system', () => {
+    const bin = path.join(root, 'winbare');
+    fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin, 'goat-bare'), 'not a program');
+    fs.writeFileSync(path.join(bin, 'goat-real.exe'), 'MZ');
+    expect(onPath('goat-bare', { PATH: bin }, 'win32')).toBe(false);
+    expect(onPath('goat-bare', { PATH: bin, PATHEXT: '.EXE;.CMD' }, 'win32')).toBe(false);
+    // A name that already ends in a listed extension is taken as given, in any letter case.
+    expect(onPath('goat-real.exe', { PATH: bin }, 'win32')).toBe(true);
+    expect(onPath('goat-real.exe', { PATH: bin, PATHEXT: '.EXE' }, 'win32')).toBe(true);
+    fs.writeFileSync(path.join(bin, 'goat-dflt.EXE'), 'MZ');
+    expect(onPath('goat-dflt', { PATH: bin }, 'win32')).toBe(true); // .EXE is in the default list
+    // On the other systems the bare name is the file.
+    if (posix) {
+      fs.chmodSync(path.join(bin, 'goat-bare'), 0o755);
+      expect(onPath('goat-bare', { PATH: bin }, 'linux')).toBe(true);
+    }
+  });
+
   it('prefers what PATHEXT lists: claude.cmd and claude.exe on win32', () => {
     const cmd = path.join(root, 'only-cmd');
     const exe = path.join(root, 'only-exe');
@@ -501,5 +521,28 @@ describe('detectPreset', () => {
   it('never auto-selects codex, opencode, goose, lean or custom', async () => {
     put('goose', 'opencode', 'codex', 'lean', 'custom');
     expect(await detectPreset()).toBeNull();
+  });
+});
+
+describe('missingHarness', () => {
+  const saved = process.env.PATH;
+  afterEach(() => restoreEnv('PATH', saved));
+
+  it('names the command of a harness that is not on PATH, and nothing for lean or a found one', async () => {
+    const bin = path.join(root, 'bin');
+    fs.mkdirSync(bin, { recursive: true });
+    process.env.PATH = bin;
+    expect(await missingHarness(config('claude'))).toBe('claude');
+    expect(await missingHarness(config('goose'))).toBe('goose');
+    expect(await missingHarness(config('custom', { custom: { command: 'mybot', args: [] } }))).toBe(
+      'mybot',
+    );
+    expect(
+      await missingHarness(config('lean', { lean: { baseUrl: 'http://x', model: 'm' } })),
+    ).toBeNull();
+    if (posix) {
+      fs.writeFileSync(path.join(bin, 'claude'), '#!/bin/sh\n', { mode: 0o755 });
+      expect(await missingHarness(config('claude'))).toBeNull();
+    }
   });
 });

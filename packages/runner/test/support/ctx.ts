@@ -37,9 +37,15 @@ export function fakeContext(
     startsNow?: boolean;
     autostartOk?: boolean;
     detect?: 'claude' | null;
+    /** The command missingHarness reports as not on PATH. */
+    missing?: string | null;
     runLoop?: Context['runLoop'];
     claim?: Context['daemon']['claim'];
     stopWorks?: boolean;
+    /** Turning autostart off also ends the running daemon (launchd's bootout). */
+    autostartOffKills?: boolean;
+    /** Starting the daemon does not work. */
+    startFails?: boolean;
     writeConfig?: Context['writeConfig'];
   } = {},
 ): Fake {
@@ -68,6 +74,7 @@ export function fakeContext(
     autostart: {
       async set(on) {
         calls.push(`autostart ${on ? 'on' : 'off'}`);
+        if (!on && opts.autostartOffKills) daemon.running = false;
         const ok = opts.autostartOk ?? true;
         return { ok, detail: ok ? 'a fake unit' : 'systemctl is not available on this machine' };
       },
@@ -77,6 +84,7 @@ export function fakeContext(
       status,
       async start() {
         calls.push('start');
+        if (opts.startFails) return status();
         daemon.running = true;
         return status();
       },
@@ -96,6 +104,7 @@ export function fakeContext(
     createClient,
     runLoop: opts.runLoop ?? (async () => 'stopped'),
     detectPreset: async () => opts.detect ?? null,
+    missingHarness: async () => opts.missing ?? null,
     consoleLogger: () => ({ info: () => {}, warn: () => {} }),
     fileLogger: () => ({ info: () => {}, warn: (l) => void calls.push(`log: ${l}`) }),
     onSignal(h) {

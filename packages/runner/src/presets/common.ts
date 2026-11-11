@@ -80,9 +80,11 @@ export function onPath(
   const get = (key: string) =>
     win ? Object.entries(env).find(([k]) => k.toUpperCase() === key)?.[1] : env[key];
   const dirs = (get('PATH') ?? '').split(win ? ';' : ':').filter(Boolean);
-  const exts = win
-    ? ['', ...(get('PATHEXT') ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean)]
-    : [''];
+  // Windows runs only files with an executable extension: a bare name is tried as given only when
+  // it already ends in one.
+  const pathExt = win ? (get('PATHEXT') ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean) : [];
+  const hasExt = pathExt.some((e) => name.toUpperCase().endsWith(e.toUpperCase()));
+  const exts = win ? (hasExt ? [''] : pathExt) : [''];
   for (const dir of dirs) {
     for (const ext of exts) {
       const file = path.join(dir.replace(/^"|"$/g, ''), name + ext);
